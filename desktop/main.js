@@ -2,6 +2,9 @@ const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// 显式固定 userData 目录为 LocalMiniDrama，防止 productName 变更导致用户数据路径改变
+app.setPath('userData', path.join(app.getPath('appData'), 'LocalMiniDrama'));
+
 const BACKEND_APP_PATH = path.join(__dirname, 'backend-app');
 const BACKEND_NODE_PATH = path.join(__dirname, '..', 'backend-node');
 const DEFAULT_PORT = 5679;

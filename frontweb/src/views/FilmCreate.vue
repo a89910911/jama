@@ -240,23 +240,29 @@
               <div class="asset-list asset-list-two">
                 <div v-for="char in characters" :key="char.id" class="asset-item asset-item-left-right">
                   <div class="asset-info">
-                    <div class="asset-name">{{ char.name }}</div>
+                    <div class="asset-name">
+                      <span>{{ char.name }}</span>
+                      <el-button type="danger" text size="small" class="btn-delete-icon" title="删除" @click="onDeleteCharacter(char)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
                     <div class="asset-desc-full">{{ char.appearance || char.description || '暂无描述' }}</div>
                     <div class="asset-btns">
-                      <el-button size="small" :loading="generatingCharId === char.id" @click="onGenerateCharacterImage(char)">
+                      <el-button type="primary" size="small" :loading="generatingCharId === char.id" @click="onGenerateCharacterImage(char)">
+                        <el-icon v-if="!generatingCharId || generatingCharId !== char.id"><MagicStick /></el-icon>
                         AI 生成
                       </el-button>
                       <el-button size="small" @click="editCharacter(char)">编辑</el-button>
-                      <el-button size="small" :loading="uploadingResourceId === 'char-' + char.id" @click="onUploadResourceClick('character', char.id)">
-                        上传
-                      </el-button>
                       <el-button size="small" :loading="addingCharToLibraryId === char.id" :disabled="!hasAssetImage(char)" @click="onAddCharacterToLibrary(char)">
                         加入本剧库
                       </el-button>
                       <el-button size="small" :loading="addingCharToMaterialId === char.id" :disabled="!hasAssetImage(char)" @click="onAddCharacterToMaterialLibrary(char)">
                         加入素材库
                       </el-button>
-                      <el-button size="small" type="danger" plain @click="onDeleteCharacter(char)">删除</el-button>
+                      <el-button size="small" class="btn-upload" :loading="uploadingResourceId === 'char-' + char.id" @click="onUploadResourceClick('character', char.id)">
+                        <el-icon v-if="uploadingResourceId !== 'char-' + char.id"><Upload /></el-icon>
+                        上传
+                      </el-button>
                     </div>
                   </div>
                   <div
@@ -295,23 +301,29 @@
               <div class="asset-list asset-list-two">
                 <div v-for="prop in props" :key="prop.id" class="asset-item asset-item-left-right">
                   <div class="asset-info">
-                    <div class="asset-name">{{ prop.name }}</div>
+                    <div class="asset-name">
+                      <span>{{ prop.name }}</span>
+                      <el-button type="danger" text size="small" class="btn-delete-icon" title="删除" @click="onDeleteProp(prop)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
                     <div class="asset-desc-full">{{ prop.description || prop.prompt || '暂无描述' }}</div>
                     <div class="asset-btns">
-                      <el-button size="small" :loading="generatingPropId === prop.id" @click="onGeneratePropImage(prop)">
+                      <el-button type="primary" size="small" :loading="generatingPropId === prop.id" @click="onGeneratePropImage(prop)">
+                        <el-icon v-if="!generatingPropId || generatingPropId !== prop.id"><MagicStick /></el-icon>
                         AI 生成
                       </el-button>
                       <el-button size="small" @click="editProp(prop)">编辑</el-button>
-                      <el-button size="small" :loading="uploadingResourceId === 'prop-' + prop.id" @click="onUploadResourceClick('prop', prop.id)">
-                        上传
-                      </el-button>
                       <el-button size="small" :loading="addingPropToLibraryId === prop.id" :disabled="!hasAssetImage(prop)" @click="onAddPropToLibrary(prop)">
                         加入本剧库
                       </el-button>
                       <el-button size="small" :loading="addingPropToMaterialId === prop.id" :disabled="!hasAssetImage(prop)" @click="onAddPropToMaterialLibrary(prop)">
                         加入素材库
                       </el-button>
-                      <el-button size="small" type="danger" plain @click="onDeleteProp(prop)">删除</el-button>
+                      <el-button size="small" class="btn-upload" :loading="uploadingResourceId === 'prop-' + prop.id" @click="onUploadResourceClick('prop', prop.id)">
+                        <el-icon v-if="uploadingResourceId !== 'prop-' + prop.id"><Upload /></el-icon>
+                        上传
+                      </el-button>
                     </div>
                   </div>
                   <div
@@ -352,23 +364,29 @@
               <div class="asset-list asset-list-two">
                 <div v-for="scene in scenes" :key="scene.id" class="asset-item asset-item-left-right">
                   <div class="asset-info">
-                    <div class="asset-name">{{ scene.location }}</div>
+                    <div class="asset-name">
+                      <span>{{ scene.location }}</span>
+                      <el-button type="danger" text size="small" class="btn-delete-icon" title="删除" @click="onDeleteScene(scene)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
                     <div class="asset-desc-full">{{ scene.description || scene.prompt || scene.time || '暂无描述' }}</div>
                     <div class="asset-btns">
-                      <el-button size="small" :loading="generatingSceneId === scene.id" @click="onGenerateSceneImage(scene)">
+                      <el-button type="primary" size="small" :loading="generatingSceneId === scene.id" @click="onGenerateSceneImage(scene)">
+                        <el-icon v-if="!generatingSceneId || generatingSceneId !== scene.id"><MagicStick /></el-icon>
                         AI 生成
                       </el-button>
                       <el-button size="small" @click="editScene(scene)">编辑</el-button>
-                      <el-button size="small" :loading="uploadingResourceId === 'scene-' + scene.id" @click="onUploadResourceClick('scene', scene.id)">
-                        上传
-                      </el-button>
                       <el-button size="small" :loading="addingSceneToLibraryId === scene.id" :disabled="!hasAssetImage(scene)" @click="onAddSceneToLibrary(scene)">
                         加入本剧库
                       </el-button>
                       <el-button size="small" :loading="addingSceneToMaterialId === scene.id" :disabled="!hasAssetImage(scene)" @click="onAddSceneToMaterialLibrary(scene)">
                         加入素材库
                       </el-button>
-                      <el-button size="small" type="danger" plain @click="onDeleteScene(scene)">删除</el-button>
+                      <el-button size="small" class="btn-upload" :loading="uploadingResourceId === 'scene-' + scene.id" @click="onUploadResourceClick('scene', scene.id)">
+                        <el-icon v-if="uploadingResourceId !== 'scene-' + scene.id"><Upload /></el-icon>
+                        上传
+                      </el-button>
                     </div>
                   </div>
                   <div
@@ -1099,7 +1117,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Setting, Plus, Minus, Sunny, Moon } from '@element-plus/icons-vue'
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Setting, Plus, Minus, Sunny, Moon, MagicStick, Upload, Delete } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 import { useFilmStore } from '@/stores/film'
 import { dramaAPI } from '@/api/drama'
@@ -4022,6 +4040,16 @@ html.light .resource-block-title {
   word-break: break-word;
 }
 .asset-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.asset-btns .btn-upload { margin-left: 8px; }
+.asset-item-left-right .asset-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.asset-item-left-right .asset-name span { flex: 1; min-width: 0; }
+.btn-delete-icon { flex-shrink: 0; padding: 2px 4px !important; opacity: 0.45; transition: opacity 0.15s; }
+.btn-delete-icon:hover { opacity: 1; }
 .empty-tip {
   color: #71717a;
   font-size: 0.9rem;

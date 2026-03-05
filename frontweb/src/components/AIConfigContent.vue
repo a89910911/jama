@@ -600,6 +600,7 @@ const providerConfigs = {
     { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] }
   ],
   video: [
+    { id: 'vidu', name: 'Vidu', models: ['viduq2', 'viduq2-pro', 'viduq2-turbo', 'viduq3-pro'] },
     { id: 'volces', name: '火山引擎', models: ['doubao-seedance-1-5-pro-251215', 'doubao-seedance-1-0-lite-i2v-250428', 'doubao-seedance-1-0-lite-t2v-250428', 'doubao-seedance-1-0-pro-250528', 'doubao-seedance-1-0-pro-fast-251015'] },
     { id: 'chatfire', name: 'Chatfire', models: ['doubao-seedance-1-5-pro-251215', 'doubao-seedance-1-0-lite-i2v-250428', 'doubao-seedance-1-0-lite-t2v-250428', 'doubao-seedance-1-0-pro-250528', 'doubao-seedance-1-0-pro-fast-251015', 'sora-2', 'sora-2-pro'] },
     { id: 'minimax', name: 'MiniMax 海螺', models: ['MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'MiniMax-Hailuo-02'] },
@@ -621,6 +622,7 @@ const providerProtocolMap = {
   gemini: 'gemini',
   google: 'gemini',
   // video
+  vidu: 'vidu',
   minimax: 'openai',
   openai: 'openai',
   chatfire: 'openai',
@@ -641,6 +643,7 @@ function getBaseUrlForProvider(provider) {
   if (p === 'qwen_image') return 'https://dashscope.aliyuncs.com'
   if (p === 'qwen') return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   if (p === 'nano_banana') return 'https://api.nanobananaapi.ai'
+  if (p === 'vidu') return 'https://api.vidu.cn'
   return 'https://api.chatfire.site/v1'
 }
 

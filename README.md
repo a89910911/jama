@@ -1,8 +1,10 @@
 <div align="center">
 
-# 🎬 LocalMiniDrama
+# 🎬 本地短剧助手
 
 **本地 AI 短剧 & 漫剧生成工具 —— 下载即用，完全开源，数据不出本机**
+
+*LocalMiniDrama · AI-powered short drama creator*
 
 [![version](https://img.shields.io/badge/version-1.1.10-blue?style=flat-square)](../../releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -100,9 +102,9 @@
 | 文件名 | 说明 | 推荐人群 |
 |--------|------|----------|
 
-| `LocalMiniDrama x.x.x.exe` | 标准版免安装便携版 | 首次使用，含示例项目 |
+| `本地短剧助手 x.x.x.exe` | 标准版免安装便携版 | 首次使用，含示例项目 |
 
-| `LocalMiniDrama-Lite-x.x.x.exe` | Lite 版免安装便携版 | 已熟悉使用，包体更小 |
+| `本地短剧助手-Lite-x.x.x.exe` | Lite 版免安装便携版 | 已熟悉使用，包体更小 |
 
 > **标准版 vs Lite 版**：标准版内置一个示例短剧项目，打开即可查看完整创作流程示例，适合新手上手参考；Lite 版不含示例数据，包体更小，适合已了解使用方式的用户。功能完全一致。
 
@@ -147,6 +149,8 @@ npm run dev
 |--------|:--------:|:--------:|:--------:|
 | 阿里云 DashScope（通义） | ✅ | ✅ | ✅ |
 | 火山引擎 Volcengine（豆包） | ✅ | ✅ | ✅ |
+| Google Gemini（Imagen / Veo） | — | ✅ | ✅ |
+| Vidu 生数科技 | — | — | ✅ |
 | NanoBanana（含代理，如星衍云） | — | ✅ | — |
 | 本地部署（Ollama 等 OpenAI 兼容） | ✅ | — | — |
 | 其他 OpenAI 兼容接口 | ✅ | ✅ | — |
@@ -195,12 +199,12 @@ LocalMiniDrama/
 
 查看完整更新记录 → **[CHANGELOG](docs/changelog.md)**
 
-**最新版 v1.1.8 亮点：**
-- 🆕 **NanoBanana 图片厂商**：新增 NanoBanana 作为独立图片生成厂商，支持 nano-banana-2 / nano-banana-pro / nano-banana 三个模型，兼容官方 API 与代理模式（如星衍云）
-- 🆕 **AI 配置导出 / 导入**：一键导出全部 AI 配置为 JSON 文件，换机或分享配置直接导入
-- 🆕 **端点字段可配置**：图片/分镜/视频类型均可手动填写提交端点与查询端点，方便对接各类代理或自定义服务
-- 🔧 **分镜参考图优化**：角色图和场景参考图优先读取本地文件并转为 base64，彻底解决外链过期导致生成失败的问题
-- 🔧 **doubao-seedream 参数修正**：参考图字段名修正为官方规范（`image`），自动关闭水印，适配自定义代理
+**最新版 v1.1.10 亮点：**
+- 🆕 **Google Gemini 图片/视频生成**：支持 gemini-3.1-flash-image-preview 等图片模型及 Veo 视频模型，参考图通过图床方案解决大 payload 问题
+- 🆕 **Vidu 视频生成厂商**：新增 Vidu（生数科技），支持 viduq2 / viduq2-pro / viduq2-turbo / viduq3-pro
+- 🆕 **API 接口规范字段**：AI 配置新增「接口规范」字段，自定义中转站可显式指定接口类型，杜绝接口判断出错
+- 🆕 **29 种创作风格**：图片/视频风格选项大幅扩展，按六大类分组展示，覆盖写实、动漫、国风、绘画等
+- 🔧 **分镜生成超时与错误提示优化**：轮询超时延长至 15 分钟，失败/超时给出明确提示，不再静默停止
 
 **v1.1.7 亮点：**
 - 🆕 **UI 全面美化**：紫色主题 + 亮色模式默认，卡片/按钮/表格视觉大幅升级

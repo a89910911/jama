@@ -22,8 +22,8 @@
 ## 运行方式一：下载 exe（推荐普通用户）
 
 1. 前往 **[Releases](../../releases)** 页面下载最新版本：
-   - `LocalMiniDrama Setup x.x.x.exe` — NSIS 安装包（推荐，可选安装路径）
-   - `LocalMiniDrama x.x.x.exe` — 免安装便携版，解压即用
+   - `本地短剧助手 Setup x.x.x.exe` — NSIS 安装包（推荐，可选安装路径）
+   - `本地短剧助手 x.x.x.exe` — 免安装便携版，解压即用
 
 2. 双击运行，软件会自动启动内置后端服务。
 
@@ -136,8 +136,8 @@ npm run dist:cn
 ```
 
 打包产物位于 `desktop/release/` 目录：
-- `LocalMiniDrama Setup x.x.x.exe` — NSIS 安装包
-- `LocalMiniDrama x.x.x.exe` — 便携版
+- `本地短剧助手 Setup x.x.x.exe` — NSIS 安装包
+- `本地短剧助手 x.x.x.exe` — 便携版
 
 **打包原理：**
 1. 构建前端静态文件

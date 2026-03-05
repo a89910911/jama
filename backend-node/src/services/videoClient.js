@@ -11,6 +11,7 @@ function inferVideoProtocol(provider) {
   if (p === 'dashscope') return 'dashscope';
   if (p === 'gemini' || p === 'google') return 'gemini';
   if (p === 'volces' || p === 'volcengine' || p === 'volc') return 'volcengine';
+  if (p === 'vidu') return 'vidu';
   return 'openai';
 }
 
@@ -393,6 +394,92 @@ async function callGeminiVideoApi(config, log, opts) {
 }
 
 /**
+ * 调用 Vidu 视频生成 API（官方 api.vidu.cn/ent/v2）
+ * 认证：Authorization: Token {api_key}（非 Bearer）
+ * 创建：POST /ent/v2/tasks
+ * 轮询：GET /ent/v2/tasks/{id}/creations
+ * 支持模型：viduq2 / viduq2-pro / viduq2-turbo / viduq3-pro
+ */
+async function callViduVideoApi(config, log, opts) {
+  const { prompt, model, duration, aspect_ratio, image_url, video_gen_id, files_base_url, storage_local_path } = opts;
+  const apiKey = config.api_key || '';
+  const base = (config.base_url || 'https://api.vidu.cn').replace(/\/$/, '');
+  const modelName = model || 'viduq2';
+
+  // 时长：Vidu 支持 1-10 秒，默认 5
+  const dur = Math.min(10, Math.max(1, Math.round(Number(duration) || 5)));
+  // 画面比例：Vidu 支持 16:9 / 9:16 / 1:1 / 4:3 / 3:4
+  const ratio = aspect_ratio || '16:9';
+
+  const hasImage = !!(image_url && image_url.trim());
+  const taskType = hasImage ? 'i2v' : 't2v';
+
+  // 构建 prompts 数组
+  const prompts = [{ type: 'text', content: prompt || '' }];
+
+  if (hasImage) {
+    let imgUrl = image_url.trim();
+    // localhost 图片转为公网可访问 URL（Vidu 服务器需要能下载图片）
+    if (/localhost|127\.0\.0\.1/i.test(imgUrl) && files_base_url && !/localhost|127/.test(files_base_url)) {
+      const baseUrl = (files_base_url || '').replace(/\/$/, '');
+      imgUrl = baseUrl + '/' + imgUrl.replace(/^.*?\/static\//, '');
+    }
+    prompts.push({ type: 'image', url: imgUrl });
+  }
+
+  const body = {
+    type: taskType,
+    model: modelName,
+    input: {
+      seed: -1,
+      prompts,
+      duration: dur,
+      aspect_ratio: ratio,
+      resolution: '720p',
+      movement_amplitude: 'auto',
+    },
+  };
+
+  const url = `${base}/ent/v2/tasks`;
+  log.info('Vidu Video API request', { url: url.slice(0, 70), model: modelName, taskType, dur, ratio, video_gen_id });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Token ' + apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    let errMsg = 'Vidu 视频生成请求失败: ' + res.status;
+    try {
+      const errJson = JSON.parse(raw);
+      const msg = errJson.message || errJson.err_code || errJson.error;
+      if (msg) errMsg += ' - ' + String(msg).slice(0, 200);
+    } catch (_) {
+      if (raw) errMsg += ' - ' + raw.slice(0, 200);
+    }
+    log.error('Vidu Video API failed', { status: res.status, body: raw.slice(0, 300), video_gen_id });
+    return { error: errMsg };
+  }
+
+  let data;
+  try { data = JSON.parse(raw); } catch (_) {
+    return { error: 'Vidu 视频生成返回格式异常' };
+  }
+
+  const taskId = data?.id || data?.task_id;
+  if (!taskId) {
+    log.error('Vidu Video API: no task id', { video_gen_id, raw: raw.slice(0, 300) });
+    return { error: 'Vidu 未返回 task_id' };
+  }
+  log.info('Vidu Video task created', { task_id: taskId, state: data?.state, video_gen_id });
+  return { task_id: taskId, status: data?.state || 'created' };
+}
+
+/**
  * 调用视频生成 API（ChatFire/豆包 或 通义万相）
  * @returns {Promise<{ task_id?: string, video_url?: string, error?: string }>}
  */
@@ -424,8 +511,19 @@ async function callVideoApi(db, log, opts) {
 
   if (protocol === 'gemini') {
     return callGeminiVideoApi(config, log, {
-      prompt,
-      model,
+      prompt, model,
+      duration: opts.duration,
+      aspect_ratio,
+      image_url: opts.image_url,
+      video_gen_id: opts.video_gen_id,
+      files_base_url: opts.files_base_url,
+      storage_local_path: opts.storage_local_path,
+    });
+  }
+
+  if (protocol === 'vidu') {
+    return callViduVideoApi(config, log, {
+      prompt, model,
       duration: opts.duration,
       aspect_ratio,
       image_url: opts.image_url,
@@ -531,6 +629,7 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
   const protocol = (config.api_protocol || '').toLowerCase() || inferVideoProtocol(provider);
   const isDashScope = protocol === 'dashscope';
   const isGemini = protocol === 'gemini';
+  const isVidu = protocol === 'vidu';
   const queryUrl = () => buildQueryUrl(config, taskId);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -538,9 +637,13 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       let url, headers;
       if (isGemini) {
         const base = (config.base_url || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-        // taskId 是完整 operation name，如 "operations/abc123"
         url = `${base}/v1beta/${taskId}`;
         headers = { 'x-goog-api-key': config.api_key || '' };
+      } else if (isVidu) {
+        // Vidu 轮询：GET /ent/v2/tasks/{id}/creations
+        const base = (config.base_url || 'https://api.vidu.cn').replace(/\/$/, '');
+        url = `${base}/ent/v2/tasks/${encodeURIComponent(taskId)}/creations`;
+        headers = { Authorization: 'Token ' + (config.api_key || '') };
       } else {
         url = queryUrl();
         headers = { Authorization: 'Bearer ' + (config.api_key || '') };
@@ -549,6 +652,22 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       const raw = await res.text();
       if (!res.ok) continue;
       const data = JSON.parse(raw);
+
+      if (isVidu) {
+        const state = data?.state || data?.status;
+        if (state === 'failed') {
+          const msg = data?.err_code || data?.message || 'Vidu 视频任务失败';
+          log.warn('Vidu video task failed', { video_gen_id: videoGenId, task_id: taskId, state, msg });
+          return { error: String(msg) };
+        }
+        if (state === 'success') {
+          const videoUrl = data?.creations?.[0]?.url;
+          if (videoUrl) return { video_url: videoUrl };
+          return { error: 'Vidu 视频生成完成但未返回视频地址' };
+        }
+        // state: created / queueing / processing → 继续等待
+        continue;
+      }
 
       if (isGemini) {
         if (data.error) {
