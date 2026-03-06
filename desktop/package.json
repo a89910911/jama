@@ -33,6 +33,7 @@
   "build": {
     "appId": "com.localminidrama.desktop",
     "productName": "本地短剧助手",
+    "artifactName": "LocalMiniDrama ${version}.${ext}",
     "directories": {
       "output": "release"
     },
