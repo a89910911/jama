@@ -80,6 +80,19 @@ function saveMediaFile(storagePath, category, files, zipPath, prefix) {
 }
 
 /**
+ * 批量保存 extra_image_files 数组，返回本地路径 JSON 字符串
+ */
+function saveExtraImages(storagePath, category, files, zipPaths, prefix) {
+  if (!Array.isArray(zipPaths) || zipPaths.length === 0) return null;
+  const localPaths = [];
+  for (const zipPath of zipPaths) {
+    const localPath = saveMediaFile(storagePath, category, files, zipPath, prefix);
+    if (localPath) localPaths.push(localPath);
+  }
+  return localPaths.length > 0 ? JSON.stringify(localPaths) : null;
+}
+
+/**
  * 导入 ZIP，创建剧集并还原所有数据
  * @param {Buffer} zipBuffer
  * @returns {{ drama_id: number, title: string }}
@@ -113,15 +126,16 @@ function importDrama(db, cfg, log, zipBuffer) {
   const dramaId = dramaInfo.lastInsertRowid;
 
   // ---- 导入角色 ----
-  const charNewIds = []; // 保存所有新角色 id，稍后关联集数
+  const charNewIds = []; // 按导出顺序保存新角色 id，用于恢复分镜 character_indices
   for (let i = 0; i < (data.characters || []).length; i++) {
     const c = data.characters[i];
-    if (!c.name) continue;
-    const localPath = saveMediaFile(storagePath, 'characters', files, c.image_file, `char_imp`);
+    if (!c.name) { charNewIds.push(null); continue; }
+    const localPath = saveMediaFile(storagePath, 'characters', files, c.image_file, 'char_imp');
+    const extraImagesJson = saveExtraImages(storagePath, 'characters', files, c.extra_image_files, 'char_extra_imp');
     const info = db.prepare(
-      `INSERT INTO characters (drama_id, name, role, description, personality, appearance, voice_style, local_path, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(dramaId, c.name, c.role || null, c.description || null, c.personality || null, c.appearance || null, c.voice_style || null, localPath, i, now, now);
+      `INSERT INTO characters (drama_id, name, role, description, personality, appearance, voice_style, local_path, extra_images, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(dramaId, c.name, c.role || null, c.description || null, c.personality || null, c.appearance || null, c.voice_style || null, localPath, extraImagesJson, i, now, now);
     charNewIds.push(info.lastInsertRowid);
   }
 
@@ -139,6 +153,7 @@ function importDrama(db, cfg, log, zipBuffer) {
   if (charNewIds.length > 0 && episodeIdList.length > 0) {
     const insEC = db.prepare('INSERT OR IGNORE INTO episode_characters (episode_id, character_id) VALUES (?, ?)');
     for (const charId of charNewIds) {
+      if (!charId) continue;
       for (const epId of episodeIdList) {
         try { insEC.run(epId, charId); } catch (_) {}
       }
@@ -146,18 +161,20 @@ function importDrama(db, cfg, log, zipBuffer) {
   }
 
   // ---- 导入场景（带 episode_id） ----
+  const sceneNewIds = []; // 按导出顺序保存新场景 id，用于恢复分镜 scene_index
   for (let i = 0; i < (data.scenes || []).length; i++) {
     const s = data.scenes[i];
-    // episode_index 由新版导出写入；旧版导出没有，则默认归属第一集
     const epIdx = s.episode_index;
     const epId = (epIdx != null && epIdx >= 0 && episodeIdList[epIdx])
       ? episodeIdList[epIdx]
       : (episodeIdList[0] || null);
-    const localPath = saveMediaFile(storagePath, 'scenes', files, s.image_file, `scene_imp`);
-    db.prepare(
-      `INSERT INTO scenes (drama_id, episode_id, location, time, prompt, local_path, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(dramaId, epId, s.location || null, s.time || null, s.prompt || '', localPath, now, now);
+    const localPath = saveMediaFile(storagePath, 'scenes', files, s.image_file, 'scene_imp');
+    const extraImagesJson = saveExtraImages(storagePath, 'scenes', files, s.extra_image_files, 'scene_extra_imp');
+    const info = db.prepare(
+      `INSERT INTO scenes (drama_id, episode_id, location, time, prompt, local_path, extra_images, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(dramaId, epId, s.location || null, s.time || null, s.prompt || '', localPath, extraImagesJson, now, now);
+    sceneNewIds.push(info.lastInsertRowid);
   }
 
   // ---- 导入道具（带 episode_id） ----
@@ -167,11 +184,12 @@ function importDrama(db, cfg, log, zipBuffer) {
     const epId = (epIdx != null && epIdx >= 0 && episodeIdList[epIdx])
       ? episodeIdList[epIdx]
       : (episodeIdList[0] || null);
-    const localPath = saveMediaFile(storagePath, 'images', files, p.image_file, `prop_imp`);
+    const localPath = saveMediaFile(storagePath, 'images', files, p.image_file, 'prop_imp');
+    const extraImagesJson = saveExtraImages(storagePath, 'images', files, p.extra_image_files, 'prop_extra_imp');
     db.prepare(
-      `INSERT INTO props (drama_id, episode_id, name, type, description, prompt, local_path, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(dramaId, epId, p.name, p.type || null, p.description || null, p.prompt || null, localPath, now, now);
+      `INSERT INTO props (drama_id, episode_id, name, type, description, prompt, local_path, extra_images, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(dramaId, epId, p.name, p.type || null, p.description || null, p.prompt || null, localPath, extraImagesJson, now, now);
   }
 
   // ---- 导入分镜 ----
@@ -181,13 +199,28 @@ function importDrama(db, cfg, log, zipBuffer) {
     if (!episodeId) continue;
 
     for (const sb of (ep.storyboards || [])) {
-      const sbImagePath = saveMediaFile(storagePath, 'images', files, sb.image_file, `sb_imp`);
+      const sbImagePath = saveMediaFile(storagePath, 'images', files, sb.image_file, 'sb_imp');
+
+      // 还原 characters：从导出时记录的下标映射回新 ID
+      const charIndices = Array.isArray(sb.character_indices) ? sb.character_indices : [];
+      const sbCharIds = charIndices
+        .map(idx => charNewIds[idx])
+        .filter(id => id != null);
+      const charactersJson = JSON.stringify(sbCharIds);
+
+      // 还原 scene_id：从导出时记录的下标映射回新 ID
+      const sbSceneId = (sb.scene_index != null && sceneNewIds[sb.scene_index])
+        ? sceneNewIds[sb.scene_index]
+        : null;
+
       const sbInfo = db.prepare(
-        `INSERT INTO storyboards (episode_id, storyboard_number, description, location, time, dialogue, action, atmosphere, result, shot_type, angle, movement, image_prompt, video_prompt, duration, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, location, time, dialogue, action, atmosphere, result, shot_type, angle, movement, image_prompt, video_prompt, duration, emotion, emotion_intensity, characters, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         episodeId,
+        sbSceneId,
         sb.storyboard_number || 1,
+        sb.title || null,
         sb.description || null,
         sb.location || null,
         sb.time || null,
@@ -201,6 +234,9 @@ function importDrama(db, cfg, log, zipBuffer) {
         sb.image_prompt || null,
         sb.video_prompt || null,
         sb.duration || 0,
+        sb.emotion || null,
+        sb.emotion_intensity != null ? sb.emotion_intensity : null,
+        charactersJson,
         now,
         now
       );
@@ -216,7 +252,7 @@ function importDrama(db, cfg, log, zipBuffer) {
 
       // 导入视频
       if (sb.video_file) {
-        const videoLocalPath = saveMediaFile(storagePath, 'videos', files, sb.video_file, `vid_imp`);
+        const videoLocalPath = saveMediaFile(storagePath, 'videos', files, sb.video_file, 'vid_imp');
         if (videoLocalPath) {
           db.prepare(
             `INSERT INTO video_generations (drama_id, storyboard_id, provider, prompt, status, local_path, created_at, updated_at)

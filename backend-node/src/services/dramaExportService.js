@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
-const EXPORT_VERSION = '1.0';
+const EXPORT_VERSION = '1.1';
 
 function getStoragePath(cfg) {
   const raw = cfg?.storage?.local_path || './data/storage';
@@ -25,6 +25,24 @@ function localPathToAbs(storagePath, relPath) {
 function extOf(relPath) {
   if (!relPath) return '.jpg';
   return path.extname(relPath) || '.jpg';
+}
+
+/** 解析 extra_images JSON 字段，返回本地路径数组 */
+function parseExtraImages(raw) {
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch (_) { return []; }
+}
+
+/** 解析 storyboard.characters JSON 字段，返回 ID 数组 */
+function parseSbChars(raw) {
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr.map(Number).filter(n => !isNaN(n)) : [];
+  } catch (_) { return []; }
 }
 
 /**
@@ -86,7 +104,16 @@ function exportDrama(db, cfg, log, dramaId) {
     'SELECT * FROM props WHERE drama_id = ? AND deleted_at IS NULL ORDER BY id'
   ).all(Number(dramaId));
 
+  // ---- 构建 ID → 导出数组下标 的映射（用于分镜 characters/scene_id 跨项目还原） ----
+  const charIdToIndex = {};
+  characters.forEach((c, idx) => { charIdToIndex[c.id] = idx; });
+  const sceneIdToIndex = {};
+  scenes.forEach((s, idx) => { sceneIdToIndex[s.id] = idx; });
+
   // ---- 8. 组装 project.json ----
+  // 收集 extra_images 需要打包的文件：{ localRelPath, zipPath }
+  const extraFilesToPack = [];
+
   const zipData = {
     version: EXPORT_VERSION,
     exported_at: new Date().toISOString(),
@@ -112,8 +139,19 @@ function exportDrama(db, cfg, log, dramaId) {
           const sbImageFile = ig ? `media/storyboards/sb_${sb.id}${extOf(ig.local_path)}` : null;
           const vg = videosBySb[sb.id];
           const sbVideoFile = vg && vg.local_path ? `media/videos/sb_${sb.id}${extOf(vg.local_path)}` : null;
+
+          // characters: 存储角色在导出列表中的下标（而非原 ID），方便跨项目恢复
+          const charIds = parseSbChars(sb.characters);
+          const characterIndices = charIds
+            .map(id => charIdToIndex[id])
+            .filter(idx => idx !== undefined);
+
+          // scene_id: 存储场景在导出列表中的下标
+          const sceneIndex = sb.scene_id != null ? (sceneIdToIndex[sb.scene_id] ?? null) : null;
+
           return {
             storyboard_number: sb.storyboard_number,
+            title: sb.title,
             description: sb.description,
             location: sb.location,
             time: sb.time,
@@ -127,33 +165,60 @@ function exportDrama(db, cfg, log, dramaId) {
             image_prompt: sb.image_prompt,
             video_prompt: sb.video_prompt,
             duration: sb.duration,
+            emotion: sb.emotion,
+            emotion_intensity: sb.emotion_intensity,
+            character_indices: characterIndices,  // 角色下标数组
+            scene_index: sceneIndex,              // 场景下标
             image_file: sbImageFile,
             video_file: sbVideoFile,
           };
         }),
       };
     }),
-    characters: characters.map(c => ({
-      name: c.name,
-      role: c.role,
-      description: c.description,
-      personality: c.personality,
-      appearance: c.appearance,
-      voice_style: c.voice_style,
-      image_file: c.local_path ? `media/characters/char_${c.id}${extOf(c.local_path)}` : null,
-    })),
+    characters: characters.map((c, idx) => {
+      // 收集 extra_images 文件
+      const extras = parseExtraImages(c.extra_images);
+      const extraFiles = extras.map((relPath, i) => {
+        const zipPath = `media/characters/extra_char_${c.id}_${i}${extOf(relPath)}`;
+        extraFilesToPack.push({ localRelPath: relPath, zipPath });
+        return zipPath;
+      });
+      return {
+        name: c.name,
+        role: c.role,
+        description: c.description,
+        personality: c.personality,
+        appearance: c.appearance,
+        voice_style: c.voice_style,
+        image_file: c.local_path ? `media/characters/char_${c.id}${extOf(c.local_path)}` : null,
+        extra_image_files: extraFiles,
+      };
+    }),
     scenes: scenes.map(s => {
       const epIdx = episodeIds.indexOf(s.episode_id);
+      const extras = parseExtraImages(s.extra_images);
+      const extraFiles = extras.map((relPath, i) => {
+        const zipPath = `media/scenes/extra_scene_${s.id}_${i}${extOf(relPath)}`;
+        extraFilesToPack.push({ localRelPath: relPath, zipPath });
+        return zipPath;
+      });
       return {
         location: s.location,
         time: s.time,
         prompt: s.prompt,
         episode_index: epIdx >= 0 ? epIdx : null,
         image_file: s.local_path ? `media/scenes/scene_${s.id}${extOf(s.local_path)}` : null,
+        extra_image_files: extraFiles,
       };
     }),
     props: props.map(p => {
       const epIdx = episodeIds.indexOf(p.episode_id);
+      const extras = parseExtraImages(p.extra_images);
+      const extraFiles = extras.map((relPath, i) => {
+        const zipPath = `media/props/extra_prop_${p.id}_${i}${extOf(relPath)}`;
+        extraFilesToPack.push({ localRelPath: relPath, zipPath });
+        return zipPath;
+      });
       return {
         name: p.name,
         type: p.type,
@@ -161,6 +226,7 @@ function exportDrama(db, cfg, log, dramaId) {
         prompt: p.prompt,
         episode_index: epIdx >= 0 ? epIdx : null,
         image_file: p.local_path ? `media/props/prop_${p.id}${extOf(p.local_path)}` : null,
+        extra_image_files: extraFiles,
       };
     }),
   };
@@ -187,7 +253,7 @@ function exportDrama(db, cfg, log, dramaId) {
     }
   }
 
-  // 角色图
+  // 角色主图
   for (const c of characters) {
     if (c.local_path) {
       const abs = localPathToAbs(storagePath, c.local_path);
@@ -196,7 +262,7 @@ function exportDrama(db, cfg, log, dramaId) {
     }
   }
 
-  // 场景图
+  // 场景主图
   for (const s of scenes) {
     if (s.local_path) {
       const abs = localPathToAbs(storagePath, s.local_path);
@@ -205,13 +271,20 @@ function exportDrama(db, cfg, log, dramaId) {
     }
   }
 
-  // 道具图
+  // 道具主图
   for (const p of props) {
     if (p.local_path) {
       const abs = localPathToAbs(storagePath, p.local_path);
       const buf = safeReadFile(abs);
       if (buf) zip.addFile(`media/props/prop_${p.id}${extOf(p.local_path)}`, buf);
     }
+  }
+
+  // extra_images（角色/场景/道具的额外参考图）
+  for (const { localRelPath, zipPath } of extraFilesToPack) {
+    const abs = localPathToAbs(storagePath, localRelPath);
+    const buf = safeReadFile(abs);
+    if (buf) zip.addFile(zipPath, buf);
   }
 
   log.info('Drama exported', { drama_id: dramaId, title: drama.title });
