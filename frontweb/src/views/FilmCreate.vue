@@ -4137,7 +4137,7 @@ html.light .btn-theme {
   border-radius: 14px;
   border: 1px solid rgba(139, 92, 246, 0.22);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 92, 246, 0.06);
-  width: 158px;
+  width: 160px;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -4211,14 +4211,14 @@ html.light .step-line { background: rgba(0,0,0,0.1); }
 
 /* dot */
 .step-dot {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   transition: all 0.25s;
   border: 2px solid transparent;
@@ -4250,8 +4250,8 @@ html.light .dot-pending {
   color: #22c55e;
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.25);
 }
-.dot-icon { font-size: 11px; }
-.dot-num { font-size: 10px; line-height: 1; }
+.dot-icon { font-size: 13px; }
+.dot-num { font-size: 11px; line-height: 1; }
 
 /* step body */
 .step-body {
@@ -4264,7 +4264,7 @@ html.light .dot-pending {
 }
 .step-label {
   flex: 1;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 500;
   color: #a1a1aa;
   white-space: nowrap;
@@ -4283,7 +4283,7 @@ html.light .status-generating .step-label { color: #7c3aed; }
 html.light .status-partial .step-label { color: #d97706; }
 
 .step-count {
-  font-size: 10px;
+  font-size: 11px;
   color: #71717a;
   background: rgba(255,255,255,0.07);
   border-radius: 10px;
@@ -4315,7 +4315,7 @@ html.light .step-count { background: rgba(0,0,0,0.06); color: #9ca3af; }
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  font-size: 11px;
+  font-size: 12px;
   color: #71717a;
   cursor: pointer;
   transition: color 0.15s;
@@ -4332,7 +4332,7 @@ html.light .nav-sub-toggle:hover { color: #374151; }
 html.light .nav-sub-list { background: rgba(0,0,0,0.04); }
 .nav-sub-item {
   padding: 5px 12px 5px 28px;
-  font-size: 11px;
+  font-size: 12px;
   color: #71717a;
   cursor: pointer;
   white-space: nowrap;

@@ -47,4 +47,4 @@ vendor_lock:
 image_proxy:
   # 图床 URL 有效期（小时）。zhongzhuan.chat 官方限制为 24h，建议设为 23 留出余量。
   # 到期后缓存自动失效，下次使用时会重新上传，无需手动清理。
-  expire_hours: 23
+  expire_hours: 240
