@@ -221,6 +221,8 @@
             <el-option label="火山引擎（豆包 Seedream / Seedance）" value="volcengine" />
             <el-option label="通义万象 DashScope" value="dashscope" />
             <el-option label="Google Gemini（图片 / Veo 视频）" value="gemini" />
+            <el-option label="Sora 中转站（images + orientation 格式）" value="sora" />
+            <el-option label="Vidu 视频" value="vidu" />
             <el-option label="NanoBanana" value="nano_banana" />
           </el-select>
         </el-form-item>

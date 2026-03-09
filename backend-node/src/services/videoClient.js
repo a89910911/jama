@@ -52,12 +52,18 @@ function buildVideoUrl(config) {
 
 function buildQueryUrl(config, taskId) {
   const p = (config.provider || '').toLowerCase();
-  const isDashScope = p === 'dashscope';
+  const proto = (config.api_protocol || '').toLowerCase();
+  const isDashScope = proto === 'dashscope' || p === 'dashscope';
   const isVolc = p === 'volces' || p === 'volcengine' || p === 'volc';
+  const isSora = proto === 'sora';
   if (isVolc) return getVolcVideoBase(config) + VOLC_VIDEO_QUERY_PATH + '/' + encodeURIComponent(taskId);
   const base = (config.base_url || '').replace(/\/$/, '');
-  let ep = config.query_endpoint || (isDashScope ? '/api/v1/tasks/{taskId}' : '/video/task/{taskId}');
-  ep = String(ep).replace(/{taskId}/g, taskId).replace(/{task_id}/g, taskId);
+  let defaultEp;
+  if (isSora) defaultEp = '/v1/videos/{taskId}';
+  else if (isDashScope) defaultEp = '/api/v1/tasks/{taskId}';
+  else defaultEp = '/video/task/{taskId}';
+  let ep = config.query_endpoint || defaultEp;
+  ep = String(ep).replace(/{taskId}/g, encodeURIComponent(taskId)).replace(/{task_id}/g, encodeURIComponent(taskId));
   if (!ep.startsWith('/')) ep = '/' + ep;
   return base + ep;
 }
@@ -480,6 +486,186 @@ async function callViduVideoApi(config, log, opts) {
 }
 
 /**
+ * Sora 兼容中转站（api_protocol = 'sora'）
+ * body 格式：{ model, prompt, images:[url], orientation, size, duration, watermark }
+ * orientation: portrait(9:16) | landscape(16:9) | square(1:1)
+ * size: large | medium | small（可在配置 resolution 字段中填写，默认 large）
+ */
+async function callSoraVideoApi(config, log, opts) {
+  const { prompt, model, duration, aspect_ratio, image_url, storage_local_path, video_gen_id } = opts;
+
+  const base = (config.base_url || '').replace(/\/$/, '');
+  let ep = config.endpoint || '/v1/videos';
+  if (!ep.startsWith('/')) ep = '/' + ep;
+  const url = base + ep;
+
+  // seconds 只允许枚举值 10 / 15 / 25（pro 才支持 25）
+  const rawSec = duration ? Number(duration) : 10;
+  const dur = rawSec <= 10 ? '10' : rawSec <= 15 ? '15' : '25';
+
+  // aspect_ratio → size（只允许 4 个固定值：720x1280 / 1280x720 / 1024x1792 / 1792x1024）
+  const sizeMap = {
+    '9:16': '720x1280',  // 竖屏标准
+    '3:4':  '1024x1792', // 竖屏高清
+    '1:1':  '720x1280',  // 正方形用竖屏默认
+    '16:9': '1280x720',  // 横屏标准
+    '4:3':  '1280x720',  // 横屏标准
+    '21:9': '1792x1024', // 横屏高清
+  };
+  const size = sizeMap[aspect_ratio || ''] || '720x1280';
+
+  // ── 读取参考图 Buffer ────────────────────────────────────────────
+  let imageBuffer = null;
+  let imageMime = 'image/jpeg';
+  let imageFilename = 'reference.jpg';
+  const rawImgUrl = (image_url || '').trim();
+
+  if (rawImgUrl) {
+    if (rawImgUrl.startsWith('data:')) {
+      const m = rawImgUrl.match(/^data:([\w/]+);base64,(.+)$/s);
+      if (m) {
+        imageMime = m[1];
+        imageBuffer = Buffer.from(m[2], 'base64');
+        const ext = imageMime.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+        imageFilename = `reference.${ext}`;
+      } else {
+        log.warn('[Sora] 无法解析 base64 参考图，跳过', { video_gen_id });
+      }
+    } else if (/localhost|127\.0\.0\.1/i.test(rawImgUrl)) {
+      // localhost URL → 从本地磁盘直接读取
+      try {
+        const afterStatic = rawImgUrl.split('/static/')[1];
+        if (afterStatic && storage_local_path) {
+          const localFile = path.join(storage_local_path, afterStatic.replace(/^\//, ''));
+          if (fs.existsSync(localFile)) {
+            imageBuffer = fs.readFileSync(localFile);
+            const ext = path.extname(localFile).toLowerCase();
+            const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+            imageMime = mimeMap[ext] || 'image/jpeg';
+            imageFilename = path.basename(localFile);
+            log.info('[Sora] 本地参考图已读取', { file: localFile, size_kb: Math.round(imageBuffer.length / 1024), video_gen_id });
+          } else {
+            log.warn('[Sora] 本地参考图文件不存在', { file: localFile, video_gen_id });
+          }
+        }
+      } catch (e) {
+        log.warn('[Sora] 读取本地参考图失败', { error: e.message, video_gen_id });
+      }
+    } else {
+      // 远程 URL → 下载
+      try {
+        const dlRes = await fetch(rawImgUrl);
+        if (dlRes.ok) {
+          const ct = (dlRes.headers.get('content-type') || '').split(';')[0].trim();
+          imageMime = ct || 'image/jpeg';
+          imageBuffer = Buffer.from(await dlRes.arrayBuffer());
+          const ext = imageMime.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+          imageFilename = `reference.${ext}`;
+          log.info('[Sora] 远程参考图已下载', { url: rawImgUrl, size_kb: Math.round(imageBuffer.length / 1024), video_gen_id });
+        } else {
+          log.warn('[Sora] 下载远程参考图失败', { status: dlRes.status, url: rawImgUrl, video_gen_id });
+        }
+      } catch (e) {
+        log.warn('[Sora] 下载远程参考图异常', { error: e.message, video_gen_id });
+      }
+    }
+  }
+
+  // ── 构造 multipart/form-data ─────────────────────────────────────
+  const boundary = 'soraform_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+  const textFields = [
+    ['model', model || 'sora-2'],
+    ['prompt', prompt || ''],
+    ['seconds', dur],
+    ['size', size],
+    ['watermark', 'false'],
+    ['private', 'false'],
+    ['character_url', ''],
+    ['character_timestamps', ''],
+    ['metadata', ''],
+    ['character_from_task', ''],
+    ['character_create', ''],
+  ];
+
+  const textPart = textFields
+    .map(([name, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`)
+    .join('');
+
+  let bodyBuffer;
+  if (imageBuffer) {
+    const imgHeader = `--${boundary}\r\nContent-Disposition: form-data; name="input_reference"; filename="${imageFilename}"\r\nContent-Type: ${imageMime}\r\n\r\n`;
+    bodyBuffer = Buffer.concat([
+      Buffer.from(textPart, 'utf-8'),
+      Buffer.from(imgHeader, 'utf-8'),
+      imageBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8'),
+    ]);
+  } else {
+    bodyBuffer = Buffer.concat([
+      Buffer.from(textPart, 'utf-8'),
+      Buffer.from(`--${boundary}--\r\n`, 'utf-8'),
+    ]);
+  }
+
+  log.info('[Sora] Video API request', {
+    url, model, size, seconds: dur,
+    has_image: !!imageBuffer, image_file: imageBuffer ? imageFilename : null,
+    video_gen_id,
+  });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      Authorization: 'Bearer ' + (config.api_key || ''),
+    },
+    body: bodyBuffer,
+  });
+  const raw = await res.text();
+  log.info('[Sora] raw response', { status: res.status, raw: raw.slice(0, 1000), video_gen_id });
+
+  if (!res.ok) {
+    let errMsg = 'Sora 视频生成请求失败: ' + res.status;
+    try {
+      const errJson = JSON.parse(raw);
+      const msg = errJson.error?.message || errJson.message || errJson.error;
+      if (msg) errMsg += ' - ' + (typeof msg === 'string' ? msg : JSON.stringify(msg).slice(0, 200));
+    } catch (_) {
+      if (raw) errMsg += ' - ' + raw.slice(0, 200);
+    }
+    return { error: errMsg };
+  }
+
+  let data;
+  try { data = JSON.parse(raw); } catch (e) {
+    return { error: 'Sora 返回格式异常: ' + e.message + ' | raw: ' + raw.slice(0, 200) };
+  }
+
+  // 直接返回视频 URL
+  const directUrl =
+    data.video_url || data.url ||
+    data.data?.video_url || data.data?.url ||
+    data.result?.video_url || data.result?.url ||
+    (Array.isArray(data.generations) && data.generations[0]?.url) ||
+    (Array.isArray(data.data) && data.data[0]?.url);
+  if (directUrl) {
+    log.info('[Sora] 直接返回视频 URL', { video_url: directUrl, video_gen_id });
+    return { video_url: directUrl };
+  }
+
+  // 异步任务 ID
+  const taskId = data.id || data.task_id || data.request_id || data.data?.id || data.data?.task_id;
+  if (taskId) {
+    log.info('[Sora] 返回任务 ID', { task_id: taskId, status: data.status, video_gen_id });
+    return { task_id: String(taskId), status: data.status || 'processing' };
+  }
+
+  log.error('[Sora] 未能解析 task_id 或 video_url', { data: JSON.stringify(data).slice(0, 500), video_gen_id });
+  return { error: 'Sora 未返回 task_id 或 video_url，响应: ' + JSON.stringify(data).slice(0, 300) };
+}
+
+/**
  * 调用视频生成 API（ChatFire/豆包 或 通义万相）
  * @returns {Promise<{ task_id?: string, video_url?: string, error?: string }>}
  */
@@ -533,6 +719,21 @@ async function callVideoApi(db, log, opts) {
     });
   }
 
+  // ── Sora 式中转站协议（api_protocol = 'sora'）─────────────────────
+  // body 格式：{ model, prompt, images:[url], orientation, size, duration, watermark }
+  if (protocol === 'sora') {
+    return callSoraVideoApi(config, log, {
+      prompt, model,
+      duration: opts.duration,
+      aspect_ratio,
+      image_url: opts.image_url,
+      resolution: opts.resolution,
+      files_base_url: opts.files_base_url,
+      storage_local_path: opts.storage_local_path,
+      video_gen_id: opts.video_gen_id,
+    });
+  }
+
   const url = buildVideoUrl(config);
   const dur = duration ? Number(duration) : 5;
   const ratio = aspect_ratio || '16:9';
@@ -581,7 +782,13 @@ async function callVideoApi(db, log, opts) {
     body.content.push(imagePart);
   }
 
-  log.info('Video API request', { url: url.slice(0, 60), model, video_gen_id, task_type: body.task_type });
+  log.info('Video API request', {
+    url,
+    model,
+    video_gen_id,
+    task_type: body.task_type,
+    request_body: JSON.stringify({ ...body, content: body.content?.map(c => c.type === 'image_url' ? { ...c, image_url: { url: '(omitted)' } } : c) }),
+  });
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -591,8 +798,9 @@ async function callVideoApi(db, log, opts) {
     body: JSON.stringify(body),
   });
   const raw = await res.text();
+  log.info('Video API raw response', { video_gen_id, status: res.status, raw: raw.slice(0, 1000) });
   if (!res.ok) {
-    log.error('Video API failed', { status: res.status, body: raw.slice(0, 300) });
+    log.error('Video API failed', { status: res.status, body: raw.slice(0, 500) });
     let errMsg = '视频生成请求失败: ' + res.status;
     try {
       const errJson = JSON.parse(raw);
@@ -607,18 +815,23 @@ async function callVideoApi(db, log, opts) {
   try {
     data = JSON.parse(raw);
   } catch (e) {
-    return { error: '视频生成返回格式异常' };
+    log.error('Video API response JSON parse failed', { video_gen_id, raw: raw.slice(0, 1000), parse_error: e.message });
+    return { error: '视频生成返回格式异常: ' + e.message + ' | raw: ' + raw.slice(0, 200) };
   }
+  log.info('Video API parsed response', { video_gen_id, data: JSON.stringify(data).slice(0, 500) });
   const taskId = data.id || data.task_id || (data.data && data.data.id);
   const status = data.status || (data.data && data.data.status);
   const videoUrl = data.video_url || (data.data && data.data.video_url) || (data.content && data.content.video_url);
   if (videoUrl) {
+    log.info('Video API returned video_url directly', { video_gen_id, video_url: videoUrl });
     return { video_url: videoUrl };
   }
   if (taskId) {
+    log.info('Video API returned task_id', { video_gen_id, task_id: taskId, status });
     return { task_id: taskId, status: status || 'processing' };
   }
-  return { error: '未返回 task_id 或 video_url' };
+  log.error('Video API: no task_id or video_url in response', { video_gen_id, data: JSON.stringify(data).slice(0, 500) });
+  return { error: '未返回 task_id 或 video_url，完整响应: ' + JSON.stringify(data).slice(0, 300) };
 }
 
 /**
@@ -630,7 +843,9 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
   const isDashScope = protocol === 'dashscope';
   const isGemini = protocol === 'gemini';
   const isVidu = protocol === 'vidu';
+  const isSora = protocol === 'sora';
   const queryUrl = () => buildQueryUrl(config, taskId);
+  log.info('[poll] 开始轮询', { video_gen_id: videoGenId, task_id: taskId, protocol, poll_url: queryUrl() });
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, intervalMs));
     try {
@@ -648,10 +863,42 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
         url = queryUrl();
         headers = { Authorization: 'Bearer ' + (config.api_key || '') };
       }
+      log.info('[poll] 发起轮询请求', { video_gen_id: videoGenId, attempt, url });
       const res = await fetch(url, { method: 'GET', headers });
       const raw = await res.text();
-      if (!res.ok) continue;
+      log.info('[poll] 轮询响应', { video_gen_id: videoGenId, attempt, status: res.status, raw: raw.slice(0, 600) });
+      if (!res.ok) {
+        log.warn('[poll] 轮询失败 (non-200)', { video_gen_id: videoGenId, attempt, status: res.status, raw: raw.slice(0, 300) });
+        continue;
+      }
       const data = JSON.parse(raw);
+
+      if (isSora) {
+        const status = (data.status || '').toLowerCase();
+        log.info('[Sora poll] 任务状态', { video_gen_id: videoGenId, attempt, status, progress: data.progress, id: data.id });
+        if (status === 'failed' || status === 'error') {
+          const msg = data.error?.message || data.error || data.message || 'Sora 视频任务失败';
+          log.warn('[Sora poll] 任务失败', { video_gen_id: videoGenId, msg, data: JSON.stringify(data).slice(0, 300) });
+          return { error: String(msg) };
+        }
+        // succeeded / completed / done → 取视频 URL
+        const videoUrl =
+          data.video_url || data.url || data.output_url ||
+          data.data?.video_url || data.data?.url ||
+          data.result?.url || data.result?.video_url ||
+          (Array.isArray(data.videos) && data.videos[0]?.url) ||
+          (Array.isArray(data.generations) && data.generations[0]?.url);
+        if (videoUrl) {
+          log.info('[Sora poll] 视频完成', { video_gen_id: videoGenId, video_url: videoUrl });
+          return { video_url: videoUrl };
+        }
+        if (status === 'succeeded' || status === 'completed' || status === 'done') {
+          log.warn('[Sora poll] 状态为完成但未找到 video_url', { video_gen_id: videoGenId, data: JSON.stringify(data).slice(0, 500) });
+          return { error: 'Sora 视频生成完成但未返回视频地址，响应: ' + JSON.stringify(data).slice(0, 300) };
+        }
+        // queued / processing / running → 继续等待
+        continue;
+      }
 
       if (isVidu) {
         const state = data?.state || data?.status;
@@ -699,10 +946,16 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
         continue;
       }
       const status = data.status || (data.data && data.data.status);
-      const videoUrl = data.video_url || (data.data && data.data.video_url) || (data.content && data.content.video_url);
+      // 兼容多种字段名：标准 video_url / Sora url / generations[].url / data.data.*
+      const videoUrl =
+        data.video_url || data.url ||
+        (data.data && (data.data.video_url || data.data.url)) ||
+        (data.content && data.content.video_url) ||
+        (Array.isArray(data.generations) && data.generations[0]?.url) ||
+        (Array.isArray(data.data) && data.data[0]?.url);
       const errMsg = data.error && (typeof data.error === 'string' ? data.error : data.error.message);
       if (videoUrl) return { video_url: videoUrl };
-      if (status === 'failed' || status === 'error' || errMsg) return { error: errMsg || status || '任务失败' };
+      if (status === 'failed' || status === 'error' || status === 'cancelled' || errMsg) return { error: errMsg || status || '任务失败' };
     } catch (e) {
       log.warn('Video poll request failed', { attempt, error: e.message });
     }

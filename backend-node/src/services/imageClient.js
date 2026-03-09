@@ -635,69 +635,8 @@ async function callDashScopeImageApi(config, log, opts) {
   return { error: '未返回图片地址' };
 }
 
-/**
- * 将图片上传到中转图床，返回公开访问 URL。
- * 接口：POST https://imageproxy.zhongzhuan.chat/api/upload  (multipart/form-data, field: file)
- * 响应：{ url: "https://imageproxy.zhongzhuan.chat/api/proxy/image/<hash>", created: ... }
- * 失败自动重试，最多 3 次；成功返回 string URL，全部失败返回 null。
- */
-async function uploadToImageProxy(imageBuffer, mimeType, log, image_gen_id) {
-  const UPLOAD_URL = 'https://imageproxy.zhongzhuan.chat/api/upload';
-  const extMap = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
-  const ext = extMap[mimeType] || 'jpg';
-  const filename = `ref_${Date.now()}.${ext}`;
-
-  const MAX_ATTEMPTS = 3;
-  log.info('[图床上传] ▶ 开始', { image_gen_id, filename, size_kb: Math.round(imageBuffer.length / 1024), url: UPLOAD_URL });
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const tAttempt = Date.now();
-    try {
-      log.info('[图床上传] 发起请求', { image_gen_id, attempt, size_kb: Math.round(imageBuffer.length / 1024) });
-
-      // 手工构造 multipart/form-data（避免引入额外依赖）
-      const boundary = 'imgproxy_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      const headerLine = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
-      const footerLine = `\r\n--${boundary}--\r\n`;
-      const body = Buffer.concat([
-        Buffer.from(headerLine, 'utf-8'),
-        imageBuffer,
-        Buffer.from(footerLine, 'utf-8'),
-      ]);
-
-      const res = await fetch(UPLOAD_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-        body,
-      });
-
-      const attempt_ms = Date.now() - tAttempt;
-      const raw = await res.text();
-      if (!res.ok) {
-        log.warn('[图床上传] 失败', { image_gen_id, attempt, status: res.status, attempt_ms, body: raw.slice(0, 200) });
-        if (attempt < MAX_ATTEMPTS) { log.info('[图床上传] 准备重试', { image_gen_id, next_attempt: attempt + 1 }); continue; }
-        log.error('[图床上传] ✗ 全部重试失败', { image_gen_id });
-        return null;
-      }
-      const data = JSON.parse(raw);
-      const url = data?.url || null;
-      if (url) {
-        log.info('[图床上传] ✓ 成功', { image_gen_id, attempt, url, attempt_ms });
-        return url;
-      }
-      log.warn('[图床上传] 响应无 url 字段', { image_gen_id, attempt, attempt_ms, raw: raw.slice(0, 200) });
-      if (attempt < MAX_ATTEMPTS) continue;
-      return null;
-    } catch (err) {
-      const attempt_ms = Date.now() - tAttempt;
-      log.warn('[图床上传] 请求异常', { image_gen_id, attempt, attempt_ms, err: err.message });
-      if (attempt < MAX_ATTEMPTS) { log.info('[图床上传] 准备重试', { image_gen_id, next_attempt: attempt + 1 }); continue; }
-      log.error('[图床上传] ✗ 全部重试失败（异常）', { image_gen_id, err: err.message });
-      return null;
-    }
-  }
-  return null;
-}
+// 图床上传：复用 uploadService 的共享实现
+const { uploadToImageProxy } = require('./uploadService');
 
 /**
  * 从 image_proxy_cache 表查询已缓存的图床 URL。
