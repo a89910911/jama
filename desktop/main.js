@@ -22,6 +22,8 @@ const BACKEND_APP_PATH = path.join(__dirname, 'backend-app');
 const BACKEND_NODE_PATH = path.join(__dirname, '..', 'backend-node');
 const DEFAULT_PORT = 5679;
 
+let serverInstance = null;
+
 /** 开发模式用 backend-node（改代码即生效）；打包后用 backend-app */
 function getBackendModulePath() {
   if (app.isPackaged) return BACKEND_APP_PATH;
@@ -83,29 +85,25 @@ function getWebDistPath() {
   return path.join(__dirname, '..', 'frontweb', 'dist');
 }
 
-function waitForServer(port, maxWait = 15000) {
-  const start = Date.now();
-  return new Promise((resolve, reject) => {
-    const tryConnect = () => {
-      const net = require('net');
-      const socket = new net.Socket();
-      socket.setTimeout(500);
-      socket.on('connect', () => {
-        socket.destroy();
-        resolve();
+/**
+ * 探测端口是否空闲：优先使用 preferredPort，被占用时让 OS 分配一个随机空闲端口。
+ * 返回最终可用的端口号。
+ */
+function findFreePort(preferredPort) {
+  const net = require('net');
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => {
+      // 首选端口被占，让 OS 随机分配
+      const fallback = net.createServer();
+      fallback.listen(0, '127.0.0.1', () => {
+        const port = fallback.address().port;
+        fallback.close(() => resolve(port));
       });
-      socket.on('error', () => {
-        if (Date.now() - start > maxWait) reject(new Error('Server start timeout'));
-        else setTimeout(tryConnect, 200);
-      });
-      socket.on('timeout', () => {
-        socket.destroy();
-        if (Date.now() - start > maxWait) reject(new Error('Server start timeout'));
-        else setTimeout(tryConnect, 200);
-      });
-      socket.connect(port, '127.0.0.1');
-    };
-    tryConnect();
+    });
+    probe.listen(preferredPort, '127.0.0.1', () => {
+      probe.close(() => resolve(preferredPort));
+    });
   });
 }
 
@@ -125,10 +123,8 @@ function createWindow(port) {
   }
 }
 
-let serverInstance = null;
-
 /** 后端始终在主进程内运行（打包用子进程会重复启动 exe 导致大量进程，故取消） */
-function startBackend() {
+async function startBackend() {
   const backendCwd = getBackendCwd();
   ensureBackendCwd(backendCwd);
   process.env.WEB_DIST_PATH = getWebDistPath();
@@ -150,33 +146,36 @@ function startBackend() {
   const { createApp } = require(path.join(backendModulePath, 'src', 'app.js'));
   const { createServer } = require('http');
   const { app: expressApp, config } = createApp();
-  const port = config.server?.port || DEFAULT_PORT;
+  const preferredPort = config.server?.port || DEFAULT_PORT;
 
-  const server = createServer(expressApp);
-  server.listen(port, '127.0.0.1', () => {
-    console.log('Backend listening on', port);
+  // 自动探测空闲端口：优先默认端口，被占时由 OS 分配，支持多实例同时运行
+  const port = await findFreePort(preferredPort);
+  if (port !== preferredPort) {
+    console.log(`Port ${preferredPort} in use, using ${port}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const server = createServer(expressApp);
+    serverInstance = server;
+    server.on('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      console.log('Backend listening on', port);
+      resolve(port);
+    });
   });
-  serverInstance = server;
-  return port;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   let port;
   try {
-    port = startBackend();
+    port = await startBackend();
   } catch (err) {
     console.error('Failed to start backend', err);
     app.quit();
     return;
   }
-  waitForServer(port)
-    .then(() => {
-      createWindow(port);
-    })
-    .catch((err) => {
-      console.error(err);
-      app.quit();
-    });
+  // startBackend 的 Promise 在 listen 回调中 resolve，服务器此时已就绪，直接建窗口
+  createWindow(port);
 });
 
 app.on('before-quit', () => {

@@ -12,9 +12,9 @@
           <el-icon><ArrowLeft /></el-icon>返回列表
         </el-button>
         <div class="header-actions">
-          <el-button class="btn-theme" :title="isDark ? '切换到白天模式' : '切换到暗色模式'" @click="toggleTheme">
+          <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
-            {{ isDark ? '白天' : '暗色' }}
+            {{ isDark ? '浅色' : '暗色' }}
           </el-button>
           <el-button type="primary" @click="goCreate">
             <el-icon><VideoPlay /></el-icon>进入制作
@@ -381,7 +381,7 @@
           <input ref="dramaSceneFileRef" type="file" accept="image/*" style="display:none" @change="uploadDramaSceneImg" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editDramaSceneForm.location" /></el-form-item>
-        <el-form-item label="时间"><el-input v-model="editDramaSceneForm.time" placeholder="如：白天/夜晚" /></el-form-item>
+        <el-form-item label="时间"><el-input v-model="editDramaSceneForm.time" placeholder="如：浅色/夜晚" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="editDramaSceneForm.description" type="textarea" :rows="3" placeholder="场景描述" /></el-form-item>
         <el-form-item label="图片提示词"><el-input v-model="editDramaSceneForm.prompt" type="textarea" :rows="2" placeholder="图片生成用的详细提示词" /></el-form-item>
       </el-form>
@@ -462,7 +462,7 @@
           <input ref="sceneFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editSceneForm, sceneLibraryAPI, loadSceneList)" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editSceneForm.location" /></el-form-item>
-        <el-form-item label="时间"><el-input v-model="editSceneForm.time" placeholder="如：白天/夜晚" /></el-form-item>
+        <el-form-item label="时间"><el-input v-model="editSceneForm.time" placeholder="如：浅色/夜晚" /></el-form-item>
         <el-form-item label="分类"><el-input v-model="editSceneForm.category" placeholder="可选" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="editSceneForm.description" type="textarea" :rows="3" placeholder="可选" /></el-form-item>
         <el-form-item label="标签"><el-input v-model="editSceneForm.tags" placeholder="逗号分隔" /></el-form-item>

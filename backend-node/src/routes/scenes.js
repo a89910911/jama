@@ -55,7 +55,7 @@ function routes(db, log) {
         if (sceneId == null) return response.badRequest(res, '缺少 scene_id');
         const scene = sceneService.getSceneById(db, sceneId);
         if (!scene) return response.notFound(res, '场景不存在');
-        const prompt = (body.prompt && body.prompt.trim()) || (scene.prompt && scene.prompt.trim()) || `${scene.location || '场景'}，${scene.time || '白天'}`.trim();
+        const prompt = (body.prompt && body.prompt.trim()) || (scene.prompt && scene.prompt.trim()) || `${scene.location || '场景'}，${scene.time || '浅色'}`.trim();
         console.log("==c 生成图片提示词：",prompt);
         if (prompt.length < 5) return response.badRequest(res, '提示词过短或场景无描述');
         const imageGen = imageService.create(db, log, {

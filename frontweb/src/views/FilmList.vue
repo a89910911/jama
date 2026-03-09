@@ -23,9 +23,9 @@
           <el-button class="btn-wechat" title="扫码联系作者" @click="showWechat = true">
             <el-icon><ChatDotSquare /></el-icon>微信我
           </el-button>
-          <el-button class="btn-theme" :title="isDark ? '切换到白天模式' : '切换到暗色模式'" @click="toggleTheme">
+          <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
-            {{ isDark ? '白天' : '暗色' }}
+            {{ isDark ? '浅色' : '暗色' }}
           </el-button>
           <el-button class="btn-settings" @click="showAiConfigDialog = true">
             <el-icon><Setting /></el-icon>AI配置
@@ -241,7 +241,7 @@
           <input ref="sceneLibFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editSceneLibraryForm, sceneLibraryAPI, loadSceneLibraryList)" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editSceneLibraryForm.location" placeholder="场景地点" /></el-form-item>
-        <el-form-item label="时间"><el-input v-model="editSceneLibraryForm.time" placeholder="如：白天/夜晚" /></el-form-item>
+        <el-form-item label="时间"><el-input v-model="editSceneLibraryForm.time" placeholder="如：浅色/夜晚" /></el-form-item>
         <el-form-item label="分类"><el-input v-model="editSceneLibraryForm.category" placeholder="可选" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="editSceneLibraryForm.description" type="textarea" :rows="3" placeholder="可选" /></el-form-item>
         <el-form-item label="标签"><el-input v-model="editSceneLibraryForm.tags" placeholder="可选，逗号分隔" /></el-form-item>
