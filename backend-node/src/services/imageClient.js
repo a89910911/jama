@@ -698,7 +698,13 @@ async function callGeminiImageApi(db, config, log, opts) {
     raw_ref_count: Array.isArray(reference_image_urls) ? reference_image_urls.length : 0,
   });
 
-  // 参考图：查缓存 → 缓存未命中则上传图床 → 写缓存 → fileData.fileUri 传给 Gemini。
+  // 读取全局配置，判断参考图传输方式
+  // image_proxy.use_for_gemini = false（默认）→ 直接 inlineData base64
+  // image_proxy.use_for_gemini = true          → 上传图床后用 fileData.fileUri
+  const globalCfg = (() => { try { return require('../config').loadConfig(); } catch (_) { return {}; } })();
+  const useImageProxy = !!(globalCfg?.image_proxy?.use_for_gemini);
+  log.info('[Gemini图生] 参考图传输方式', { image_gen_id, use_image_proxy: useImageProxy });
+
   const rawRefs = Array.isArray(reference_image_urls) ? reference_image_urls.filter(Boolean) : [];
   const parts = [{ text: prompt || '' }];
 
@@ -741,32 +747,38 @@ async function callGeminiImageApi(db, config, log, opts) {
       read_ms: Date.now() - tRead, elapsed: elapsed(),
     });
 
-    // 跳过超过 10MB 的文件（避免上传超时）
+    // 跳过超过 10MB 的文件
     if (imageBuffer.length > 10 * 1024 * 1024) {
       log.warn('[Gemini图生] 参考图 超过10MB，跳过', { image_gen_id, ref_index: i, size_mb: (imageBuffer.length / 1024 / 1024).toFixed(1) });
       continue;
     }
 
-    // 查缓存
-    const cacheKey = buildCacheKey(ref, imageBuffer);
-    let fileUri = getProxyCache(db, cacheKey);
-    if (fileUri) {
-      log.info('[Gemini图生] 参考图 缓存命中', { image_gen_id, ref_index: i, cacheKey: cacheKey.slice(0, 60), fileUri });
-    } else {
-      log.info('[Gemini图生] 参考图 缓存未命中，上传图床 →', { image_gen_id, ref_index: i, elapsed: elapsed() });
-      // 未命中：上传到图床（内部最多重试 3 次），成功则写缓存
-      fileUri = await uploadToImageProxy(imageBuffer, mimeType, log, image_gen_id);
+    if (useImageProxy) {
+      // ── 图床模式：上传图床 → fileData.fileUri（部分中转站不支持，会报 Cannot fetch content from URL）──
+      const cacheKey = buildCacheKey(ref, imageBuffer);
+      let fileUri = getProxyCache(db, cacheKey);
       if (fileUri) {
-        setProxyCache(db, cacheKey, fileUri);
-        log.info('[Gemini图生] 参考图 已缓存', { image_gen_id, ref_index: i, elapsed: elapsed() });
+        log.info('[Gemini图生] 参考图 缓存命中（图床）', { image_gen_id, ref_index: i, cacheKey: cacheKey.slice(0, 60), fileUri });
       } else {
-        log.warn('[Gemini图生] 参考图 上传图床失败，该参考图将跳过', { image_gen_id, ref_index: i, elapsed: elapsed() });
+        log.info('[Gemini图生] 参考图 缓存未命中，上传图床 →', { image_gen_id, ref_index: i, elapsed: elapsed() });
+        fileUri = await uploadToImageProxy(imageBuffer, mimeType, log, image_gen_id);
+        if (fileUri) {
+          setProxyCache(db, cacheKey, fileUri);
+          log.info('[Gemini图生] 参考图 已缓存（图床）', { image_gen_id, ref_index: i, elapsed: elapsed() });
+        } else {
+          log.warn('[Gemini图生] 参考图 上传图床失败，该参考图将跳过', { image_gen_id, ref_index: i, elapsed: elapsed() });
+        }
       }
-    }
-
-    if (fileUri) {
-      parts.push({ fileData: { fileUri, mimeType } });
-      log.info('[Gemini图生] 参考图 已加入 parts', { image_gen_id, ref_index: i, fileUri });
+      if (fileUri) {
+        parts.push({ fileData: { fileUri, mimeType } });
+        log.info('[Gemini图生] 参考图 已加入 parts（fileUri）', { image_gen_id, ref_index: i, fileUri });
+      }
+    } else {
+      // ── Base64 模式（默认）：直接内嵌 inlineData，无需图床，兼容所有中转站 ──
+      parts.push({ inlineData: { mimeType, data: imageBuffer.toString('base64') } });
+      log.info('[Gemini图生] 参考图 已加入 parts（inlineData base64）', {
+        image_gen_id, ref_index: i, mime: mimeType, size_kb: Math.round(imageBuffer.length / 1024),
+      });
     }
   }
 

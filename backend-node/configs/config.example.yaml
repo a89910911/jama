@@ -48,3 +48,7 @@ image_proxy:
   # 图床 URL 有效期（小时）。zhongzhuan.chat 官方限制为 24h，建议设为 23 留出余量。
   # 到期后缓存自动失效，下次使用时会重新上传，无需手动清理。
   expire_hours: 240
+  # Gemini 参考图传输方式：
+  #   false（默认）→ 直接内嵌 base64 inlineData，无需图床，兼容性最好
+  #   true          → 上传图床后用 fileData.fileUri 传递（部分中转站不支持，会报 Cannot fetch content from URL）
+  use_for_gemini: false

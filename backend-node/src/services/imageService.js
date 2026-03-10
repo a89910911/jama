@@ -156,12 +156,25 @@ async function buildQuadGridPrompt(db, log, cfg, storyboardId, model) {
   const scene = framePromptService.loadScene(db, sb.scene_id);
   const characterNames = framePromptService.loadStoryboardCharacterNames(db, storyboardId);
 
-  log.info('[四宫格] 开始生成4帧提示词', { storyboard_id: storyboardId });
+  // 四个面板使用差异明显的相机角度，方便用户挑选最佳构图
+  const QUAD_PANEL_ANGLES = ['平视', '仰拍', '俯拍', '侧面'];
+  const QUAD_PANEL_ANGLE_LABELS_EN = [
+    'eye-level shot',
+    'low-angle upward shot',
+    'high-angle downward shot (bird\'s eye)',
+    'side-angle profile shot',
+  ];
+  const [sbFirst, sbKey1, sbKey2, sbLast] = QUAD_PANEL_ANGLES.map((a) => ({ ...sb, angle: a }));
+
+  log.info('[四宫格] 开始生成4帧提示词（四种相机角度）', {
+    storyboard_id: storyboardId,
+    angles: QUAD_PANEL_ANGLES,
+  });
   const [first, key1, key2, last] = await Promise.all([
-    framePromptService.generateSingleFrameExported(db, log, cfg, sb, scene, characterNames, model || undefined, 'first'),
-    framePromptService.generateSingleFrameExported(db, log, cfg, sb, scene, characterNames, model || undefined, 'key'),
-    framePromptService.generateSingleFrameExported(db, log, cfg, sb, scene, characterNames, model || undefined, 'key'),
-    framePromptService.generateSingleFrameExported(db, log, cfg, sb, scene, characterNames, model || undefined, 'last'),
+    framePromptService.generateSingleFrameExported(db, log, cfg, sbFirst, scene, characterNames, model || undefined, 'first'),
+    framePromptService.generateSingleFrameExported(db, log, cfg, sbKey1, scene, characterNames, model || undefined, 'key'),
+    framePromptService.generateSingleFrameExported(db, log, cfg, sbKey2, scene, characterNames, model || undefined, 'key'),
+    framePromptService.generateSingleFrameExported(db, log, cfg, sbLast, scene, characterNames, model || undefined, 'last'),
   ]);
   log.info('[四宫格] 4帧提示词生成完成', { storyboard_id: storyboardId });
   log.info('[四宫格] first.prompt:\n' + first.prompt);
@@ -173,15 +186,17 @@ async function buildQuadGridPrompt(db, log, cfg, storyboardId, model) {
   const styleNote = style ? `. Art style: ${style}` : '';
   const quadPrompt = `Create a 2x2 grid storyboard image with EXACTLY 4 equal-sized panels arranged in 2 rows and 2 columns (like a coordinate quadrant layout). Each panel occupies exactly one quadrant of the image. NO borders of any color (black, white, gray), NO dividing lines, NO frames between panels — the 4 panels must be seamlessly adjacent with no gaps or separators${styleNote}.
 
+Each panel uses a DIFFERENT camera angle to show the same scene from varied perspectives — this is intentional and required.
+
 TOP ROW (left to right):
-[Panel 1 - top-left quadrant, initial state]: ${first.prompt}
-[Panel 2 - top-right quadrant, key action moment]: ${key1.prompt}
+[Panel 1 - top-left quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[0]}, initial state]: ${first.prompt}
+[Panel 2 - top-right quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[1]}, key action moment]: ${key1.prompt}
 
 BOTTOM ROW (left to right):
-[Panel 3 - bottom-left quadrant, action continuation]: ${key2.prompt}
-[Panel 4 - bottom-right quadrant, final state]: ${last.prompt}
+[Panel 3 - bottom-left quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[2]}, action continuation]: ${key2.prompt}
+[Panel 4 - bottom-right quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[3]}, final state]: ${last.prompt}
 
-CRITICAL LAYOUT RULES: The image MUST be divided into 4 equal quadrants in a 2x2 grid. Do NOT arrange panels in a single strip. Do NOT add any black or dark borders/frames around the panels. Each panel is self-contained with consistent character appearance and art style.`;
+CRITICAL LAYOUT RULES: The image MUST be divided into 4 equal quadrants in a 2x2 grid. Do NOT arrange panels in a single strip. Do NOT add any black or dark borders/frames around the panels. Each panel is self-contained with consistent character appearance and art style. The camera angle MUST visually differ between panels as specified above.`;
   log.info('[四宫格] FINAL IMAGE PROMPT (发送给图片AI):\n' + quadPrompt);
   return quadPrompt;
 }
@@ -305,11 +320,16 @@ async function processImageGeneration(db, log, imageGenId) {
             ORDER BY created_at DESC LIMIT 1`
         ).get(Number(row.storyboard_id), imageGenId);
 
+        // 只复用包含多角度标记的新版缓存提示词，旧版单一角度缓存自动作废
+        const QUAD_CACHE_MARKER = 'eye-level shot';
         let quadPrompt = null;
-        if (cachedRow?.prompt) {
+        if (cachedRow?.prompt && cachedRow.prompt.includes(QUAD_CACHE_MARKER)) {
           quadPrompt = cachedRow.prompt;
           log.info('[图生] 使用缓存的四宫格提示词（跳过 AI 生成）', { id: imageGenId, prompt_len: quadPrompt.length });
         } else {
+          if (cachedRow?.prompt) {
+            log.info('[图生] 旧版单一角度缓存已作废，重新生成多角度提示词', { id: imageGenId });
+          }
           quadPrompt = await buildQuadGridPrompt(db, log, cfg, row.storyboard_id, row.model);
           if (quadPrompt) {
             log.info('[图生] 四宫格提示词已生成（新）', { id: imageGenId, prompt_len: quadPrompt.length });
