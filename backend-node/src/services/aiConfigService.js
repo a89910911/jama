@@ -500,6 +500,18 @@ function applyVendorLock(db, log, cfg) {
   console.log(`[vendor_lock] synced ${configs.length} configs from ${configFile}`);
 }
 
+/**
+ * 批量替换所有配置的 api_key（仅限锁定模式下使用）
+ */
+function bulkUpdateApiKey(db, log, newKey) {
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    'UPDATE ai_service_configs SET api_key = ?, updated_at = ? WHERE deleted_at IS NULL'
+  ).run(newKey, now);
+  log.info('Bulk update api_key', { updated: info.changes });
+  return info.changes;
+}
+
 module.exports = {
   listConfigs,
   getConfig,
@@ -509,4 +521,5 @@ module.exports = {
   testConnection,
   getVendorLockStatus,
   applyVendorLock,
+  bulkUpdateApiKey,
 };

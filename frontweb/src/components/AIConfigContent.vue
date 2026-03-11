@@ -43,16 +43,21 @@
             </div>
           </div>
           <!-- 锁定模式提示栏 -->
-          <el-alert
-            v-else
-            type="info"
-            :closable="false"
-            class="vendor-lock-tip"
-          >
-            <template #title>
-              <span>🔒 当前为厂商锁定模式，AI 服务由管理员统一配置。你只能修改 <b>API Key</b> 和 <b>默认模型</b>。</span>
-            </template>
-          </el-alert>
+          <div v-else class="vendor-lock-bar">
+            <el-alert
+              type="info"
+              :closable="false"
+              class="vendor-lock-tip"
+            >
+              <template #title>
+                <span>🔒 当前为厂商锁定模式，AI 服务由管理员统一配置。你只能修改 <b>API Key</b> 和 <b>默认模型</b>。</span>
+              </template>
+            </el-alert>
+            <el-button type="primary" size="small" class="vendor-bulk-key-btn" @click="openBulkKey">
+              <el-icon><Key /></el-icon>
+              一键换Key
+            </el-button>
+          </div>
           <p class="default-tip">每种服务类型仅有一个默认配置：文本用于生成故事；文本生成图片用于角色/场景/道具图；分镜图片生成用于分镜图（支持参考图）；视频用于生成视频。</p>
           <el-table
             v-loading="loading"
@@ -648,13 +653,39 @@ input_reference = (图片文件，可选)</pre>
         <el-button @click="testVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 一键换Key（锁定模式） -->
+    <el-dialog v-model="bulkKeyVisible" title="一键换Key" width="440px" :close-on-click-modal="false">
+      <el-alert
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 16px"
+        title="此操作将替换所有配置的 API Key，请确认新 Key 可用后再提交。"
+        show-icon
+      />
+      <el-form label-width="80px">
+        <el-form-item label="新 API Key">
+          <el-input
+            v-model="bulkKeyInput"
+            type="password"
+            show-password
+            placeholder="粘贴新的 API Key"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="bulkKeyVisible = false">取消</el-button>
+        <el-button type="primary" :loading="bulkKeySaving" :disabled="!bulkKeyInput.trim()" @click="submitBulkKey">确认替换</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera } from '@element-plus/icons-vue'
+import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
 import PromptEditor from '@/components/PromptEditor.vue'
 
@@ -669,6 +700,9 @@ const dialogVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
 const showProtocolHelp = ref(false)
+const bulkKeyVisible = ref(false)
+const bulkKeyInput = ref('')
+const bulkKeySaving = ref(false)
 const formRef = ref(null)
 const form = ref({
   service_type: 'text',
@@ -992,6 +1026,26 @@ async function submit() {
     // request 已统一报错
   } finally {
     saving.value = false
+  }
+}
+
+function openBulkKey() {
+  bulkKeyInput.value = ''
+  bulkKeyVisible.value = true
+}
+
+async function submitBulkKey() {
+  const key = bulkKeyInput.value.trim()
+  if (!key) return
+  bulkKeySaving.value = true
+  try {
+    const res = await aiAPI.bulkUpdateKey(key)
+    ElMessage.success(res?.message || '所有配置的 API Key 已更新')
+    bulkKeyVisible.value = false
+    await loadList()
+  } catch (_) {
+  } finally {
+    bulkKeySaving.value = false
   }
 }
 
@@ -1364,6 +1418,21 @@ code {
   font-size: 13px;
   color: #0369a1;
   line-height: 1.5;
+}
+.vendor-lock-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.vendor-lock-bar .vendor-lock-tip {
+  flex: 1;
+  margin-bottom: 0;
+}
+.vendor-bulk-key-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: #fff !important;
 }
 .vendor-lock-tip {
   margin-bottom: 16px;

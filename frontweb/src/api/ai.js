@@ -21,5 +21,8 @@ export const aiAPI = {
   },
   getVendorLock() {
     return request.get('/ai-configs/vendor-lock')
+  },
+  bulkUpdateKey(apiKey) {
+    return request.put('/ai-configs/bulk-update-key', { api_key: apiKey })
   }
 }

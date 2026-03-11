@@ -84,6 +84,25 @@ function remove(db, log, cfg) {
   };
 }
 
+function bulkUpdateKey(db, log, cfg) {
+  return (req, res) => {
+    if (!aiConfigService.getVendorLockStatus(cfg).enabled) {
+      return response.badRequest(res, '批量换Key仅在厂商锁定模式下可用');
+    }
+    const { api_key } = req.body || {};
+    if (!api_key || !api_key.trim()) {
+      return response.badRequest(res, '请提供新的 API Key');
+    }
+    try {
+      const count = aiConfigService.bulkUpdateApiKey(db, log, api_key.trim());
+      response.success(res, { updated: count, message: `已更新 ${count} 条配置的 API Key` });
+    } catch (err) {
+      log.error('Bulk update api_key failed', { error: err.message });
+      response.internalError(res, '批量换Key失败');
+    }
+  };
+}
+
 function testConnection(log) {
   return async (req, res) => {
     const body = req.body || {};
@@ -116,5 +135,6 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     update: update(db, log, cfg),
     delete: remove(db, log, cfg),
     testConnection: testConnection(log),
+    bulkUpdateKey: bulkUpdateKey(db, log, cfg),
   };
 };

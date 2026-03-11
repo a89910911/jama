@@ -516,15 +516,19 @@
           </label>
           <span class="sb-config-divider">｜</span>
           <label class="sb-config-item">
-            <span class="sb-config-label">视频时长(秒)</span>
+            <span class="sb-config-label">视频总时长(秒)</span>
             <el-input-number v-model="videoDuration" :min="10" :max="600" :step="5" placeholder="自动" class="sb-config-input" />
             <span class="sb-config-hint">留空由 AI 决定</span>
           </label>
           <span class="sb-config-divider">｜</span>
           <label class="sb-config-item">
-            <span class="sb-config-label">四宫格序列图</span>
-            <el-switch v-model="quadGridMode" />
-            <span class="sb-config-hint">开启后生成含4帧的序列参考图</span>
+            <span class="sb-config-label">序列图模式</span>
+            <el-select v-model="gridMode" size="small" style="width:110px">
+              <el-option label="单张" value="single" />
+              <el-option label="四宫格" value="quad_grid" />
+              <el-option label="九宫格" value="nine_grid" />
+            </el-select>
+            <span class="sb-config-hint">四/九宫格自动按视角拆分</span>
           </label>
         </div>
         <div class="asset-actions sb-batch-actions">
@@ -1589,7 +1593,7 @@ const charLibraryTotal = ref(0)
 const charLibraryKeyword = ref('')
 const storyboardCount = ref(null) // 分镜数量
 const videoDuration = ref(null) // 视频总长度
-const quadGridMode = ref(false) // 四宫格序列图模式
+const gridMode = ref('single') // 序列图模式：single / quad_grid / nine_grid
 const showEditCharLibrary = ref(false)
 const editCharLibraryForm = ref(null)
 const editCharLibrarySaving = ref(false)
@@ -1719,7 +1723,7 @@ function hasSbImage(sb) {
 function getSbAllImages(storyboardId) {
   const list = sbImages.value[storyboardId]
   if (!Array.isArray(list)) return []
-  return list.filter((i) => i.status === 'completed' && i.frame_type !== 'quad_grid' && (i.image_url || i.local_path))
+  return list.filter((i) => i.status === 'completed' && i.frame_type !== 'quad_grid' && i.frame_type !== 'nine_grid' && (i.image_url || i.local_path))
 }
 /** 取当前主图（尊重 sbSelectedImgId 选择，否则默认第一张） */
 function getSbImage(storyboardId) {
@@ -1737,7 +1741,7 @@ function getSbImage(storyboardId) {
 function getQuadGridImage(storyboardId) {
   const list = sbImages.value[storyboardId]
   if (!Array.isArray(list)) return null
-  return list.find((i) => i.status === 'completed' && i.frame_type === 'quad_grid' && (i.image_url || i.local_path)) || null
+  return list.find((i) => i.status === 'completed' && (i.frame_type === 'quad_grid' || i.frame_type === 'nine_grid') && (i.image_url || i.local_path)) || null
 }
 /** 取该分镜下第一条已完成的视频记录（供展示） */
 function getSbVideo(storyboardId) {
@@ -1830,9 +1834,14 @@ function getStripItems(storyboardId) {
     }))
 }
 
-/** 四宫格子图位置标签（frame_type = quad_panel_0~3 → 左上/右上/左下/右下） */
+/** 宫格子图位置标签 */
 function quadPanelLabel(frameType) {
-  const map = { quad_panel_0: '左上', quad_panel_1: '右上', quad_panel_2: '左下', quad_panel_3: '右下' }
+  const map = {
+    quad_panel_0: '左上', quad_panel_1: '右上', quad_panel_2: '左下', quad_panel_3: '右下',
+    nine_panel_0: '左上', nine_panel_1: '中上', nine_panel_2: '右上',
+    nine_panel_3: '左中', nine_panel_4: '中间', nine_panel_5: '右中',
+    nine_panel_6: '左下', nine_panel_7: '中下', nine_panel_8: '右下',
+  }
   return map[frameType] || null
 }
 
@@ -1864,7 +1873,7 @@ async function onGenerateSbImage(sb) {
       prompt: sb.image_prompt || sb.description || '',
       model: undefined,
       style: getSelectedStyle(),
-      frame_type: quadGridMode.value ? 'quad_grid' : undefined,
+      frame_type: gridMode.value !== 'single' ? gridMode.value : undefined,
     })
     ElMessage.success('分镜图生成任务已提交')
     if (res?.task_id) {
@@ -3396,7 +3405,7 @@ async function startBatchImageGeneration() {
           drama_id: dramaId.value,
           prompt: sb.image_prompt || sb.description || '',
           style: getSelectedStyle(),
-          frame_type: quadGridMode.value ? 'quad_grid' : undefined,
+          frame_type: gridMode.value !== 'single' ? gridMode.value : undefined,
         })
         if (res?.task_id) {
           const pollRes = await pollTask(res.task_id, () => loadStoryboardMedia())

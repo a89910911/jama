@@ -4,8 +4,8 @@ function createStoryboard(db, log, req) {
   const episodeId = Number(req.episode_id);
   const num = Number(req.storyboard_number ?? 0) || 0;
   const info = db.prepare(
-    `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, location, time, duration, dialogue, action, atmosphere, image_prompt, video_prompt, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+    `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, location, time, duration, dialogue, action, result, atmosphere, image_prompt, video_prompt, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).run(
     episodeId,
     req.scene_id ?? null,
@@ -17,6 +17,7 @@ function createStoryboard(db, log, req) {
     req.duration ?? 0,
     req.dialogue ?? null,
     req.action ?? null,
+    req.result ?? null,
     req.atmosphere ?? null,
     req.image_prompt ?? null,
     req.video_prompt ?? null,
@@ -30,7 +31,7 @@ function createStoryboard(db, log, req) {
 function updateStoryboard(db, log, id, req) {
   const row = db.prepare('SELECT id FROM storyboards WHERE id = ? AND deleted_at IS NULL').get(Number(id));
   if (!row) return null;
-  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'action', 'atmosphere', 'image_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'status', 'shot_type', 'angle', 'movement'];
+  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'action', 'result', 'atmosphere', 'image_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'status', 'shot_type', 'angle', 'movement'];
   const updates = [];
   const params = [];
   // 前端可能传 character_ids，与 characters 统一：存为 JSON 字符串
@@ -83,6 +84,7 @@ function getStoryboardById(db, id) {
     duration: r.duration ?? 0,
     dialogue: r.dialogue,
     action: r.action,
+    result: r.result ?? null,
     atmosphere: r.atmosphere,
     image_prompt: r.image_prompt,
     video_prompt: r.video_prompt,

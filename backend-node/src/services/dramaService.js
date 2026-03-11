@@ -274,6 +274,7 @@ function rowToStoryboard(r) {
     duration: r.duration ?? 0,
     dialogue: r.dialogue,
     action: r.action,
+    result: r.result ?? null,
     atmosphere: r.atmosphere,
     image_prompt: r.image_prompt,
     video_prompt: r.video_prompt,
