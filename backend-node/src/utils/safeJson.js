@@ -162,4 +162,21 @@ function safeParseAIJSON(aiResponse, v, log) {
   }
 }
 
-module.exports = { safeParseAIJSON, extractJsonCandidate };
+/**
+ * 从 safeParseAIJSON 的解析结果中提取数组。
+ * 兼容三种常见 AI 返回格式：
+ *   1. 直接数组 [...]
+ *   2. 包装对象 {"scenes":[...]} / {"data":[...]} / {"  ":[...]} （任意 key，包括空白 key）
+ *   3. 返回 null 表示找不到
+ */
+function extractFirstArray(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object') {
+    for (const key of Object.keys(parsed)) {
+      if (Array.isArray(parsed[key])) return parsed[key];
+    }
+  }
+  return null;
+}
+
+module.exports = { safeParseAIJSON, extractJsonCandidate, extractFirstArray };

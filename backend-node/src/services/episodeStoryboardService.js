@@ -2,7 +2,7 @@
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
 const promptI18n = require('./promptI18n');
-const { safeParseAIJSON } = require('../utils/safeJson');
+const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 const loadConfig = require('../config').loadConfig;
 
 function rowToScene(r) {
@@ -287,12 +287,11 @@ async function processStoryboardGeneration(db, log, cfg, taskId, episodeId, mode
     });
     // max_tokens 不在此硬编码，由 AI 配置的 settings.max_tokens 控制（用户可按模型上限自行设置）。
     // 若用户未配置则不传，让模型使用自身默认值，避免超出不同模型的上限导致 400 错误。
-    // json_mode=true：向支持 response_format 的模型（OpenAI 兼容等）发送 json_object 约束，
-    // 降低模型输出非法 JSON 的概率；不支持该参数的厂商 API 会忽略此字段。
+    // 不使用 json_mode：response_format:json_object 要求返回 JSON 对象而非数组，会导致模型包装成
+    // {"storyboards":[...]} 或产生乱码 key，改由 extractFirstArray 统一处理任意包装格式。
     const text = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
       model: model || undefined,
       temperature: 0.7,
-      json_mode: true,
     });
 
     taskService.updateTaskStatus(db, taskId, 'processing', 50, '分镜头生成完成，正在解析结果...');
@@ -306,27 +305,18 @@ async function processStoryboardGeneration(db, log, cfg, taskId, episodeId, mode
 
     let storyboards = [];
     try {
-      const parsed = safeParseAIJSON(text, {}, log);
-      if (Array.isArray(parsed)) {
-        storyboards = parsed;
-      } else if (parsed && Array.isArray(parsed.storyboards)) {
-        storyboards = parsed.storyboards;
-      }
+      const parsed = safeParseAIJSON(text, log);
+      storyboards = extractFirstArray(parsed) || [];
     } catch (e) {
-      try {
-        const arr = safeParseAIJSON(text, [], log);
-        storyboards = Array.isArray(arr) ? arr : [];
-      } catch (e2) {
-        log.error('Parse storyboard JSON failed', {
-          error: e2.message,
-          task_id: taskId,
-          text_type: typeof text,
-          text_length: text ? String(text).length : 0,
-          raw_text: text ? String(text).slice(0, 2000) : '(empty)',
-        });
-        taskService.updateTaskError(db, taskId, '解析分镜头结果失败: ' + (e2.message || ''));
-        return;
-      }
+      log.error('Parse storyboard JSON failed', {
+        error: e.message,
+        task_id: taskId,
+        text_type: typeof text,
+        text_length: text ? String(text).length : 0,
+        raw_text: text ? String(text).slice(0, 2000) : '(empty)',
+      });
+      taskService.updateTaskError(db, taskId, '解析分镜头结果失败: ' + (e.message || ''));
+      return;
     }
 
     if (storyboards.length === 0) {

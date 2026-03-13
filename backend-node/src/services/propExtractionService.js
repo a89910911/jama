@@ -3,7 +3,7 @@ const taskService = require('./taskService');
 const aiClient = require('./aiClient');
 const promptI18n = require('./promptI18n');
 const propService = require('./propService');
-const { safeParseAIJSON } = require('../utils/safeJson');
+const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 
 async function processPropExtraction(db, log, taskId, episodeId) {
   taskService.updateTaskStatus(db, taskId, 'processing', 0, '正在分析剧本...');
@@ -54,7 +54,6 @@ async function processPropExtraction(db, log, taskId, episodeId) {
     response = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, {
       max_tokens: 2000,
       temperature: 0.3,
-      json_mode: true,
     });
   } catch (err) {
     log.error('Prop extraction AI failed', { error: err.message, task_id: taskId });
@@ -64,26 +63,11 @@ async function processPropExtraction(db, log, taskId, episodeId) {
 
   let extractedProps = [];
   try {
-    const parsed = safeParseAIJSON(response, [], log);
-    if (Array.isArray(parsed)) extractedProps = parsed;
-    else if (parsed && Array.isArray(parsed.props)) extractedProps = parsed.props;
-    else if (parsed && Array.isArray(parsed.items)) extractedProps = parsed.items;
+    const parsed = safeParseAIJSON(response, log);
+    extractedProps = extractFirstArray(parsed) || [];
   } catch (_) {
-    try {
-      const cleaned = (response || '').trim()
-        .replace(/^```json\s*/gm, '')
-        .replace(/^```\s*/gm, '')
-        .replace(/```\s*$/gm, '')
-        .trim();
-      const start = cleaned.indexOf('[');
-      if (start !== -1) {
-        const end = cleaned.lastIndexOf(']') + 1;
-        if (end > start) extractedProps = JSON.parse(cleaned.slice(start, end));
-      }
-    } catch (_2) {
-      taskService.updateTaskError(db, taskId, '解析 AI 返回的 JSON 失败');
-      return;
-    }
+    taskService.updateTaskError(db, taskId, '解析 AI 返回的 JSON 失败');
+    return;
   }
 
   taskService.updateTaskStatus(db, taskId, 'processing', 50, '正在保存道具...');

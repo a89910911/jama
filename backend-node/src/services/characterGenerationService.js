@@ -2,7 +2,7 @@
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
 const promptI18n = require('./promptI18n');
-const { safeParseAIJSON } = require('../utils/safeJson');
+const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 
 async function processCharacterGeneration(db, cfg, log, taskID, req) {
   taskService.updateTaskStatus(db, taskID, 'processing', 0, '正在生成角色...');
@@ -54,7 +54,6 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
       model: req.model || undefined,
       temperature,
       max_tokens: maxTokensForChars,
-      json_mode: true,
     });
   } catch (err) {
     log.error('Character generation AI failed', { error: err.message, task_id: taskID });
@@ -66,8 +65,8 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
 
   let result;
   try {
-    result = safeParseAIJSON(text, [], log);
-    if (!Array.isArray(result)) result = [];
+    const parsed = safeParseAIJSON(text, log);
+    result = extractFirstArray(parsed) || [];
   } catch (err) {
     log.error('Character generation parse failed', { error: err.message, task_id: taskID });
     console.error('[角色生成] JSON解析失败，原始内容：\n' + text);
