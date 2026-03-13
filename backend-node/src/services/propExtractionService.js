@@ -54,6 +54,7 @@ async function processPropExtraction(db, log, taskId, episodeId) {
     response = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, {
       max_tokens: 2000,
       temperature: 0.3,
+      json_mode: true,
     });
   } catch (err) {
     log.error('Prop extraction AI failed', { error: err.message, task_id: taskId });
@@ -63,7 +64,7 @@ async function processPropExtraction(db, log, taskId, episodeId) {
 
   let extractedProps = [];
   try {
-    const parsed = safeParseAIJSON(response, []);
+    const parsed = safeParseAIJSON(response, [], log);
     if (Array.isArray(parsed)) extractedProps = parsed;
     else if (parsed && Array.isArray(parsed.props)) extractedProps = parsed.props;
     else if (parsed && Array.isArray(parsed.items)) extractedProps = parsed.items;

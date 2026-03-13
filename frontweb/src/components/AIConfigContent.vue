@@ -109,6 +109,78 @@
           <PromptEditor />
         </div>
       </el-tab-pane>
+      <el-tab-pane label="生成设置" name="generation">
+        <div class="tab-content generation-settings">
+          <div class="gs-section-title">⚡ 一键生成并发设置</div>
+          <p class="gs-desc">控制「一键生成视频」和「补全并生成」流水线中，各类任务同时并行生成的数量。并发数越高速度越快，但过高可能触发 API 限流（429 错误）。建议根据你的 API 额度选择。</p>
+
+          <div class="gs-row">
+            <span class="gs-label">图片并发数</span>
+            <el-select
+              v-model="genConcurrencyInput"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入并发数"
+              style="width: 180px"
+              @change="onConcurrencyChange"
+            >
+              <el-option label="1（串行，最稳定）" :value="1" />
+              <el-option label="2" :value="2" />
+              <el-option label="3（默认）" :value="3" />
+              <el-option label="5" :value="5" />
+              <el-option label="8" :value="8" />
+              <el-option label="10" :value="10" />
+            </el-select>
+            <span class="gs-unit">个任务同时生成</span>
+          </div>
+
+          <div class="gs-row" style="margin-top: 10px">
+            <span class="gs-label">视频并发数</span>
+            <el-select
+              v-model="genVideoConcurrencyInput"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入并发数"
+              style="width: 180px"
+              @change="onVideoConcurrencyChange"
+            >
+              <el-option label="1（串行，最稳定）" :value="1" />
+              <el-option label="2" :value="2" />
+              <el-option label="3（默认）" :value="3" />
+              <el-option label="5" :value="5" />
+              <el-option label="8" :value="8" />
+              <el-option label="10" :value="10" />
+            </el-select>
+            <span class="gs-unit">个任务同时生成</span>
+          </div>
+
+          <div style="margin-top: 14px">
+            <el-button
+              type="primary"
+              size="small"
+              :loading="genSettingSaving"
+              @click="saveGenerationSettings"
+            >保存</el-button>
+          </div>
+          <el-alert
+            v-if="genSettingSaved"
+            type="success"
+            title="已保存"
+            :closable="false"
+            show-icon
+            style="margin-top: 12px; width: fit-content"
+          />
+          <div class="gs-tip-box">
+            <div class="gs-tip-title">📌 适用范围</div>
+            <ul class="gs-tip-list">
+              <li>图片并发：步骤 2 角色图、步骤 4 场景图、步骤 6 分镜图</li>
+              <li>视频并发：步骤 7 分镜视频</li>
+            </ul>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 添加/编辑 -->
@@ -709,10 +781,59 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
+import { generationSettingsAPI } from '@/api/prompts'
 import PromptEditor from '@/components/PromptEditor.vue'
 
 const activeTab = ref('configs')
 const importFileRef = ref(null)
+
+// ---- 生成设置 ----
+const genConcurrencyInput = ref(3)
+const genVideoConcurrencyInput = ref(3)
+const genSettingSaving = ref(false)
+const genSettingSaved = ref(false)
+
+async function loadGenerationSettings() {
+  try {
+    const res = await generationSettingsAPI.get()
+    genConcurrencyInput.value = res?.concurrency ?? 3
+    genVideoConcurrencyInput.value = res?.video_concurrency ?? 3
+  } catch (_) {}
+}
+
+function onConcurrencyChange(val) {
+  const n = Number(val)
+  if (!isNaN(n) && n >= 1) genConcurrencyInput.value = Math.min(20, Math.max(1, Math.round(n)))
+}
+
+function onVideoConcurrencyChange(val) {
+  const n = Number(val)
+  if (!isNaN(n) && n >= 1) genVideoConcurrencyInput.value = Math.min(20, Math.max(1, Math.round(n)))
+}
+
+async function saveGenerationSettings() {
+  const n = Number(genConcurrencyInput.value)
+  const nv = Number(genVideoConcurrencyInput.value)
+  if (isNaN(n) || n < 1 || n > 20) {
+    ElMessage.warning('图片并发数请填写 1-20 之间的整数')
+    return
+  }
+  if (isNaN(nv) || nv < 1 || nv > 20) {
+    ElMessage.warning('视频并发数请填写 1-20 之间的整数')
+    return
+  }
+  genSettingSaving.value = true
+  genSettingSaved.value = false
+  try {
+    await generationSettingsAPI.update({ concurrency: Math.round(n), video_concurrency: Math.round(nv) })
+    genSettingSaved.value = true
+    setTimeout(() => { genSettingSaved.value = false }, 2000)
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e?.message || ''))
+  } finally {
+    genSettingSaving.value = false
+  }
+}
 const loading = ref(false)
 const list = ref([])
 const selectedRows = ref([])
@@ -1356,6 +1477,7 @@ async function loadVendorLock() {
 onMounted(() => {
   loadVendorLock()
   loadList()
+  loadGenerationSettings()
 })
 </script>
 
@@ -1689,5 +1811,59 @@ code {
   background: #fef6e0;
   color: #b8860b;
   border-color: #f0d080;
+}
+.generation-settings {
+  max-width: 600px;
+}
+.gs-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.gs-desc {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.gs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.gs-label {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.gs-unit {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+.gs-tip-box {
+  margin-top: 20px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 13px;
+}
+.gs-tip-title {
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.gs-tip-list {
+  margin: 0 0 8px 16px;
+  padding: 0;
+  color: #606266;
+  line-height: 1.8;
+}
+.gs-tip-note {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

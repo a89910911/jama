@@ -1,4 +1,6 @@
 // 与 Go pkg/utils/json_parser.go SafeParseAIJSON 对齐：去除 markdown、提取 JSON、解析
+let _jsonrepair = null;
+try { _jsonrepair = require('jsonrepair').jsonrepair; } catch (_) {}
 function extractJsonCandidate(text) {
   let start = -1;
   for (let i = 0; i < text.length; i++) {
@@ -76,7 +78,20 @@ function repairTruncatedJsonArray(str) {
   return trimmed.slice(0, lastCompletePos) + ']';
 }
 
-function safeParseAIJSON(aiResponse, v) {
+/**
+ * @param {string} aiResponse
+ * @param {object|Array} v - 默认值类型（用于判断期望返回类型）
+ * @param {object} [log] - 可选 logger，有 warn/info 方法；不传则用 console.warn
+ */
+function safeParseAIJSON(aiResponse, v, log) {
+  const _warn = (msg, extra) => {
+    if (log && typeof log.warn === 'function') {
+      log.warn(msg, extra);
+    } else {
+      console.warn('[safeParseAIJSON]', msg, extra || '');
+    }
+  };
+
   if (!aiResponse || typeof aiResponse !== 'string') {
     throw new Error('AI返回内容为空');
   }
@@ -90,7 +105,7 @@ function safeParseAIJSON(aiResponse, v) {
     throw new Error('响应中未找到有效的JSON对象或数组');
   }
 
-  // 优先尝试完整解析
+  // 优先尝试完整解析（正常路径，无破损）
   try {
     const parsed = JSON.parse(jsonStr);
     if (Array.isArray(v)) {
@@ -101,11 +116,18 @@ function safeParseAIJSON(aiResponse, v) {
     }
     return parsed;
   } catch (err) {
-    // JSON 解析失败时，尝试修复截断的数组（应对 max_tokens 截断场景）
+    _warn('AI JSON 破损，尝试修复', { original_error: err.message, text_length: jsonStr.length, text_head: jsonStr.slice(0, 120) });
+
+    // 修复策略 1：截断数组修复（应对 max_tokens 截断场景）
     const repaired = repairTruncatedJsonArray(jsonStr);
     if (repaired && repaired !== jsonStr) {
       try {
         const parsed = JSON.parse(repaired);
+        _warn('AI JSON 修复成功（策略1：截断修复）', {
+          rescued_items: Array.isArray(parsed) ? parsed.length : 1,
+          original_len: jsonStr.length,
+          repaired_len: repaired.length,
+        });
         if (Array.isArray(v)) {
           v.length = 0;
           v.push(...(Array.isArray(parsed) ? parsed : []));
@@ -113,10 +135,29 @@ function safeParseAIJSON(aiResponse, v) {
           Object.assign(v, parsed);
         }
         return parsed;
-      } catch (_) {
-        // 修复后仍然失败，抛出原始错误
-      }
+      } catch (_) {}
     }
+
+    // 修复策略 2：jsonrepair 深度修复（处理未加引号的字符串、尾部逗号、单引号等 LLM 常见输出缺陷）
+    if (_jsonrepair) {
+      try {
+        const fixed = _jsonrepair(jsonStr);
+        const parsed = JSON.parse(fixed);
+        _warn('AI JSON 修复成功（策略2：jsonrepair）', {
+          rescued_items: Array.isArray(parsed) ? parsed.length : 1,
+          original_len: jsonStr.length,
+          fixed_len: fixed.length,
+        });
+        if (Array.isArray(v)) {
+          v.length = 0;
+          v.push(...(Array.isArray(parsed) ? parsed : []));
+        } else if (v && typeof v === 'object') {
+          Object.assign(v, parsed);
+        }
+        return parsed;
+      } catch (_) {}
+    }
+
     throw new Error('JSON解析失败: ' + err.message);
   }
 }

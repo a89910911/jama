@@ -24,7 +24,7 @@ function setupRouter(cfg, db, log) {
   const r = express.Router();
   const drama = dramaRoutes(db, cfg, log);
   const task = taskRoutes(db, log);
-  const settings = settingsRoutes(cfg, log);
+  const settings = settingsRoutes(db, cfg, log);
   const aiConfig = aiConfigRoutes(db, log, cfg);
   const prop = propRoutes(db, log);
   const stub = stubRoutes(db, cfg, log);
@@ -223,6 +223,8 @@ function setupRouter(cfg, db, log) {
   // ---------- settings ----------
   r.get('/settings/language', settings.getLanguage);
   r.put('/settings/language', settings.updateLanguage);
+  r.get('/settings/generation', settings.getGenerationSettings);
+  r.put('/settings/generation', settings.updateGenerationSettings);
 
   // ---------- prompt overrides ----------
   r.get('/settings/prompts', promptOverrides.list);

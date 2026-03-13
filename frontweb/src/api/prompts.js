@@ -11,3 +11,12 @@ export const promptsAPI = {
     return request.delete(`/settings/prompts/${key}`)
   },
 }
+
+export const generationSettingsAPI = {
+  get() {
+    return request.get('/settings/generation')
+  },
+  update(data) {
+    return request.put('/settings/generation', data)
+  },
+}

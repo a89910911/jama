@@ -118,16 +118,24 @@
           class="story-textarea"
         />
         <div class="row gap">
-          <el-select v-model="storyStyle" placeholder="风格" clearable style="width: 140px" @change="saveProjectSettings">
+          <el-select v-model="storyStyle" placeholder="故事风格" clearable style="width: 120px" @change="saveProjectSettings">
             <el-option label="现代" value="modern" />
             <el-option label="古风" value="ancient" />
             <el-option label="奇幻" value="fantasy" />
             <el-option label="日常" value="daily" />
           </el-select>
-          <el-select v-model="storyType" placeholder="类型" clearable style="width: 140px" @change="saveProjectSettings">
+          <el-select v-model="storyType" placeholder="剧本类型" clearable style="width: 120px" @change="saveProjectSettings">
             <el-option label="剧情" value="drama" />
             <el-option label="喜剧" value="comedy" />
             <el-option label="冒险" value="adventure" />
+          </el-select>
+          <el-select v-model="storyEpisodeCount" placeholder="生成集数" style="width: 110px">
+            <el-option label="1集" :value="1" />
+            <el-option label="2集" :value="2" />
+            <el-option label="3集" :value="3" />
+            <el-option label="4集" :value="4" />
+            <el-option label="5集" :value="5" />
+            <el-option label="6集" :value="6" />
           </el-select>
           <el-button type="primary" :loading="storyGenerating" @click="onGenerateStory">AI 生成</el-button>
         </div>
@@ -135,7 +143,7 @@
 
       <!-- 2. 剧本生成 -->
       <section id="anchor-script" class="section card">
-        <h2 class="section-title">剧本生成</h2>
+        <h2 class="section-title">剧本</h2>
         <div class="row gap" style="margin-bottom: 12px; flex-wrap: wrap;">
           <el-select
             v-model="selectedEpisodeId"
@@ -193,11 +201,11 @@
             <el-option label="8秒/段" :value="8" />
             <el-option label="10秒/段" :value="10" />
           </el-select>
-          <el-select v-model="generationStyle" placeholder="图片/视频风格" clearable style="width: 160px" @change="saveProjectSettings">
-            <el-option-group v-for="group in generationStyleOptions" :key="group.label" :label="group.label">
-              <el-option v-for="opt in group.options" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-option-group>
-          </el-select>
+          <StylePickerButton
+            v-model="generationStyle"
+            :options="generationStyleOptions"
+            @change="saveProjectSettings"
+          />
           <el-button
             type="primary"
             :loading="pipelineRunning && !pipelinePaused"
@@ -222,7 +230,16 @@
         </div>
         <div v-if="pipelineRunning || pipelineErrorLog.length > 0" class="pipeline-status">
           <div v-if="pipelineCurrentStep" class="pipeline-current-step">
-            当前进度：{{ pipelineCurrentStep }}
+            {{ pipelineCurrentStep }}
+          </div>
+          <div v-if="pipelineActiveTasks.size > 0" class="pipeline-active-tasks">
+            <span
+              v-for="label in Array.from(pipelineActiveTasks)"
+              :key="label"
+              class="pipeline-task-chip"
+            >
+              <span class="pipeline-task-dot" />{{ label }}
+            </span>
           </div>
           <div v-if="pipelineErrorLog.length > 0" class="pipeline-error-log">
             <div class="pipeline-error-title">执行过程中的错误：</div>
@@ -1314,6 +1331,8 @@ import { uploadAPI } from '@/api/upload'
 import { characterLibraryAPI } from '@/api/characterLibrary'
 import { sceneLibraryAPI } from '@/api/sceneLibrary'
 import { propLibraryAPI } from '@/api/propLibrary'
+import { generationSettingsAPI } from '@/api/prompts'
+import StylePickerButton from '@/components/StylePickerButton.vue'
 import AIConfigContent from '@/components/AIConfigContent.vue'
 
 const route = useRoute()
@@ -1338,6 +1357,7 @@ const showAiConfigDialog = ref(false)
 const storyInput = ref('')
 const storyStyle = ref('')
 const storyType = ref('')
+const storyEpisodeCount = ref(1)
 const storyGenerating = ref(false)
 const scriptTitle = ref('')
 const selectedEpisodeId = ref(null)
@@ -1353,60 +1373,61 @@ const generationStyleOptions = [
   {
     label: '写实 / 影视',
     options: [
-      { label: '写实', value: 'realistic' },
-      { label: '电影感', value: 'cinematic' },
-      { label: '纪录片', value: 'documentary' },
-      { label: '黑色电影', value: 'noir' },
-      { label: '复古胶片', value: 'retro film' },
-      { label: '恐怖', value: 'horror' },
+      { label: '写实',    value: 'realistic',        color: 'linear-gradient(135deg,#c9a87c,#7c5e3c)', thumb: '/style-thumbs/realistic.jpg' },
+      { label: '电影感',  value: 'cinematic',         color: 'linear-gradient(135deg,#1a1a2e,#c9aa71)', thumb: '/style-thumbs/cinematic.jpg' },
+      { label: '纪录片',  value: 'documentary',       color: 'linear-gradient(135deg,#4a6741,#8fbc8f)', thumb: '/style-thumbs/documentary.jpg' },
+      { label: '黑色电影', value: 'noir',             color: 'linear-gradient(135deg,#1a1a1a,#666)',    thumb: '/style-thumbs/noir.jpg' },
+      { label: '复古胶片', value: 'retro film',       color: 'linear-gradient(135deg,#d4a373,#8b6914)', thumb: '/style-thumbs/retro.jpg' },
+      { label: '恐怖',    value: 'horror',            color: 'linear-gradient(135deg,#1a0a0a,#7b1111)', thumb: '/style-thumbs/horror.jpg' },
     ]
   },
   {
     label: '动漫 / 卡通',
     options: [
-      { label: '日本动漫', value: 'anime style' },
-      { label: '欧美漫画', value: 'comic style' },
-      { label: '卡通', value: 'cartoon' },
+      { label: '日本动漫', value: 'anime style',      color: 'linear-gradient(135deg,#ff9fd2,#a97cdb)', thumb: '/style-thumbs/anime.jpg' },
+      { label: '欧美漫画', value: 'comic style',      color: 'linear-gradient(135deg,#4169e1,#ff6b47)', thumb: '/style-thumbs/comic.jpg' },
+      { label: '卡通',    value: 'cartoon',           color: 'linear-gradient(135deg,#ffd700,#ff6b6b)', thumb: '/style-thumbs/cartoon.jpg' },
+      { label: '2D 动画', value: '2d animation',      color: 'linear-gradient(135deg,#43e97b,#38f9d7)', thumb: '/style-thumbs/2d-animation.jpg' },
     ]
   },
   {
     label: '中国风格',
     options: [
-      { label: '国画水墨', value: 'ink wash' },
-      { label: '中国风', value: 'chinese style' },
-      { label: '古装', value: 'historical' },
-      { label: '武侠', value: 'wuxia' },
+      { label: '国画水墨', value: 'ink wash',         color: 'linear-gradient(135deg,#e8e0d5,#8b7355)', thumb: '/style-thumbs/ink-wash.jpg' },
+      { label: '中国风',  value: 'chinese style',     color: 'linear-gradient(135deg,#c0392b,#8b0000)', thumb: '/style-thumbs/chinese.jpg' },
+      { label: '古装',    value: 'historical',        color: 'linear-gradient(135deg,#d4af37,#8b5e14)', thumb: '/style-thumbs/historical.jpg' },
+      { label: '武侠',    value: 'wuxia',             color: 'linear-gradient(135deg,#2c3e50,#3498db)', thumb: '/style-thumbs/wuxia.jpg' },
     ]
   },
   {
     label: '绘画艺术',
     options: [
-      { label: '水彩', value: 'watercolor' },
-      { label: '油画', value: 'oil painting' },
-      { label: '素描', value: 'sketch' },
-      { label: '版画', value: 'woodblock print' },
-      { label: '印象派', value: 'impressionist' },
+      { label: '水彩',    value: 'watercolor',        color: 'linear-gradient(135deg,#a8d8ea,#ffd3b6)', thumb: '/style-thumbs/watercolor.jpg' },
+      { label: '油画',    value: 'oil painting',      color: 'linear-gradient(135deg,#d4a76a,#6b3728)', thumb: '/style-thumbs/oil-painting.jpg' },
+      { label: '素描',    value: 'sketch',            color: 'linear-gradient(135deg,#f0f0f0,#888)',    thumb: '/style-thumbs/sketch.jpg' },
+      { label: '版画',    value: 'woodblock print',   color: 'linear-gradient(135deg,#4a3728,#c9a87c)', thumb: '/style-thumbs/woodblock.jpg' },
+      { label: '印象派',  value: 'impressionist',     color: 'linear-gradient(135deg,#7ec8e3,#f9c74f)', thumb: '/style-thumbs/impressionist.jpg' },
     ]
   },
   {
     label: '幻想 / 科幻',
     options: [
-      { label: '奇幻', value: 'fantasy' },
-      { label: '暗黑奇幻', value: 'dark fantasy' },
-      { label: '科幻', value: 'sci-fi' },
-      { label: '赛博朋克', value: 'cyberpunk' },
-      { label: '蒸汽朋克', value: 'steampunk' },
-      { label: '末世废土', value: 'post-apocalyptic' },
+      { label: '奇幻',    value: 'fantasy',           color: 'linear-gradient(135deg,#6a0572,#e8b86d)', thumb: '/style-thumbs/fantasy.jpg' },
+      { label: '暗黑奇幻', value: 'dark fantasy',     color: 'linear-gradient(135deg,#0d0d0d,#6b0f1a)', thumb: '/style-thumbs/dark-fantasy.jpg' },
+      { label: '科幻',    value: 'sci-fi',            color: 'linear-gradient(135deg,#0a0a2e,#00d4ff)', thumb: '/style-thumbs/sci-fi.jpg' },
+      { label: '赛博朋克', value: 'cyberpunk',        color: 'linear-gradient(135deg,#0d0221,#ff00ff)', thumb: '/style-thumbs/cyberpunk.jpg' },
+      { label: '蒸汽朋克', value: 'steampunk',        color: 'linear-gradient(135deg,#3d2b1f,#c87941)', thumb: '/style-thumbs/steampunk.jpg' },
+      { label: '末世废土', value: 'post-apocalyptic', color: 'linear-gradient(135deg,#3d3117,#8b7355)', thumb: '/style-thumbs/post-apoc.jpg' },
     ]
   },
   {
     label: '数字 / 现代',
     options: [
-      { label: '3D 渲染', value: '3d render' },
-      { label: '像素风', value: 'pixel art' },
-      { label: '低多边形', value: 'low poly' },
-      { label: '极简', value: 'minimalist' },
-      { label: '唯美梦幻', value: 'dreamy' },
+      { label: '3D 渲染', value: '3d render',         color: 'linear-gradient(135deg,#1a1a2e,#4facfe)', thumb: '/style-thumbs/3d-render.jpg' },
+      { label: '像素风',  value: 'pixel art',         color: 'linear-gradient(135deg,#6272a4,#50fa7b)', thumb: '/style-thumbs/pixel-art.jpg' },
+      { label: '低多边形', value: 'low poly',         color: 'linear-gradient(135deg,#2193b0,#6dd5ed)', thumb: '/style-thumbs/low-poly.jpg' },
+      { label: '极简',    value: 'minimalist',        color: 'linear-gradient(135deg,#e0e0e0,#bdbdbd)', thumb: '/style-thumbs/minimalist.jpg' },
+      { label: '唯美梦幻', value: 'dreamy',           color: 'linear-gradient(135deg,#ffecd2,#fcb69f)', thumb: '/style-thumbs/dreamy.jpg' },
     ]
   },
 ]
@@ -1453,6 +1474,53 @@ const pipelinePaused = ref(false)
 const pipelineErrorLog = ref([])
 const pipelineCurrentStep = ref('')
 let pipelineResolveResume = null
+const pipelineConcurrency = ref(3)
+const pipelineVideoConcurrency = ref(3)
+const pipelineActiveTasks = ref(new Set())
+
+async function loadPipelineConcurrency() {
+  try {
+    const res = await generationSettingsAPI.get()
+    pipelineConcurrency.value = Math.max(1, Number(res?.concurrency) || 3)
+    pipelineVideoConcurrency.value = Math.max(1, Number(res?.video_concurrency) || 3)
+  } catch (_) {}
+}
+
+/**
+ * 带并发度的批量执行器。
+ * @param {Array} items - 需要处理的项目列表
+ * @param {number} concurrency - 最大并发数
+ * @param {Function} fn - async (item, index) => void，内部可 throw 或 return {paused}
+ * @param {{ getLabel?: (item) => string }} options
+ * @returns {Promise<{paused: boolean}>}
+ */
+async function runConcurrently(items, concurrency, fn, options = {}) {
+  let index = 0
+  let anyPaused = false
+  const getLabel = options.getLabel || (() => null)
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++
+      const item = items[i]
+      const label = getLabel(item)
+      if (label) pipelineActiveTasks.value.add(label)
+      try {
+        const result = await fn(item, i)
+        if (result && typeof result === 'object' && result.paused) {
+          anyPaused = true
+          return
+        }
+      } finally {
+        if (label) pipelineActiveTasks.value.delete(label)
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+  await Promise.allSettled(workers)
+  return { paused: anyPaused }
+}
 const showAddProp = ref(false)
 const addPropSaving = ref(false)
 const addPropForm = ref({ name: '', type: '', description: '', prompt: '' })
@@ -2280,30 +2348,64 @@ async function onGenerateStory() {
     const res = await generationAPI.generateStory({
       premise: text,
       style: storyStyle.value || undefined,
-      type: storyType.value || undefined
+      type: storyType.value || undefined,
+      episode_count: storyEpisodeCount.value || 1,
     })
-    const content = res?.content || ''
-    store.setScriptContent(content)
-    if (!scriptTitle.value?.trim()) {
-      scriptTitle.value = '第1集'
+
+    // 后端现在统一返回 { episodes: [...] }
+    const episodes = res?.episodes || []
+    if (episodes.length === 0) {
+      ElMessage.error('AI 未能生成剧本，请重试')
+      return
     }
+
     scriptGenerating.value = true
     try {
-      const result = await saveScriptToBackend(content)
-      if (result?.created) {
-        ElMessage.success('剧本已生成，项目已创建并保存第1集')
-      } else {
-        ElMessage.success('剧本已生成并已保存当前集')
-      }
-      // 把当前故事梗概保存到项目，下次打开可恢复
-      if (store.dramaId && text) {
-        await dramaAPI.saveOutline(store.dramaId, {
-          summary: text,
+      let dramaId = store.dramaId
+      if (!dramaId) {
+        // 创建项目
+        const drama = await dramaAPI.create({
+          title: scriptTitle.value || '新故事',
+          description: text,
           genre: storyType.value || undefined,
           style: generationStyle.value || undefined,
           metadata: { story_style: storyStyle.value || undefined, aspect_ratio: projectAspectRatio.value || '16:9' }
-        }).catch(() => {})
+        })
+        store.setDrama(drama)
+        dramaId = drama.id
+        if (route.params.id === 'new') {
+          router.replace('/film/' + dramaId)
+        }
       }
+
+      // 保存所有生成的集数
+      const epPayload = episodes.map((ep, i) => ({
+        episode_number: ep.episode ?? i + 1,
+        title: ep.title || `第${ep.episode ?? i + 1}集`,
+        script_content: ep.content || '',
+      }))
+      savedCurrentEpisodeNumber.value = 1
+      await dramaAPI.saveEpisodes(dramaId, epPayload)
+
+      // 保存梗概
+      await dramaAPI.saveOutline(dramaId, {
+        summary: text,
+        genre: storyType.value || undefined,
+        style: generationStyle.value || undefined,
+        metadata: { story_style: storyStyle.value || undefined, aspect_ratio: projectAspectRatio.value || '16:9' }
+      }).catch(() => {})
+
+      await loadDrama()
+
+      // 默认选中第 1 集
+      const firstEp = (store.drama?.episodes || [])[0]
+      if (firstEp) {
+        selectedEpisodeId.value = firstEp.id
+        onEpisodeSelect(firstEp.id)
+      }
+
+      const n = episodes.length
+      ElMessage.success(n > 1 ? `剧本已生成，共 ${n} 集，已默认选中第1集` : '剧本已生成并已保存')
     } catch (e) {
       ElMessage.error(e.message || '保存剧本失败')
     } finally {
@@ -3714,12 +3816,14 @@ async function startOneClickPipeline() {
   if (!currentEpisodeId.value || pipelineRunning.value) return
   pipelineErrorLog.value = []
   pipelineCurrentStep.value = ''
+  pipelineActiveTasks.value = new Set()
   pipelineRunning.value = true
   pipelinePaused.value = false
   try {
     await runOneClickPipeline()
   } finally {
     pipelineRunning.value = false
+    pipelineActiveTasks.value = new Set()
   }
 }
 
@@ -3750,32 +3854,35 @@ async function runOneClickPipeline() {
       return
     }
 
-    // 2. 为每个角色生成图片
+    // 2. 为每个角色生成图片（并发）
     await checkPause()
     let chars = store.currentEpisode?.characters ?? []
     const charsWithoutImage = chars.filter((c) => !hasAssetImage(c))
-    for (const char of charsWithoutImage) {
-      await checkPause()
-      pipelineCurrentStep.value = '正在生成角色图：' + (char.name || char.id)
-      const stepName = '角色图 ' + (char.name || char.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await characterAPI.generateImage(char.id, undefined, style)
-        const taskId = res?.image_generation?.task_id ?? res?.task_id
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else {
-          await loadDrama()
-          await pollUntilResourceHasImage(() => {
-            const list = store.currentEpisode?.characters ?? []
-            const c = list.find((x) => Number(x.id) === Number(char.id))
-            return !!(c && (c.image_url || c.local_path))
-          })
-        }
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成角色图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(charsWithoutImage, concurrency, async (char) => {
+        await checkPause()
+        const stepName = '角色图 ' + (char.name || char.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await characterAPI.generateImage(char.id, undefined, style)
+          const taskId = res?.image_generation?.task_id ?? res?.task_id
+          if (taskId) {
+            const result = await pollTaskWithPause(taskId, () => loadDrama())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else {
+            await loadDrama()
+            await pollUntilResourceHasImage(() => {
+              const list = store.currentEpisode?.characters ?? []
+              const c = list.find((x) => Number(x.id) === Number(char.id))
+              return !!(c && (c.image_url || c.local_path))
+            })
+          }
+        })
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (char) => '角色图 ' + (char.name || char.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 3. 从剧本提取场景
@@ -3797,32 +3904,35 @@ async function runOneClickPipeline() {
       return
     }
 
-    // 4. 为每个场景生成图片
+    // 4. 为每个场景生成图片（并发）
     await checkPause()
     let sceneList = store.currentEpisode?.scenes ?? []
     const scenesWithoutImage = sceneList.filter((s) => !hasAssetImage(s))
-    for (const scene of scenesWithoutImage) {
-      await checkPause()
-      pipelineCurrentStep.value = '正在生成场景图：' + (scene.location || scene.id)
-      const stepName = '场景图 ' + (scene.location || scene.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await sceneAPI.generateImage({ scene_id: scene.id, model: undefined, style })
-        const taskId = res?.image_generation?.task_id ?? res?.task_id
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else {
-          await loadDrama()
-          await pollUntilResourceHasImage(() => {
-            const list = store.currentEpisode?.scenes ?? []
-            const s = list.find((x) => Number(x.id) === Number(scene.id))
-            return !!(s && (s.image_url || s.local_path))
-          })
-        }
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成场景图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(scenesWithoutImage, concurrency, async (scene) => {
+        await checkPause()
+        const stepName = '场景图 ' + (scene.location || scene.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await sceneAPI.generateImage({ scene_id: scene.id, model: undefined, style })
+          const taskId = res?.image_generation?.task_id ?? res?.task_id
+          if (taskId) {
+            const result = await pollTaskWithPause(taskId, () => loadDrama())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else {
+            await loadDrama()
+            await pollUntilResourceHasImage(() => {
+              const list = store.currentEpisode?.scenes ?? []
+              const s = list.find((x) => Number(x.id) === Number(scene.id))
+              return !!(s && (s.image_url || s.local_path))
+            })
+          }
+        })
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (scene) => '场景图 ' + (scene.location || scene.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 5. 分镜生成
@@ -3843,69 +3953,73 @@ async function runOneClickPipeline() {
       return
     }
 
-    // 6. 逐个生成分镜图（先拉取分镜图/视频列表再判断是否有图）
+    // 6. 批量生成分镜图（并发，先拉取分镜图/视频列表再判断是否有图）
     await checkPause()
     await loadStoryboardMedia()
-    const boards = store.storyboards || []
-    for (const sb of boards) {
-      await checkPause()
-      const hasImg = hasSbImage(sb)
-      if (hasImg) continue
-      pipelineCurrentStep.value = '正在生成分镜图 #' + (sb.storyboard_number ?? sb.id)
-      const stepName = '分镜图 #' + (sb.storyboard_number ?? sb.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await imagesAPI.create({
-          storyboard_id: sb.id,
-          drama_id: dramaIdVal,
-          prompt: sb.image_prompt || sb.description || '',
-          model: undefined,
-          style
+    const boards = (store.storyboards || []).filter((sb) => !hasSbImage(sb))
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成分镜图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(boards, concurrency, async (sb) => {
+        await checkPause()
+        const stepName = '分镜图 #' + (sb.storyboard_number ?? sb.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await imagesAPI.create({
+            storyboard_id: sb.id,
+            drama_id: dramaIdVal,
+            prompt: sb.image_prompt || sb.description || '',
+            model: undefined,
+            style
+          })
+          if (res?.task_id) {
+            const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else await loadStoryboardMedia()
         })
-        if (res?.task_id) {
-          const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else await loadStoryboardMedia()
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (sb) => '分镜图 #' + (sb.storyboard_number ?? sb.id) })
+      if (paused) { await waitForResume() }
     }
 
-    // 7. 逐个生成分镜视频
+    // 7. 批量生成分镜视频（并发）
     await checkPause()
     await loadStoryboardMedia()
-    const boards2 = store.storyboards || []
-    for (const sb of boards2) {
-      await checkPause()
-      if (!getSbFirstFrameUrl(sb)) continue
+    const boards2 = (store.storyboards || []).filter((sb) => {
+      if (!getSbFirstFrameUrl(sb)) return false
       const vidList = sbVideos.value[sb.id] || []
-      const hasVideo = vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
-      if (hasVideo) continue
-      pipelineCurrentStep.value = '正在生成分镜视频 #' + (sb.storyboard_number ?? sb.id)
-      const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const firstFrameUrl = await getMainImageUrlForVideo(sb)
-        const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
-        const res = await videosAPI.create({
-          drama_id: dramaIdVal,
-          storyboard_id: sb.id,
-          prompt: sb.video_prompt,
-          image_url: absoluteUrl || undefined,
-          reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
-          model: undefined,
-          style,
-          aspect_ratio: projectAspectRatio.value,
-          resolution: videoResolution.value || undefined,
-          duration: videoClipDuration.value || undefined,
+      return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+    })
+    {
+      const concurrency = pipelineVideoConcurrency.value
+      pipelineCurrentStep.value = `正在生成分镜视频（并发${concurrency}）...`
+      const { paused } = await runConcurrently(boards2, concurrency, async (sb) => {
+        await checkPause()
+        const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const firstFrameUrl = await getMainImageUrlForVideo(sb)
+          const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+          const res = await videosAPI.create({
+            drama_id: dramaIdVal,
+            storyboard_id: sb.id,
+            prompt: sb.video_prompt,
+            image_url: absoluteUrl || undefined,
+            reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
+            model: undefined,
+            style,
+            aspect_ratio: projectAspectRatio.value,
+            resolution: videoResolution.value || undefined,
+            duration: videoClipDuration.value || undefined,
+          })
+          if (res?.task_id) {
+            const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else await loadStoryboardMedia()
         })
-        if (res?.task_id) {
-          const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else await loadStoryboardMedia()
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (sb) => '分镜视频 #' + (sb.storyboard_number ?? sb.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 8. 生成整集视频（合成整个视频）
@@ -3936,12 +4050,14 @@ async function startRepairPipeline() {
   if (!currentEpisodeId.value || pipelineRunning.value) return
   pipelineErrorLog.value = []
   pipelineCurrentStep.value = ''
+  pipelineActiveTasks.value = new Set()
   pipelineRunning.value = true
   pipelinePaused.value = false
   try {
     await runRepairPipeline()
   } finally {
     pipelineRunning.value = false
+    pipelineActiveTasks.value = new Set()
   }
 }
 
@@ -3978,28 +4094,31 @@ async function runRepairPipeline() {
       chars = store.currentEpisode?.characters ?? []
     }
     const charsWithoutImage = chars.filter((c) => !hasAssetImage(c))
-    for (const char of charsWithoutImage) {
-      await checkPause()
-      pipelineCurrentStep.value = '正在生成角色图：' + (char.name || char.id)
-      const stepName = '角色图 ' + (char.name || char.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await characterAPI.generateImage(char.id, undefined, style)
-        const taskId = res?.image_generation?.task_id ?? res?.task_id
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else {
-          await loadDrama()
-          await pollUntilResourceHasImage(() => {
-            const list = store.currentEpisode?.characters ?? []
-            const c = list.find((x) => Number(x.id) === Number(char.id))
-            return !!(c && (c.image_url || c.local_path))
-          })
-        }
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成角色图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(charsWithoutImage, concurrency, async (char) => {
+        await checkPause()
+        const stepName = '角色图 ' + (char.name || char.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await characterAPI.generateImage(char.id, undefined, style)
+          const taskId = res?.image_generation?.task_id ?? res?.task_id
+          if (taskId) {
+            const result = await pollTaskWithPause(taskId, () => loadDrama())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else {
+            await loadDrama()
+            await pollUntilResourceHasImage(() => {
+              const list = store.currentEpisode?.characters ?? []
+              const c = list.find((x) => Number(x.id) === Number(char.id))
+              return !!(c && (c.image_url || c.local_path))
+            })
+          }
+        })
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (char) => '角色图 ' + (char.name || char.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 2. 场景：没有则提取；再为每个无图场景生成图
@@ -4023,28 +4142,31 @@ async function runRepairPipeline() {
       sceneList = store.currentEpisode?.scenes ?? []
     }
     const scenesWithoutImage = sceneList.filter((s) => !hasAssetImage(s))
-    for (const scene of scenesWithoutImage) {
-      await checkPause()
-      pipelineCurrentStep.value = '正在生成场景图：' + (scene.location || scene.id)
-      const stepName = '场景图 ' + (scene.location || scene.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await sceneAPI.generateImage({ scene_id: scene.id, model: undefined, style })
-        const taskId = res?.image_generation?.task_id ?? res?.task_id
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else {
-          await loadDrama()
-          await pollUntilResourceHasImage(() => {
-            const list = store.currentEpisode?.scenes ?? []
-            const s = list.find((x) => Number(x.id) === Number(scene.id))
-            return !!(s && (s.image_url || s.local_path))
-          })
-        }
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成场景图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(scenesWithoutImage, concurrency, async (scene) => {
+        await checkPause()
+        const stepName = '场景图 ' + (scene.location || scene.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await sceneAPI.generateImage({ scene_id: scene.id, model: undefined, style })
+          const taskId = res?.image_generation?.task_id ?? res?.task_id
+          if (taskId) {
+            const result = await pollTaskWithPause(taskId, () => loadDrama())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else {
+            await loadDrama()
+            await pollUntilResourceHasImage(() => {
+              const list = store.currentEpisode?.scenes ?? []
+              const s = list.find((x) => Number(x.id) === Number(scene.id))
+              return !!(s && (s.image_url || s.local_path))
+            })
+          }
+        })
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (scene) => '场景图 ' + (scene.location || scene.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 3. 分镜：没有则生成分镜；再逐个检查分镜图，没有则生成；再逐个检查分镜视频，没有则生成
@@ -4068,60 +4190,67 @@ async function runRepairPipeline() {
       }
       boards = store.storyboards || []
     }
-    // 先拉取分镜图片/视频列表，再先生成分镜图、再生成视频
+    // 先拉取分镜图片/视频列表，再批量生成分镜图（并发）
     await loadStoryboardMedia()
-    for (const sb of boards) {
-      await checkPause()
-      if (hasSbImage(sb)) continue
-      pipelineCurrentStep.value = '正在生成分镜图 #' + (sb.storyboard_number ?? sb.id)
-      const stepName = '分镜图 #' + (sb.storyboard_number ?? sb.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const res = await imagesAPI.create({
-          storyboard_id: sb.id,
-          drama_id: dramaIdVal,
-          prompt: sb.image_prompt || sb.description || '',
-          model: undefined
+    const boardsWithoutImg = boards.filter((sb) => !hasSbImage(sb))
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成分镜图（并发${concurrency}）...`
+      const { paused } = await runConcurrently(boardsWithoutImg, concurrency, async (sb) => {
+        await checkPause()
+        const stepName = '分镜图 #' + (sb.storyboard_number ?? sb.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const res = await imagesAPI.create({
+            storyboard_id: sb.id,
+            drama_id: dramaIdVal,
+            prompt: sb.image_prompt || sb.description || '',
+            model: undefined
+          })
+          if (res?.task_id) {
+            const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else await loadStoryboardMedia()
         })
-        if (res?.task_id) {
-          const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else await loadStoryboardMedia()
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (sb) => '分镜图 #' + (sb.storyboard_number ?? sb.id) })
+      if (paused) { await waitForResume() }
     }
     await loadStoryboardMedia()
-    const boards2 = store.storyboards || []
-    for (const sb of boards2) {
-      await checkPause()
-      if (!getSbFirstFrameUrl(sb)) continue
+    const boards2 = (store.storyboards || []).filter((sb) => {
+      if (!getSbFirstFrameUrl(sb)) return false
       const vidList = sbVideos.value[sb.id] || []
-      if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) continue
-      pipelineCurrentStep.value = '正在生成分镜视频 #' + (sb.storyboard_number ?? sb.id)
-      const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
-      const ok = await pipelineWithRetry(stepName, async () => {
-        const firstFrameUrl = await getMainImageUrlForVideo(sb)
-        const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
-        const res = await videosAPI.create({
-          drama_id: dramaIdVal,
-          storyboard_id: sb.id,
-          prompt: sb.video_prompt,
-          image_url: absoluteUrl || undefined,
-          reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
-          model: undefined,
-          aspect_ratio: projectAspectRatio.value,
-          resolution: videoResolution.value || undefined,
-          duration: videoClipDuration.value || undefined,
+      return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+    })
+    {
+      const concurrency = pipelineVideoConcurrency.value
+      pipelineCurrentStep.value = `正在生成分镜视频（并发${concurrency}）...`
+      const { paused } = await runConcurrently(boards2, concurrency, async (sb) => {
+        await checkPause()
+        const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
+        const ok = await pipelineWithRetry(stepName, async () => {
+          const firstFrameUrl = await getMainImageUrlForVideo(sb)
+          const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+          const res = await videosAPI.create({
+            drama_id: dramaIdVal,
+            storyboard_id: sb.id,
+            prompt: sb.video_prompt,
+            image_url: absoluteUrl || undefined,
+            reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
+            model: undefined,
+            aspect_ratio: projectAspectRatio.value,
+            resolution: videoResolution.value || undefined,
+            duration: videoClipDuration.value || undefined,
+          })
+          if (res?.task_id) {
+            const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
+            if (result?.paused) return { paused: true }
+            if (result?.error) throw new Error(result.error)
+          } else await loadStoryboardMedia()
         })
-        if (res?.task_id) {
-          const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
-          if (result?.paused) return { paused: true }
-          if (result?.error) throw new Error(result.error)
-        } else await loadStoryboardMedia()
-      })
-      if (ok && typeof ok === 'object' && ok.paused) { await waitForResume(); continue }
-      if (ok) await pipelineRest()
+        if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+      }, { getLabel: (sb) => '分镜视频 #' + (sb.storyboard_number ?? sb.id) })
+      if (paused) { await waitForResume() }
     }
 
     // 4. 生成整集视频（合成整个视频）
@@ -4172,6 +4301,7 @@ async function submitAddProp() {
 }
 
 onMounted(() => {
+  loadPipelineConcurrency()
   const id = route.params.id
   if (id && id !== 'new') {
     store.setDrama({ id: Number(id) })
@@ -4594,9 +4724,40 @@ html.light .section-title { color: #18181b; }
   font-size: 13px;
 }
 .pipeline-current-step {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--el-text-color-primary);
   font-weight: 500;
+  font-size: 13px;
+}
+.pipeline-active-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.pipeline-task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px 2px 6px;
+  border-radius: 12px;
+  background: rgba(64, 158, 255, 0.12);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+  color: var(--el-color-primary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pipeline-task-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+  flex-shrink: 0;
+  animation: pipeline-dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes pipeline-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
 }
 .pipeline-error-log {
   margin-top: 0;

@@ -30,6 +30,7 @@ async function translatePromptToChinese(db, log, model, prompt) {
     model: model || undefined,
     temperature: 0.2,
     max_tokens: 400,
+    json_mode: true,
   });
   return (text || '').toString().trim();
 }
@@ -40,16 +41,16 @@ async function extractBackgroundsFromScript(db, cfg, log, scriptContent, dramaId
   const prompt = (promptI18n.getLanguage(cfg) === 'en' ? '[Script Content]\n' : '【剧本内容】\n') + scriptContent;
   console.log('systemPrompt', systemPrompt);
   console.log('prompt', prompt);
-  const text = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, { model: model || undefined, temperature: 0.7 });
+  const text = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, { model: model || undefined, temperature: 0.7, json_mode: true });
   let list = [];
   try {
-    const parsed = safeParseAIJSON(text, []);
+    const parsed = safeParseAIJSON(text, [], log);
     if (Array.isArray(parsed)) list = parsed;
     else if (parsed && Array.isArray(parsed.backgrounds)) list = parsed.backgrounds;
     else if (parsed && parsed.backgrounds) list = parsed.backgrounds;
   } catch (_) {
     try {
-      const obj = safeParseAIJSON(text, {});
+      const obj = safeParseAIJSON(text, {}, log);
       list = obj.backgrounds || (Array.isArray(obj) ? obj : []);
     } catch (_2) {
       list = [];

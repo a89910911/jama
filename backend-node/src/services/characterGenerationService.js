@@ -54,6 +54,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
       model: req.model || undefined,
       temperature,
       max_tokens: maxTokensForChars,
+      json_mode: true,
     });
   } catch (err) {
     log.error('Character generation AI failed', { error: err.message, task_id: taskID });
@@ -65,7 +66,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
 
   let result;
   try {
-    result = safeParseAIJSON(text, []);
+    result = safeParseAIJSON(text, [], log);
     if (!Array.isArray(result)) result = [];
   } catch (err) {
     log.error('Character generation parse failed', { error: err.message, task_id: taskID });

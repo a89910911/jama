@@ -35,7 +35,7 @@ function getModelFromConfig(config, preferredModel) {
 }
 
 async function generateText(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
-  const { model: preferredModel, temperature = 0.7 } = options;
+  const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null } = options;
   let config = preferredModel
     ? getConfigForModel(db, serviceType, preferredModel)
     : getDefaultConfig(db, serviceType);
@@ -60,6 +60,8 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
 
   // 最终 max_tokens：优先取调用方传入值，但不超过 settings 里的上限；
   // 若调用方未传，则使用 settings 值（有的话）；两者都没有则不传（让模型用自己默认值）。
+  // min_max_tokens：调用方可声明一个最低需求量，确保多集生成等场景不被用户的小上限截断，
+  // 此时 finalMaxTokens = max(min_max_tokens, settingsMaxTokens ?? min_max_tokens)。
   let finalMaxTokens = null;
   if (options.max_tokens != null) {
     finalMaxTokens = Number(options.max_tokens);
@@ -72,6 +74,18 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
   } else if (settingsMaxTokens != null) {
     finalMaxTokens = settingsMaxTokens;
   }
+  // 确保不低于调用方声明的最低需求
+  if (min_max_tokens != null) {
+    const minVal = Number(min_max_tokens);
+    if (finalMaxTokens == null || finalMaxTokens < minVal) {
+      if (finalMaxTokens != null) {
+        log.warn('AI generateText: max_tokens 低于任务最低需求，已提升', {
+          was: finalMaxTokens, raised_to: minVal, model,
+        });
+      }
+      finalMaxTokens = minVal;
+    }
+  }
 
   const body = {
     model,
@@ -81,8 +95,9 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
     ],
     temperature: Number(temperature),
     ...(finalMaxTokens != null ? { max_tokens: finalMaxTokens } : {}),
+    ...(json_mode ? { response_format: { type: 'json_object' } } : {}),
   };
-  log.info('AI generateText request', { url: url.slice(0, 60), model, max_tokens: finalMaxTokens ?? '(model default)' });
+  log.info('AI generateText request', { url: url.slice(0, 60), model, max_tokens: finalMaxTokens ?? '(model default)', json_mode });
   const res = await fetch(url, {
     method: 'POST',
     headers: {

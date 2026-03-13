@@ -6,7 +6,7 @@
 
 *LocalMiniDrama · AI-powered short drama creator*
 
-[![version](https://img.shields.io/badge/version-1.1.14-blue?style=flat-square)](../../releases)
+[![version](https://img.shields.io/badge/version-1.1.15-blue?style=flat-square)](../../releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat-square)](#)
 [![stack](https://img.shields.io/badge/Vue3%20%2B%20Node.js%20%2B%20Electron-informational?style=flat-square)](#)
@@ -203,7 +203,14 @@ LocalMiniDrama/
 
 查看完整更新记录 → **[CHANGELOG](docs/changelog.md)**
 
-**最新版 v1.1.14 亮点：**
+**最新版 v1.1.15 亮点：**
+- 🆕 **多集剧本生成**：故事生成新增"生成集数"选项（1-6 集），AI 一次性输出多集完整剧本并自动保存，默认选中第 1 集
+- 🆕 **AI 并发生成**：一键生成支持图片/视频并发（默认各 3 路），同时处理多个角色/场景/分镜任务，显示实时任务进度
+- 🆕 **可视化风格选择器**：生成风格下拉框升级为带缩略图的图文选择器，直观预览各类画风
+- 🆕 **AI JSON 输出强化**：分镜/角色/场景/道具提取全面启用 JSON 模式，并集成 `jsonrepair` 自动修复 AI 畸形 JSON 输出
+- 🔧 **图片下载稳定性**：打包 exe 环境下的图片下载从 `fetch` 改为 Node.js `http/https` 模块，支持重试与超时，解决 `fetch failed` 问题
+
+**v1.1.14 亮点：**
 - 🆕 **官方仓库链接**：README 及后端文档新增 [GitHub](https://github.com/xuanyustudio/LocalMiniDrama) 与 [Gitee](https://gitee.com/bi_shang_a/localminidrama) 官方仓库徽章，方便提交 Issue 或 PR
 
 **v1.1.13 亮点：**

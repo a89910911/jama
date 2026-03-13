@@ -412,6 +412,15 @@ function ensureAllColumns(database) {
       created_at     TEXT NOT NULL DEFAULT ''
     )`);
   } catch (_) {}
+
+  // --- global_settings（全局键值设置表） ---
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS global_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )`);
+  } catch (_) {}
 }
 
 /** 对已打开的 database 执行迁移与兜底补列（供 app 启动时调用） */

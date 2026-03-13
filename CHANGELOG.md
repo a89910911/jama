@@ -8,6 +8,36 @@
 
 ---
 
+## [1.1.15] - 2026-02-28
+
+### 新增
+
+- **多集剧本生成**：故事生成区新增「生成集数」下拉（1 / 2 / 3 / 4 / 5 / 6 集，默认 1），AI 一次性输出对应集数的连续剧本；返回格式统一为 JSON 数组，每集含 `episode`（序号）、`title`（标题）、`content`（约 800 字正文），多集剧情前后衔接、结尾留悬念；前端自动将所有集数保存到项目并默认选中第 1 集
+- **标签优化**：故事生成区「风格」改为「故事风格」、「类型」改为「剧本类型」，语义更清晰
+- **AI 并发生成（图片 & 视频）**：「AI 配置 → 生成设置」新增「图片并发数」和「视频并发数」选项（默认各 3，可选 1/2/3/5/8/10 或自定义）；一键生成流水线（角色图 → 场景图 → 分镜图 → 分镜视频）及「补全并生成」均采用 `runConcurrently()` 并发执行，不再串行等待
+- **实时任务进度**：流水线运行时底部状态栏同步展示当前正在执行的所有并发任务标签（如「分镜图 #3」「角色图 #1」），含脉冲动画
+- **可视化风格选择器（StylePickerButton）**：一键生成视频的「生成风格」从普通下拉框升级为图文选择器弹窗，每种风格显示缩略图（本地 `public/style-thumbs/`）与梯度色块兜底，支持按分类浏览和名称搜索，弹窗尺寸为 `90vw`（最大 1100px），可一次预览更多风格
+- **AI JSON 输出强化**：分镜生成、角色提取、场景提取、道具提取全面启用 `json_mode: true`（向兼容模型发送 `response_format: { type: "json_object" }` 约束），从模型层面减少非法 JSON 输出概率
+- **jsonrepair 自动修复**：`safeParseAIJSON` 集成 `jsonrepair` 库作为兜底修复策略，自动处理未引号字符串值、括号内容、尾逗号等 AI 常见畸形 JSON；修复时输出 WARN 日志记录修复策略、成功挽救的条目数、原文长度等，方便统计破损率
+- **`min_max_tokens` 机制**：`aiClient.generateText` 新增 `min_max_tokens` 参数，调用方可声明最低 token 需求；若用户 AI 配置的 `settings.max_tokens` 低于此需求，自动提升并打 WARN 日志，确保多集剧本等长输出任务不被截断
+- **全局设置持久化**：后端新增 `global_settings` 表与 `settingsService`（`getGlobalSetting` / `setGlobalSetting`），并暴露 `GET/PUT /settings/generation` 接口，持久化并发数等全局生成配置
+- **AI 配置端点预览**：AI 配置弹窗选择厂商/协议后自动显示实际请求 URL（图片提交地址、视频提交地址），方便排查配置是否正确；特别处理 Google Gemini 的端点拼接规则
+
+### 修复
+
+- **供应商锁定 `api_protocol` 丢失**：`applyVendorLock` 的 `INSERT` 语句补充 `api_protocol` 字段，修复锁定厂商的打包 exe 中视频 API 协议路由错误（如 Vidu 接口返回 `images is required`）
+- **导入配置 `api_protocol` 未恢复**：`importConfigs` 中的 `aiAPI.create` 调用补充 `api_protocol`，修复导入旧配置后协议字段丢失问题
+- **打包 exe 分镜图片 `fetch failed`**：`uploadService.js` 中图片下载从 Node.js 原生 `fetch` 改为自定义 `downloadBufferViaNodeHttp`（`http`/`https` 模块），支持 3 次重试、30s 超时、自动跟随重定向和 `User-Agent`，解决 Electron 打包环境网络兼容性问题
+- **`no such table: storyboard_characters` 警告**：`migrate.js` 补充 `CREATE TABLE IF NOT EXISTS storyboard_characters`，消除九宫格提示词生成时的数据库报错
+- **端点预览 URL 重复 `/v1`**：OpenAI 图片端点和 MiniMax 视频端点的预览 URL 去除重复拼接的 `/v1`
+
+### 架构
+
+- **后端**：`safeJson.js` 引入 `jsonrepair` 包；`migrate.js` 新增 `storyboard_characters`、`global_settings` 表；`settingsService.js` 新增全局 KV 设置读写；`routes/settings.js` 暴露并发数 API；`routes/index.js` 注册新路由并向 `settingsRoutes` 传递 `db`；`storyGenerationService.js` 重写为多集 JSON 数组模式；`aiClient.js` 支持 `min_max_tokens`；分镜/角色/背景/道具服务统一启用 `json_mode`
+- **前端**：新增 `StylePickerButton.vue` 可视化风格选择器组件；`FilmCreate.vue` 新增 `runConcurrently()` 并发工具函数、`pipelineActiveTasks` 任务进度集合、`storyEpisodeCount` 集数控制、多集 `onGenerateStory` 逻辑；`AIConfigContent.vue` 新增「生成设置」Tab（图片/视频并发数）及端点预览面板；`api/prompts.js` 新增 `generationSettingsAPI`；`public/style-thumbs/` 新增 30 张本地风格缩略图
+
+---
+
 ## [1.1.14] - 2026-02-28
 
 ### 新增
