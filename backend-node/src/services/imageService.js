@@ -393,9 +393,14 @@ function create(db, log, req) {
     });
   }
   const mergedPrompt = mergePromptWithStyle(req.prompt || '', req.style);
+  // 优先使用请求中直接传入的 size；其次将 aspect_ratio 转成 size；未提供则存 NULL 留给 processImageGeneration 从 drama 元数据读取
+  let reqSize = req.size || null;
+  if (!reqSize && req.aspect_ratio) {
+    reqSize = aspectRatioToSize(req.aspect_ratio) || null;
+  }
   const info = db.prepare(
-    `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model, frame_type, reference_images, status, task_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+    `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model, frame_type, reference_images, size, status, task_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
   ).run(
     req.storyboard_id ?? null,
     Number(req.drama_id) || 0,
@@ -406,6 +411,7 @@ function create(db, log, req) {
     req.model ?? null,
     frameType,
     refImagesJson,
+    reqSize,
     taskId,
     now,
     now

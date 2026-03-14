@@ -266,6 +266,21 @@
             <span v-if="pipelineStepIndex > 0" class="pipeline-step-badge">{{ pipelineStepIndex }}/{{ PIPELINE_TOTAL_STEPS }}</span>
             {{ pipelineCurrentStep.replace(/^\[步骤 \d+\/\d+\] /, '') }}
           </div>
+          <!-- 阶段间倒计时 -->
+          <div v-if="pipelineCountdown > 0" class="pipeline-countdown">
+            <div class="pipeline-countdown-ring">
+              <span class="pipeline-countdown-num">{{ pipelineCountdown }}</span>
+              <span class="pipeline-countdown-unit">秒</span>
+            </div>
+            <div class="pipeline-countdown-body">
+              <p class="pipeline-countdown-msg">{{ pipelineCountdownMsg }}</p>
+              <div class="pipeline-countdown-actions">
+                <el-button size="small" type="success" @click="skipPipelineCountdown">⚡ 立即开始下一阶段</el-button>
+                <el-button v-if="!pipelinePaused" size="small" type="warning" @click="pipelinePaused = true">⏸ 暂停倒计时</el-button>
+                <span v-else class="pipeline-countdown-paused">已暂停 — 点击右上角"继续"恢复</span>
+              </div>
+            </div>
+          </div>
           <div v-if="pipelineActiveTasks.size > 0" class="pipeline-active-tasks">
             <span
               v-for="label in Array.from(pipelineActiveTasks)"
@@ -1744,8 +1759,11 @@ const pipelinePaused = ref(false)
 const pipelineErrorLog = ref([])
 const pipelineCurrentStep = ref('')
 const pipelineStepIndex = ref(0)    // 当前步骤序号（1-based）
-const PIPELINE_TOTAL_STEPS = 7      // 固定 7 大步骤
+const PIPELINE_TOTAL_STEPS = 10     // 固定 10 大步骤
 let pipelineResolveResume = null
+// 倒计时（两个生成阶段之间的确认窗口）
+const pipelineCountdown = ref(0)      // 剩余秒数，0 表示不在倒计时
+const pipelineCountdownMsg = ref('')  // 倒计时说明文字
 const pipelineConcurrency = ref(3)
 const pipelineVideoConcurrency = ref(3)
 const pipelineActiveTasks = ref(new Set())
@@ -2289,6 +2307,7 @@ async function onGenerateSbImage(sb) {
       model: undefined,
       style: getSelectedStyle(),
       frame_type: gridMode.value !== 'single' ? gridMode.value : undefined,
+      aspect_ratio: projectAspectRatio.value || '16:9',
     })
     ElMessage.success('分镜图生成任务已提交')
     if (res?.task_id) {
@@ -2583,7 +2602,8 @@ async function onRegenAffectedSbImages(assetKey, affectedBoards) {
           storyboard_id: sb.id,
           drama_id: dramaId.value,
           prompt: sb.image_prompt || sb.description || '',
-          style: getSelectedStyle()
+          style: getSelectedStyle(),
+          aspect_ratio: projectAspectRatio.value || '16:9',
         })
         if (res?.task_id) {
           const pollRes = await new Promise((resolve) => {
@@ -4087,6 +4107,7 @@ async function startBatchImageGeneration() {
           prompt: sb.image_prompt || sb.description || '',
           style: getSelectedStyle(),
           frame_type: gridMode.value !== 'single' ? gridMode.value : undefined,
+          aspect_ratio: projectAspectRatio.value || '16:9',
         })
         if (res?.task_id) {
           const pollRes = await pollTask(res.task_id, () => loadStoryboardMedia())
@@ -4324,6 +4345,27 @@ function pipelineRest() {
   return new Promise((r) => setTimeout(r, 1000))
 }
 
+/** 跳过倒计时，立即进入下一阶段 */
+function skipPipelineCountdown() {
+  pipelineCountdown.value = 0
+}
+
+/** 阶段间倒计时，支持暂停冻结 + 立即跳过 */
+async function runPipelineCountdown(totalSeconds, msg) {
+  pipelineCountdown.value = totalSeconds
+  pipelineCountdownMsg.value = msg
+  try {
+    while (pipelineCountdown.value > 0) {
+      await checkPause()                              // 暂停时冻结在此
+      await new Promise((r) => setTimeout(r, 1000))  // 等 1 秒
+      if (pipelineCountdown.value > 0) pipelineCountdown.value--
+    }
+  } finally {
+    pipelineCountdown.value = 0
+    pipelineCountdownMsg.value = ''
+  }
+}
+
 /** 执行可失败步骤，失败时重试最多 maxRetries 次；fn 返回 { paused: true } 表示暂停不重试；返回 true 表示成功；抛错会触发重试 */
 async function pipelineWithRetry(stepName, fn, maxRetries = 3) {
   let lastErr
@@ -4369,11 +4411,15 @@ async function runOneClickPipeline() {
   const style = getSelectedStyle()
 
   try {
-    // 1. 剧本生成角色（已有角色则跳过，直接进入图片生成）
+    // ════════════════════════════════════════════════════════
+    // 阶段一：内容提取 & 分镜生成（快速、低成本）
+    // ════════════════════════════════════════════════════════
+
+    // 步骤 1：提取角色
     await checkPause()
     let chars = store.currentEpisode?.characters ?? []
     if (chars.length === 0) {
-      setPipelineStep(1, '生成角色列表...')
+      setPipelineStep(1, '提取角色...')
       try {
         const outline = (store.scriptContent || '').toString().trim() || (storyInput.value || '').toString().trim() || undefined
         const res = await generationAPI.generateCharacters(dramaIdVal, { episode_id: store.currentEpisode?.id ?? undefined, outline: outline || undefined })
@@ -4381,26 +4427,115 @@ async function runOneClickPipeline() {
         if (taskId) {
           const result = await pollTaskWithPause(taskId, () => loadDrama())
           if (result?.paused) { await waitForResume(); return }
-          if (result?.error) { addPipelineError('生成角色', result.error); return }
+          if (result?.error) { addPipelineError('提取角色', result.error); return }
         } else {
           await loadDrama()
         }
         await pipelineRest()
       } catch (e) {
-        addPipelineError('生成角色', e.message || String(e))
+        addPipelineError('提取角色', e.message || String(e))
         return
       }
       chars = store.currentEpisode?.characters ?? []
     } else {
-      setPipelineStep(1, `已有 ${chars.length} 个角色，跳过生成`)
+      setPipelineStep(1, `已有 ${chars.length} 个角色，跳过提取`)
     }
 
-    // 2. 为每个角色生成图片（并发）
+    // 步骤 2：提取场景
     await checkPause()
-    const charsWithoutImage = chars.filter((c) => !hasAssetImage(c))
+    let sceneList = store.currentEpisode?.scenes ?? []
+    if (sceneList.length === 0) {
+      setPipelineStep(2, '提取场景...')
+      try {
+        const res = await dramaAPI.extractBackgrounds(episodeId, { model: undefined, style, language: scriptLanguage.value })
+        const taskId = res?.task_id
+        if (taskId) {
+          const result = await pollTaskWithPause(taskId, () => loadDrama())
+          if (result?.paused) { await waitForResume(); return }
+          if (result?.error) { addPipelineError('提取场景', result.error); return }
+        } else {
+          await loadDrama()
+        }
+        await pipelineRest()
+      } catch (e) {
+        addPipelineError('提取场景', e.message || String(e))
+        return
+      }
+      sceneList = store.currentEpisode?.scenes ?? []
+    } else {
+      setPipelineStep(2, `已有 ${sceneList.length} 个场景，跳过提取`)
+    }
+
+    // 步骤 3：提取道具
+    await checkPause()
+    let propList = store.props ?? []
+    if (propList.length === 0) {
+      setPipelineStep(3, '提取道具...')
+      try {
+        const res = await propAPI.extractFromScript(episodeId)
+        const taskId = res?.task_id
+        if (taskId) {
+          const result = await pollTaskWithPause(taskId, () => loadDrama())
+          if (result?.paused) { await waitForResume(); return }
+          if (result?.error) { addPipelineError('提取道具', result.error); return }
+        } else {
+          await loadDrama()
+        }
+        await pipelineRest()
+      } catch (e) {
+        addPipelineError('提取道具', e.message || String(e))
+        // 道具提取失败不中断流程
+      }
+      propList = store.props ?? []
+    } else {
+      setPipelineStep(3, `已有 ${propList.length} 个道具，跳过提取`)
+    }
+
+    // 步骤 4：生成分镜脚本
+    await checkPause()
+    await loadStoryboardMedia()
+    let boards = store.storyboards || []
+    if (boards.length === 0) {
+      setPipelineStep(4, '生成分镜脚本...')
+      try {
+        const res = await dramaAPI.generateStoryboard(episodeId, { style, aspect_ratio: projectAspectRatio.value })
+        const taskId = res?.task_id ?? (typeof res === 'string' ? res : null)
+        if (taskId) {
+          const result = await pollTaskWithPause(taskId, () => loadDrama())
+          if (result?.paused) { await waitForResume(); return }
+          if (result?.error) { addPipelineError('生成分镜', result.error); return }
+          if (result?.result?.truncated) {
+            sbTruncatedWarning.value = true
+            sbTruncatedDismissed.value = false
+          }
+        }
+        await loadDrama()
+        await pipelineRest()
+      } catch (e) {
+        addPipelineError('生成分镜', e.message || String(e))
+        return
+      }
+      await loadStoryboardMedia()
+      boards = store.storyboards || []
+    } else {
+      setPipelineStep(4, `已有 ${boards.length} 个分镜，跳过生成`)
+    }
+
+    // ════════════════════════════════════════════════════════
+    // ⏱ 倒计时 20 秒：请浏览分镜内容，确认后开始生成角色/场景/道具图片
+    // ════════════════════════════════════════════════════════
+    await runPipelineCountdown(20, '分镜脚本生成完毕，请浏览确认内容。倒计时结束后将开始生成角色、场景、道具图片。')
+    await checkPause()
+
+    // ════════════════════════════════════════════════════════
+    // 阶段二：角色 / 场景 / 道具 图片生成（中等消耗）
+    // ════════════════════════════════════════════════════════
+
+    // 步骤 5：生成角色图
     {
+      const charsWithoutImage = chars.filter((c) => !hasAssetImage(c))
       const concurrency = pipelineConcurrency.value
-      setPipelineStep(2, `生成角色图（${charsWithoutImage.length} 个，并发 ${concurrency}）...`)
+      setPipelineStep(5, `生成角色图（${charsWithoutImage.length} 个，并发 ${concurrency}）...`)
       const { paused } = await runConcurrently(charsWithoutImage, concurrency, async (char) => {
         await checkPause()
         generatingCharIds.add(char.id)
@@ -4430,37 +4565,12 @@ async function runOneClickPipeline() {
       if (paused) { await waitForResume() }
     }
 
-    // 3. 从剧本提取场景（已有场景则跳过，直接进入图片生成）
-    await checkPause()
-    let sceneList = store.currentEpisode?.scenes ?? []
-    if (sceneList.length === 0) {
-      setPipelineStep(3, '提取场景信息...')
-      try {
-        const res = await dramaAPI.extractBackgrounds(episodeId, { model: undefined, style, language: scriptLanguage.value })
-        const taskId = res?.task_id
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) { await waitForResume(); return }
-          if (result?.error) { addPipelineError('提取场景', result.error); return }
-        } else {
-          await loadDrama()
-        }
-        await pipelineRest()
-      } catch (e) {
-        addPipelineError('提取场景', e.message || String(e))
-        return
-      }
-      sceneList = store.currentEpisode?.scenes ?? []
-    } else {
-      setPipelineStep(3, `已有 ${sceneList.length} 个场景，跳过提取`)
-    }
-
-    // 4. 为每个场景生成图片（并发）
-    await checkPause()
-    const scenesWithoutImage = sceneList.filter((s) => !hasAssetImage(s))
+    // 步骤 6：生成场景图
     {
+      const scenesWithoutImage = sceneList.filter((s) => !hasAssetImage(s))
       const concurrency = pipelineConcurrency.value
-      setPipelineStep(4, `生成场景图（${scenesWithoutImage.length} 个，并发 ${concurrency}）...`)
+      setPipelineStep(6, `生成场景图（${scenesWithoutImage.length} 个，并发 ${concurrency}）...`)
+      await checkPause()
       const { paused } = await runConcurrently(scenesWithoutImage, concurrency, async (scene) => {
         await checkPause()
         generatingSceneIds.add(scene.id)
@@ -4490,42 +4600,58 @@ async function runOneClickPipeline() {
       if (paused) { await waitForResume() }
     }
 
-    // 5. 分镜生成（已有则跳过）
-    await checkPause()
-    await loadStoryboardMedia()
-    let boards = store.storyboards || []
-    if (boards.length === 0) {
-      setPipelineStep(5, '生成分镜...')
-      try {
-        const res = await dramaAPI.generateStoryboard(episodeId, { style, aspect_ratio: projectAspectRatio.value })
-        const taskId = res?.task_id ?? (typeof res === 'string' ? res : null)
-        if (taskId) {
-          const result = await pollTaskWithPause(taskId, () => loadDrama())
-          if (result?.paused) { await waitForResume(); return }
-          if (result?.error) { addPipelineError('分镜生成', result.error); return }
-          if (result?.result?.truncated) {
-            sbTruncatedWarning.value = true
-            sbTruncatedDismissed.value = false
-          }
+    // 步骤 7：生成道具图
+    {
+      const propsWithoutImage = propList.filter((p) => !hasAssetImage(p))
+      const concurrency = pipelineConcurrency.value
+      setPipelineStep(7, `生成道具图（${propsWithoutImage.length} 个，并发 ${concurrency}）...`)
+      await checkPause()
+      const { paused } = await runConcurrently(propsWithoutImage, concurrency, async (prop) => {
+        await checkPause()
+        generatingPropIds.add(prop.id)
+        try {
+          const stepName = '道具图 ' + (prop.name || prop.id)
+          const ok = await pipelineWithRetry(stepName, async () => {
+            const res = await propAPI.generateImage(prop.id, undefined, style)
+            const taskId = res?.image_generation?.task_id ?? res?.task_id
+            if (taskId) {
+              const result = await pollTaskWithPause(taskId, () => loadDrama())
+              if (result?.paused) return { paused: true }
+              if (result?.error) throw new Error(result.error)
+            } else {
+              await loadDrama()
+              await pollUntilResourceHasImage(() => {
+                const list = store.props ?? []
+                const p = list.find((x) => Number(x.id) === Number(prop.id))
+                return !!(p && (p.image_url || p.local_path))
+              })
+            }
+          })
+          if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+        } finally {
+          generatingPropIds.delete(prop.id)
         }
-        await loadDrama()
-        await pipelineRest()
-      } catch (e) {
-        addPipelineError('分镜生成', e.message || String(e))
-        return
-      }
-      await loadStoryboardMedia()
-      boards = store.storyboards || []
-    } else {
-      setPipelineStep(5, `已有 ${boards.length} 个分镜，跳过生成`)
+      }, { getLabel: (prop) => '道具图 ' + (prop.name || prop.id) })
+      if (paused) { await waitForResume() }
     }
 
-    // 6. 批量生成分镜图（并发，boards 已在步骤5加载）
+    // ════════════════════════════════════════════════════════
+    // ⏱ 倒计时 30 秒：请浏览角色/场景/道具图，确认后开始生成分镜图
+    // ════════════════════════════════════════════════════════
+    await runPipelineCountdown(30, '角色、场景、道具图片生成完毕，请浏览确认效果。倒计时结束后将开始生成分镜图（消耗较多 Token）。')
     await checkPause()
-    const boardsWithoutImg = boards.filter((sb) => !hasSbImage(sb))
+
+    // ════════════════════════════════════════════════════════
+    // 阶段三：分镜图生成（较高消耗）
+    // ════════════════════════════════════════════════════════
+
+    // 步骤 8：生成分镜图
     {
+      await loadStoryboardMedia()
+      boards = store.storyboards || []
+      const boardsWithoutImg = boards.filter((sb) => !hasSbImage(sb))
       const concurrency = pipelineConcurrency.value
-      setPipelineStep(6, `生成分镜图（${boardsWithoutImg.length} 个，并发 ${concurrency}）...`)
+      setPipelineStep(8, `生成分镜图（${boardsWithoutImg.length} 个，并发 ${concurrency}）...`)
       const { paused } = await runConcurrently(boardsWithoutImg, concurrency, async (sb) => {
         await checkPause()
         generatingSbImageIds.add(sb.id)
@@ -4537,7 +4663,8 @@ async function runOneClickPipeline() {
               drama_id: dramaIdVal,
               prompt: sb.image_prompt || sb.description || '',
               model: undefined,
-              style
+              style,
+              aspect_ratio: projectAspectRatio.value || '16:9',
             })
             if (res?.task_id) {
               const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
@@ -4553,17 +4680,26 @@ async function runOneClickPipeline() {
       if (paused) { await waitForResume() }
     }
 
-    // 7. 批量生成分镜视频（并发）
+    // ════════════════════════════════════════════════════════
+    // ⏱ 倒计时 20 秒：请浏览分镜图，确认后开始生成分镜视频
+    // ════════════════════════════════════════════════════════
+    await runPipelineCountdown(20, '分镜图生成完毕，请浏览确认图片效果。倒计时结束后将开始生成分镜视频（消耗最多 Token）。')
     await checkPause()
-    await loadStoryboardMedia()
-    const boards2 = (store.storyboards || []).filter((sb) => {
-      if (!getSbFirstFrameUrl(sb)) return false
-      const vidList = sbVideos.value[sb.id] || []
-      return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
-    })
+
+    // ════════════════════════════════════════════════════════
+    // 阶段四：分镜视频 & 合集（最高消耗）
+    // ════════════════════════════════════════════════════════
+
+    // 步骤 9：生成分镜视频
     {
+      await loadStoryboardMedia()
+      const boards2 = (store.storyboards || []).filter((sb) => {
+        if (!getSbFirstFrameUrl(sb)) return false
+        const vidList = sbVideos.value[sb.id] || []
+        return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+      })
       const concurrency = pipelineVideoConcurrency.value
-      setPipelineStep(7, `生成分镜视频（${boards2.length} 个，并发 ${concurrency}）...`)
+      setPipelineStep(9, `生成分镜视频（${boards2.length} 个，并发 ${concurrency}）...`)
       const { paused } = await runConcurrently(boards2, concurrency, async (sb) => {
         await checkPause()
         generatingSbVideoIds.add(sb.id)
@@ -4598,21 +4734,21 @@ async function runOneClickPipeline() {
       if (paused) { await waitForResume() }
     }
 
-    // 8. 生成整集视频（合成整个视频）
+    // 步骤 10：合成整集视频
     await checkPause()
-    pipelineCurrentStep.value = '正在生成整集视频...'
+    setPipelineStep(10, '合成整集视频...')
     try {
       const result = await dramaAPI.finalizeEpisode(episodeId)
       if (result?.task_id != null) {
         const pollResult = await pollTaskWithPause(result.task_id, () => loadDrama())
         if (pollResult?.paused) { await waitForResume(); return }
-        if (pollResult?.error) addPipelineError('生成整集视频', pollResult.error)
+        if (pollResult?.error) addPipelineError('合成整集视频', pollResult.error)
         else await pipelineRest()
       } else {
-        addPipelineError('生成整集视频', result?.message || '本集没有可合成的视频片段')
+        addPipelineError('合成整集视频', result?.message || '本集没有可合成的视频片段')
       }
     } catch (e) {
-      addPipelineError('生成整集视频', e.message || String(e))
+      addPipelineError('合成整集视频', e.message || String(e))
     }
 
     pipelineCurrentStep.value = '一键生成视频流程已执行完成'
@@ -4745,6 +4881,59 @@ async function runRepairPipeline() {
       if (paused) { await waitForResume() }
     }
 
+    // 2.5 道具：没有则提取；再为每个无图道具生成图
+    let propList2 = store.props ?? []
+    if (propList2.length === 0) {
+      await checkPause()
+      pipelineCurrentStep.value = '正在提取道具...'
+      try {
+        const res = await propAPI.extractFromScript(episodeId)
+        const taskId = res?.task_id
+        if (taskId) {
+          const result = await pollTaskWithPause(taskId, () => loadDrama())
+          if (result?.paused) { await waitForResume(); return }
+          if (result?.error) { addPipelineError('提取道具', result.error); /* 不中断 */ }
+        } else await loadDrama()
+        await pipelineRest()
+      } catch (e) {
+        addPipelineError('提取道具', e.message || String(e))
+      }
+      propList2 = store.props ?? []
+    }
+    const propsWithoutImage2 = propList2.filter((p) => !hasAssetImage(p))
+    {
+      const concurrency = pipelineConcurrency.value
+      pipelineCurrentStep.value = `正在生成道具图（并发${concurrency}）...`
+      await checkPause()
+      const { paused } = await runConcurrently(propsWithoutImage2, concurrency, async (prop) => {
+        await checkPause()
+        generatingPropIds.add(prop.id)
+        try {
+          const stepName = '道具图 ' + (prop.name || prop.id)
+          const ok = await pipelineWithRetry(stepName, async () => {
+            const res = await propAPI.generateImage(prop.id, undefined, style)
+            const taskId = res?.image_generation?.task_id ?? res?.task_id
+            if (taskId) {
+              const result = await pollTaskWithPause(taskId, () => loadDrama())
+              if (result?.paused) return { paused: true }
+              if (result?.error) throw new Error(result.error)
+            } else {
+              await loadDrama()
+              await pollUntilResourceHasImage(() => {
+                const list = store.props ?? []
+                const p = list.find((x) => Number(x.id) === Number(prop.id))
+                return !!(p && (p.image_url || p.local_path))
+              })
+            }
+          })
+          if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
+        } finally {
+          generatingPropIds.delete(prop.id)
+        }
+      }, { getLabel: (prop) => '道具图 ' + (prop.name || prop.id) })
+      if (paused) { await waitForResume() }
+    }
+
     // 3. 分镜：没有则生成分镜；再逐个检查分镜图，没有则生成；再逐个检查分镜视频，没有则生成
     let boards = store.storyboards || []
     if (boards.length === 0) {
@@ -4781,7 +4970,8 @@ async function runRepairPipeline() {
             drama_id: dramaIdVal,
             prompt: sb.image_prompt || sb.description || '',
             model: undefined,
-            style
+            style,
+            aspect_ratio: projectAspectRatio.value || '16:9',
           })
           if (res?.task_id) {
             const result = await pollTaskWithPause(res.task_id, () => loadStoryboardMedia())
@@ -5500,6 +5690,60 @@ html.light .section-title { color: #18181b; }
 .pipeline-error-line {
   margin-bottom: 4px;
   word-break: break-all;
+}
+/* 阶段间倒计时 */
+.pipeline-countdown {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 10px 0 8px;
+  padding: 12px 14px;
+  background: rgba(103, 194, 58, 0.08);
+  border: 1px solid rgba(103, 194, 58, 0.35);
+  border-radius: 10px;
+}
+.pipeline-countdown-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(103, 194, 58, 0.15);
+  border: 2px solid rgba(103, 194, 58, 0.6);
+  flex-shrink: 0;
+}
+.pipeline-countdown-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--el-color-success);
+  line-height: 1;
+}
+.pipeline-countdown-unit {
+  font-size: 11px;
+  color: var(--el-color-success);
+  opacity: 0.8;
+}
+.pipeline-countdown-body {
+  flex: 1;
+  min-width: 0;
+}
+.pipeline-countdown-msg {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  line-height: 1.5;
+}
+.pipeline-countdown-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pipeline-countdown-paused {
+  font-size: 12px;
+  color: var(--el-color-warning);
 }
 /* 批量生成分镜图/视频 */
 .sb-batch-actions {
