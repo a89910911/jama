@@ -49,5 +49,5 @@ style:
   default_image_size: "1024x1024"
 
 vendor_lock:
-  enabled: true
+  enabled: false
   config_file: "ai-configs-qudao.json"
