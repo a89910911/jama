@@ -31,6 +31,19 @@ function routes(db, log, cfg) {
         response.internalError(res, err.message);
       }
     },
+    extractFromImage: async (req, res) => {
+      try {
+        const out = await sceneService.extractSceneFromImage(db, log, cfg, req.params.scene_id);
+        if (!out.ok) {
+          if (out.error === 'scene not found') return response.notFound(res, '场景不存在');
+          return response.badRequest(res, out.error);
+        }
+        response.success(res, { message: '场景描述已提取', prompt: out.prompt });
+      } catch (err) {
+        log.error('scenes extract-from-image', { error: err.message });
+        response.internalError(res, err.message);
+      }
+    },
     update: (req, res) => {
       try {
         const out = sceneService.updateScene(db, log, req.params.scene_id, req.body || {});

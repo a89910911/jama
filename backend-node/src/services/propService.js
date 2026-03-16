@@ -72,6 +72,7 @@ function update(db, log, id, updates) {
   if (updates.image_url != null) { set.push('image_url = ?'); params.push(updates.image_url); }
   if (updates.local_path !== undefined) { set.push('local_path = ?'); params.push(updates.local_path ?? null); }
   if (updates.extra_images !== undefined) { set.push('extra_images = ?'); params.push(updates.extra_images ?? null); }
+  if (updates.ref_image !== undefined) { set.push('ref_image = ?'); params.push(updates.ref_image ?? null); }
   if (set.length === 0) return existing;
   params.push(new Date().toISOString(), id);
   db.prepare('UPDATE props SET ' + set.join(', ') + ', updated_at = ? WHERE id = ?').run(...params);
@@ -137,6 +138,42 @@ async function generatePropPromptOnly(db, log, cfg, propId, modelName, style) {
   return { ok: false, error: 'AI返回内容为空' };
 }
 
+/**
+ * 从道具现有图片中反向提取外观描述，更新 description 字段。
+ */
+async function extractPropFromImage(db, log, cfg, propId) {
+  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+
+  const prop = db.prepare(
+    'SELECT id, name, type, image_url, local_path, extra_images, ref_image FROM props WHERE id = ? AND deleted_at IS NULL'
+  ).get(Number(propId));
+  if (!prop) return { ok: false, error: 'prop not found' };
+
+  const imgSrc = resolveEntityImageSource(prop, cfg);
+  if (!imgSrc) return { ok: false, error: '该道具暂无参考图片，请先上传图片' };
+
+  const propLabel = prop.name || '道具';
+  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.prop;
+  const userPrompt = userFn(propLabel);
+
+  let description;
+  try {
+    description = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+  } catch (err) {
+    log.error('[extractPropFromImage] AI 调用失败', { propId, error: err.message });
+    const errMsg = /image|vision|visual|multimodal/i.test(err.message)
+      ? `AI 模型不支持图片识别，请在「AI 配置」中使用支持视觉的模型（如 GPT-4o、Gemini 1.5 等）【原始错误：${err.message.slice(0, 120)}】`
+      : `AI 分析失败：${err.message}`;
+    return { ok: false, error: errMsg };
+  }
+
+  db.prepare('UPDATE props SET description = ?, updated_at = ? WHERE id = ?')
+    .run(description, new Date().toISOString(), Number(propId));
+
+  log.info('[extractPropFromImage] 道具描述提取成功', { propId, description_len: description.length });
+  return { ok: true, description };
+}
+
 module.exports = {
   listByDramaId,
   create,
@@ -145,4 +182,5 @@ module.exports = {
   deleteById,
   associateWithStoryboard,
   generatePropPromptOnly,
+  extractPropFromImage,
 };

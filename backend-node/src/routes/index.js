@@ -141,6 +141,7 @@ function setupRouter(cfg, db, log) {
   r.put('/characters/:id/image-from-library', characters.imageFromLibrary);
   r.post('/characters/:id/add-to-library', characters.addToLibrary);
   r.post('/characters/:id/add-to-material-library', characters.addToMaterialLibrary);
+  r.post('/characters/:id/extract-from-image', characters.extractFromImage);
 
   // ---------- props ----------
   r.get('/props/:id', prop.getPropById);
@@ -151,6 +152,23 @@ function setupRouter(cfg, db, log) {
   r.post('/props/:id/generate-prompt', prop.generatePropPrompt);
   r.post('/props/:id/add-to-library', prop.addToLibrary);
   r.post('/props/:id/add-to-material-library', prop.addToMaterialLibrary);
+  r.post('/props/:id/extract-from-image', prop.extractPropFromImage);
+
+  // ---------- vision: 从图片提取描述（不依赖已有实体 ID）----------
+  r.post('/extract-description-from-image', async (req, res) => {
+    const { image_url, entity_type, entity_name } = req.body || {};
+    if (!image_url) return response.badRequest(res, '缺少 image_url');
+    if (!['character', 'scene', 'prop'].includes(entity_type)) return response.badRequest(res, 'entity_type 需为 character/scene/prop');
+    try {
+      const { extractDescriptionFromImage } = require('../services/aiClient');
+      const out = await extractDescriptionFromImage(db, log, entity_type, image_url, entity_name);
+      if (!out.ok) return response.badRequest(res, out.error);
+      response.success(res, { description: out.description });
+    } catch (err) {
+      log.error('extract-description-from-image', { error: err.message });
+      response.internalError(res, err.message);
+    }
+  });
 
   // ---------- upload ----------
   r.post('/upload/image', uploadModule.multerSingle, uploadHandlers.uploadImage);
@@ -180,6 +198,7 @@ function setupRouter(cfg, db, log) {
   r.post('/scenes/:scene_id/generate-four-view-image', scenes.generateFourViewImage);
   r.post('/scenes/:scene_id/add-to-library', scenes.addToLibrary);
   r.post('/scenes/:scene_id/add-to-material-library', scenes.addToMaterialLibrary);
+  r.post('/scenes/:scene_id/extract-from-image', scenes.extractFromImage);
 
   // ---------- images ----------
   r.get('/images', images.list);

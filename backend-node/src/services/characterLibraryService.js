@@ -434,6 +434,47 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
   return { ok: true, image_generation: imageGen };
 }
 
+/**
+ * 从角色现有图片中反向提取外貌描述，更新 appearance 字段。
+ */
+async function extractAppearanceFromImage(db, log, cfg, characterId) {
+  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+
+  const charRow = db.prepare(
+    'SELECT id, name, image_url, local_path, extra_images, ref_image FROM characters WHERE id = ? AND deleted_at IS NULL'
+  ).get(Number(characterId));
+  if (!charRow) return { ok: false, error: 'character not found' };
+
+  const imgSrc = resolveEntityImageSource(charRow, cfg);
+  if (!imgSrc) return { ok: false, error: '该角色暂无参考图片，请先上传图片' };
+
+  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.character;
+  const userPrompt = userFn(charRow.name);
+
+  const { isRefusalResponse } = require('./aiClient');
+  let appearance;
+  try {
+    appearance = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+  } catch (err) {
+    log.error('[extractAppearanceFromImage] AI 调用失败', { characterId, error: err.message });
+    const errMsg = /image|vision|visual|multimodal/i.test(err.message)
+      ? `AI 模型不支持图片识别，请在「AI 配置」中使用支持视觉的模型（如 GPT-4o、Gemini 1.5 等）【原始错误：${err.message.slice(0, 120)}】`
+      : `AI 分析失败：${err.message}`;
+    return { ok: false, error: errMsg };
+  }
+
+  if (isRefusalResponse(appearance)) {
+    log.warn('[extractAppearanceFromImage] 模型拒绝描述真人', { characterId, result: appearance });
+    return { ok: false, error: '模型因安全策略拒绝描述图中人物面部特征。建议：①使用 Gemini 模型（限制较少）；②手动填写外貌描述；③上传卡通/插画风格的参考图。' };
+  }
+
+  db.prepare('UPDATE characters SET appearance = ?, updated_at = ? WHERE id = ?')
+    .run(appearance, new Date().toISOString(), Number(characterId));
+
+  log.info('[extractAppearanceFromImage] 外貌提取成功', { characterId, appearance_len: appearance.length });
+  return { ok: true, appearance };
+}
+
 module.exports = {
   listLibraryItems,
   createLibraryItem,
@@ -450,4 +491,5 @@ module.exports = {
   batchGenerateCharacterImages,
   generateCharacterFourViewImage,
   generateCharacterPromptOnly,
+  extractAppearanceFromImage,
 };

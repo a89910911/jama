@@ -8,5 +8,17 @@ export const uploadAPI = {
     return request.post('/upload/image', form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
+  },
+  /**
+   * 从图片（base64 data URL 或 http URL）提取实体特征描述，不依赖已有实体 ID。
+   * entityType: 'character' | 'scene' | 'prop'
+   * imageUrl: data:image/xxx;base64,... 或 http URL
+   */
+  extractDescriptionFromImage(entityType, imageUrl, entityName) {
+    return request.post('/extract-description-from-image', {
+      entity_type: entityType,
+      image_url: imageUrl,
+      entity_name: entityName || undefined,
+    })
   }
 }

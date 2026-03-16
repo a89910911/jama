@@ -192,6 +192,7 @@ function ensureAllColumns(database) {
     { name: 'color_palette',     type: 'TEXT' },   // JSON: Hex 色值数组
     { name: 'four_view_image_url', type: 'TEXT' }, // 四视图参考图 URL
     { name: 'polished_prompt',   type: 'TEXT' },   // 文字AI润色后的完整图片生成提示词（可编辑，生图时直接使用）
+    { name: 'ref_image',         type: 'TEXT' },   // 用户上传的参考图（本地相对路径或 URL），独立于 AI 生成的主图
     { name: 'created_at',        type: 'TEXT' },
     { name: 'updated_at',        type: 'TEXT' },
     { name: 'deleted_at',        type: 'TEXT' },
@@ -208,6 +209,7 @@ function ensureAllColumns(database) {
     { name: 'image_url',        type: 'TEXT' },
     { name: 'local_path',       type: 'TEXT' },
     { name: 'extra_images',     type: 'TEXT' },
+    { name: 'ref_image',        type: 'TEXT' },  // 用户上传的参考图（本地相对路径或 URL）
     { name: 'storyboard_count', type: 'INTEGER DEFAULT 0' },
     { name: 'error_msg',        type: 'TEXT' },
     { name: 'status',           type: 'TEXT DEFAULT \'draft\'' },
@@ -227,6 +229,7 @@ function ensureAllColumns(database) {
     { name: 'image_url',    type: 'TEXT' },
     { name: 'local_path',   type: 'TEXT' },
     { name: 'extra_images', type: 'TEXT' },
+    { name: 'ref_image',    type: 'TEXT' },  // 用户上传的参考图（本地相对路径或 URL）
     { name: 'error_msg',    type: 'TEXT' },
     { name: 'created_at',   type: 'TEXT' },
     { name: 'updated_at',   type: 'TEXT' },

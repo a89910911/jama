@@ -14,6 +14,7 @@ function updateScene(db, log, sceneId, req) {
   if (req.image_url != null) { updates.push('image_url = ?'); params.push(req.image_url); }
   if (req.local_path !== undefined) { updates.push('local_path = ?'); params.push(req.local_path); }
   if (req.extra_images !== undefined) { updates.push('extra_images = ?'); params.push(req.extra_images ?? null); }
+  if (req.ref_image !== undefined) { updates.push('ref_image = ?'); params.push(req.ref_image ?? null); }
   if (updates.length === 0) return { ok: true };
   params.push(new Date().toISOString(), sceneId);
   db.prepare('UPDATE scenes SET ' + updates.join(', ') + ', updated_at = ? WHERE id = ?').run(...params);
@@ -247,6 +248,42 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
   return { ok: true, image_generation: imageGen };
 }
 
+/**
+ * 从场景现有图片中反向提取场景描述，更新 prompt 字段。
+ */
+async function extractSceneFromImage(db, log, cfg, sceneId) {
+  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+
+  const sceneRow = db.prepare(
+    'SELECT id, location, time, image_url, local_path, extra_images, ref_image FROM scenes WHERE id = ? AND deleted_at IS NULL'
+  ).get(Number(sceneId));
+  if (!sceneRow) return { ok: false, error: 'scene not found' };
+
+  const imgSrc = resolveEntityImageSource(sceneRow, cfg);
+  if (!imgSrc) return { ok: false, error: '该场景暂无参考图片，请先上传图片' };
+
+  const locationLabel = [sceneRow.location, sceneRow.time].filter(Boolean).join(' · ') || '场景';
+  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.scene;
+  const userPrompt = userFn(locationLabel);
+
+  let prompt;
+  try {
+    prompt = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+  } catch (err) {
+    log.error('[extractSceneFromImage] AI 调用失败', { sceneId, error: err.message });
+    const errMsg = /image|vision|visual|multimodal/i.test(err.message)
+      ? `AI 模型不支持图片识别，请在「AI 配置」中使用支持视觉的模型（如 GPT-4o、Gemini 1.5 等）【原始错误：${err.message.slice(0, 120)}】`
+      : `AI 分析失败：${err.message}`;
+    return { ok: false, error: errMsg };
+  }
+
+  db.prepare('UPDATE scenes SET prompt = ?, updated_at = ? WHERE id = ?')
+    .run(prompt, new Date().toISOString(), Number(sceneId));
+
+  log.info('[extractSceneFromImage] 场景描述提取成功', { sceneId, prompt_len: prompt.length });
+  return { ok: true, prompt };
+}
+
 module.exports = {
   updateScene,
   updateScenePrompt,
@@ -257,4 +294,5 @@ module.exports = {
   getSceneById,
   generateSceneFourViewImage,
   generateScenePromptOnly,
+  extractSceneFromImage,
 };

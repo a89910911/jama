@@ -23,6 +23,9 @@ export const characterAPI = {
   putImage(characterId, data) {
     return request.put(`/characters/${characterId}/image`, data)
   },
+  putRefImage(characterId, refImagePath) {
+    return request.put(`/characters/${characterId}/image`, { ref_image: refImagePath })
+  },
   delete(characterId) {
     return request.delete(`/characters/${characterId}`)
   },
@@ -31,5 +34,8 @@ export const characterAPI = {
   },
   addToMaterialLibrary(characterId) {
     return request.post(`/characters/${characterId}/add-to-material-library`, {})
+  },
+  extractFromImage(characterId) {
+    return request.post(`/characters/${characterId}/extract-from-image`, {})
   }
 }

@@ -355,6 +355,7 @@ function rowToCharacter(r) {
     image_url: sanitizeImageUrl(r.image_url),
     local_path: r.local_path,
     extra_images: r.extra_images || null,
+    ref_image: r.ref_image || null,
     reference_images: r.reference_images,
     seed_value: r.seed_value,
     sort_order: r.sort_order ?? 0,
@@ -378,6 +379,7 @@ function rowToScene(r) {
     image_url: sanitizeImageUrl(r.image_url),
     local_path: r.local_path,
     extra_images: r.extra_images || null,
+    ref_image: r.ref_image || null,
     status: r.status || 'pending',
     error_msg: r.error_msg,
     created_at: r.created_at,
@@ -396,6 +398,7 @@ function rowToProp(r) {
     image_url: sanitizeImageUrl(r.image_url),
     local_path: r.local_path,
     extra_images: r.extra_images || null,
+    ref_image: r.ref_image || null,
     error_msg: r.error_msg,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -489,9 +492,15 @@ function saveCharacters(db, log, dramaId, req) {
       const ex = db.prepare('SELECT id FROM characters WHERE id = ? AND drama_id = ?').get(char.id, did);
       if (ex) {
         characterIds.push(ex.id);
+        // 只更新文本字段；image_url / local_path 仅在调用方显式传入时才覆盖，防止漏传字段清空已有图片
+        const imgFields = [];
+        const imgParams = [];
+        if ('image_url' in char) { imgFields.push('image_url = ?'); imgParams.push(char.image_url ?? null); }
+        if ('local_path' in char) { imgFields.push('local_path = ?'); imgParams.push(char.local_path ?? null); }
+        const imgSql = imgFields.length > 0 ? ', ' + imgFields.join(', ') : '';
         db.prepare(
-          `UPDATE characters SET name = ?, role = ?, description = ?, personality = ?, appearance = ?, image_url = ?, local_path = ?, updated_at = ? WHERE id = ?`
-        ).run(char.name, char.role ?? null, char.description ?? null, char.personality ?? null, char.appearance ?? null, char.image_url ?? null, char.local_path ?? null, new Date().toISOString(), char.id);
+          `UPDATE characters SET name = ?, role = ?, description = ?, personality = ?, appearance = ?${imgSql}, updated_at = ? WHERE id = ?`
+        ).run(char.name, char.role ?? null, char.description ?? null, char.personality ?? null, char.appearance ?? null, ...imgParams, new Date().toISOString(), char.id);
         continue;
       }
     }
@@ -499,9 +508,14 @@ function saveCharacters(db, log, dramaId, req) {
     if (byName) {
       characterIds.push(byName.id);
       // 如果通过名字找到已存在的角色（包含软删除的），也要更新它的信息并复活
+      const imgFieldsN = [];
+      const imgParamsN = [];
+      if ('image_url' in char) { imgFieldsN.push('image_url = ?'); imgParamsN.push(char.image_url ?? null); }
+      if ('local_path' in char) { imgFieldsN.push('local_path = ?'); imgParamsN.push(char.local_path ?? null); }
+      const imgSqlN = imgFieldsN.length > 0 ? ', ' + imgFieldsN.join(', ') : '';
       db.prepare(
-        `UPDATE characters SET role = ?, description = ?, personality = ?, appearance = ?, image_url = ?, local_path = ?, updated_at = ?, deleted_at = NULL WHERE id = ?`
-      ).run(char.role ?? null, char.description ?? null, char.personality ?? null, char.appearance ?? null, char.image_url ?? null, char.local_path ?? null, new Date().toISOString(), byName.id);
+        `UPDATE characters SET role = ?, description = ?, personality = ?, appearance = ?${imgSqlN}, updated_at = ?, deleted_at = NULL WHERE id = ?`
+      ).run(char.role ?? null, char.description ?? null, char.personality ?? null, char.appearance ?? null, ...imgParamsN, new Date().toISOString(), byName.id);
       continue;
     }
     const now = new Date().toISOString();

@@ -127,22 +127,27 @@ function routes(db, cfg, log, uploadService) {
     putImage: (req, res) => {
       try {
         const body = req.body || {};
-        const out = characterLibraryService.uploadCharacterImage(db, log, req.params.id, body.image_url);
-        if (!out.ok) {
-          if (out.error === 'character not found') return response.notFound(res, '角色不存在');
-          return response.badRequest(res, out.error);
+        // 只有明确传了 image_url 时才更新主图，避免只传 ref_image 时清掉主图
+        if (body.image_url !== undefined) {
+          const out = characterLibraryService.uploadCharacterImage(db, log, req.params.id, body.image_url);
+          if (!out.ok) {
+            if (out.error === 'character not found') return response.notFound(res, '角色不存在');
+            return response.badRequest(res, out.error);
+          }
+        } else {
+          // 没传 image_url 时，至少验证角色存在
+          const charRow = db.prepare('SELECT id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(req.params.id));
+          if (!charRow) return response.notFound(res, '角色不存在');
         }
         const extraFields = [];
         const extraParams = [];
         if (body.local_path !== undefined) { extraFields.push('local_path = ?'); extraParams.push(body.local_path ?? null); }
         if (body.extra_images !== undefined) { extraFields.push('extra_images = ?'); extraParams.push(body.extra_images ?? null); }
+        if (body.ref_image !== undefined) { extraFields.push('ref_image = ?'); extraParams.push(body.ref_image ?? null); }
         if (extraFields.length > 0) {
-          const charRow = db.prepare('SELECT id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(req.params.id));
-          if (charRow) {
-            db.prepare(`UPDATE characters SET ${extraFields.join(', ')}, updated_at = ? WHERE id = ?`).run(
-              ...extraParams, new Date().toISOString(), Number(req.params.id)
-            );
-          }
+          db.prepare(`UPDATE characters SET ${extraFields.join(', ')}, updated_at = ? WHERE id = ?`).run(
+            ...extraParams, new Date().toISOString(), Number(req.params.id)
+          );
         }
         response.success(res, { message: '保存成功' });
       } catch (err) {
@@ -223,6 +228,19 @@ function routes(db, cfg, log, uploadService) {
         response.success(res, { message: '提示词已生成', polished_prompt: out.polished_prompt });
       } catch (err) {
         log.error('characters generate-prompt', { error: err.message });
+        response.internalError(res, err.message);
+      }
+    },
+    extractFromImage: async (req, res) => {
+      try {
+        const out = await characterLibraryService.extractAppearanceFromImage(db, log, cfg, req.params.id);
+        if (!out.ok) {
+          if (out.error === 'character not found') return response.notFound(res, '角色不存在');
+          return response.badRequest(res, out.error);
+        }
+        response.success(res, { message: '外貌描述已提取', appearance: out.appearance });
+      } catch (err) {
+        log.error('characters extract-from-image', { error: err.message });
         response.internalError(res, err.message);
       }
     },

@@ -32,5 +32,11 @@ export const propAPI = {
   },
   addToMaterialLibrary(id) {
     return request.post(`/props/${id}/add-to-material-library`, {})
+  },
+  extractFromImage(id) {
+    return request.post(`/props/${id}/extract-from-image`, {})
+  },
+  putRefImage(id, refImagePath) {
+    return request.put(`/props/${id}`, { ref_image: refImagePath ?? null })
   }
 }

@@ -1053,8 +1053,20 @@
     </main>
 
     <!-- 添加道具弹窗 -->
-    <el-dialog v-model="showAddProp" title="添加道具" width="440px" @close="addPropForm = { name: '', type: '', description: '', prompt: '' }">
+    <el-dialog v-model="showAddProp" title="添加道具" width="600px" @close="() => { addPropForm = { name: '', type: '', description: '', prompt: '' }; addPropAddRefImage = null }">
       <el-form label-width="90px">
+        <el-form-item label="参考图">
+          <div class="ref-image-zone">
+            <div class="ref-image-box" @click="addPropAddRefFileInput?.click()" @drop.prevent="onRefImageDrop2('addProp', $event)" @dragover.prevent>
+              <img v-if="addPropAddRefImage" :src="addPropAddRefImage.dataUrl" class="ref-preview-img" />
+              <div v-else class="ref-upload-hint"><span class="ref-upload-icon">🖼</span><span>点击或拖入参考图</span></div>
+            </div>
+            <div v-if="addPropAddRefImage" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingPropAddDesc" @click="doExtractFromRef2('addProp')">提取特征描述</el-button>
+              <el-button size="small" @click="addPropAddRefImage = null">移除</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="名称" required>
           <el-input v-model="addPropForm.name" placeholder="道具名称" />
         </el-form-item>
@@ -1062,7 +1074,7 @@
           <el-input v-model="addPropForm.type" placeholder="如：物品、建筑" />
         </el-form-item>
         <el-form-item label="描述">
-          <el-input v-model="addPropForm.description" type="textarea" :rows="2" placeholder="描述" />
+          <el-input v-model="addPropForm.description" type="textarea" :rows="3" placeholder="描述" />
         </el-form-item>
         <el-form-item label="图生提示词">
           <el-input v-model="addPropForm.prompt" type="textarea" :rows="2" placeholder="用于 AI 生成图片的提示词" />
@@ -1074,9 +1086,44 @@
       </template>
     </el-dialog>
 
+    <!-- 隐藏的文件输入框（放在弹窗外层，避免 el-form-item 干扰） -->
+    <input ref="addCharRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('character', $event)" />
+    <input ref="addSceneRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('scene', $event)" />
+    <input ref="addPropRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('prop', $event)" />
+    <input ref="addPropAddRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange2('addProp', $event)" />
+
     <!-- 添加/编辑角色弹窗 -->
-    <el-dialog v-model="showEditCharacter" :title="editCharacterForm?.id ? '编辑角色' : '添加角色'" width="75%" @close="() => { showEditCharacter = false; stopCharacterPromptPoll(); editCharacterPromptGenerating = false }">
+    <el-dialog v-model="showEditCharacter" :title="editCharacterForm?.id ? '编辑角色' : '添加角色'" width="75%" @close="onCloseCharDialog">
       <el-form v-if="editCharacterForm" label-width="90px">
+        <!-- 参考图上传区（新增/编辑均显示） -->
+        <el-form-item label="参考图">
+          <div class="ref-image-zone">
+            <div class="ref-image-box" @click="addCharRefFileInput?.click()" @drop.prevent="onRefImageDrop('character', $event)" @dragover.prevent>
+              <!-- 优先：刚上传的新参考图 -->
+              <img v-if="addCharRefImage" :src="addCharRefImage.dataUrl" class="ref-preview-img" />
+              <!-- 次之：已保存的参考图 -->
+              <img v-else-if="editCharacterForm.ref_image"
+                :src="editCharacterForm.ref_image.startsWith('http') ? editCharacterForm.ref_image : '/static/' + editCharacterForm.ref_image"
+                class="ref-preview-img" />
+              <!-- 最后：主图（半透明，提示可上传参考图替代） -->
+              <img v-else-if="editCharacterForm.id && (editCharacterForm.image_url || editCharacterForm.local_path)"
+                :src="assetImageUrl(editCharacterForm)"
+                class="ref-preview-img" style="opacity:0.5" />
+              <div v-else class="ref-upload-hint"><span class="ref-upload-icon">🖼</span><span>点击或拖入参考图</span></div>
+            </div>
+            <div v-if="addCharRefImage" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingCharAppearance" @click="doExtractFromRef('character')">提取特征描述</el-button>
+              <el-button size="small" @click="addCharRefImage = null">移除</el-button>
+            </div>
+            <div v-else-if="editCharacterForm.ref_image" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingCharAppearance" @click="doExtractCharFromImage">从参考图提取描述</el-button>
+              <el-button size="small" @click="clearCharRefImage">移除参考图</el-button>
+            </div>
+            <div v-else-if="editCharacterForm.id && (editCharacterForm.image_url || editCharacterForm.local_path) && !editCharacterForm.appearance" class="ref-actions">
+              <el-button size="small" :loading="extractingCharAppearance" @click="doExtractCharFromImage">从主图提取描述</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="名称" required>
           <el-input v-model="editCharacterForm.name" placeholder="角色名称" />
         </el-form-item>
@@ -1124,8 +1171,33 @@
     </el-dialog>
 
     <!-- 编辑道具弹窗 -->
-    <el-dialog v-model="showEditProp" title="编辑道具" width="75%" @close="() => { showEditProp = false; stopPropPromptPoll(); editPropPromptGenerating = false }">
+    <el-dialog v-model="showEditProp" :title="editPropForm?.id ? '编辑道具' : '添加道具'" width="75%" @close="onClosePropDialog">
       <el-form v-if="editPropForm" label-width="90px">
+        <!-- 参考图上传区（新增/编辑均显示） -->
+        <el-form-item label="参考图">
+          <div class="ref-image-zone">
+            <div class="ref-image-box" @click="addPropRefFileInput?.click()" @drop.prevent="onRefImageDrop('prop', $event)" @dragover.prevent>
+              <img v-if="addPropRefImage" :src="addPropRefImage.dataUrl" class="ref-preview-img" />
+              <img v-else-if="editPropForm.ref_image"
+                :src="editPropForm.ref_image.startsWith('http') ? editPropForm.ref_image : '/static/' + editPropForm.ref_image"
+                class="ref-preview-img" />
+              <img v-else-if="editPropForm.id && (editPropForm.image_url || editPropForm.local_path)"
+                :src="assetImageUrl(editPropForm)" class="ref-preview-img" style="opacity:0.5" />
+              <div v-else class="ref-upload-hint"><span class="ref-upload-icon">🖼</span><span>点击或拖入参考图</span></div>
+            </div>
+            <div v-if="addPropRefImage" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingPropDesc" @click="doExtractFromRef('prop')">提取特征描述</el-button>
+              <el-button size="small" @click="addPropRefImage = null">移除</el-button>
+            </div>
+            <div v-else-if="editPropForm.ref_image" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingPropDesc" @click="doExtractPropFromImage">从参考图提取描述</el-button>
+              <el-button size="small" @click="clearPropRefImage">移除参考图</el-button>
+            </div>
+            <div v-else-if="editPropForm.id && (editPropForm.image_url || editPropForm.local_path) && !editPropForm.description" class="ref-actions">
+              <el-button size="small" :loading="extractingPropDesc" @click="doExtractPropFromImage">从主图提取描述</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="名称" required>
           <el-input v-model="editPropForm.name" placeholder="道具名称" />
         </el-form-item>
@@ -1158,8 +1230,33 @@
     </el-dialog>
 
     <!-- 添加/编辑场景弹窗 -->
-    <el-dialog v-model="showEditScene" :title="editSceneForm?.id ? '编辑场景' : '添加场景'" width="75%" @close="() => { showEditScene = false; stopScenePromptPoll(); editScenePromptGenerating = false }">
+    <el-dialog v-model="showEditScene" :title="editSceneForm?.id ? '编辑场景' : '添加场景'" width="75%" @close="onCloseSceneDialog">
       <el-form v-if="editSceneForm" label-width="90px">
+        <!-- 参考图上传区（新增/编辑均显示） -->
+        <el-form-item label="参考图">
+          <div class="ref-image-zone">
+            <div class="ref-image-box" @click="addSceneRefFileInput?.click()" @drop.prevent="onRefImageDrop('scene', $event)" @dragover.prevent>
+              <img v-if="addSceneRefImage" :src="addSceneRefImage.dataUrl" class="ref-preview-img" />
+              <img v-else-if="editSceneForm.ref_image"
+                :src="editSceneForm.ref_image.startsWith('http') ? editSceneForm.ref_image : '/static/' + editSceneForm.ref_image"
+                class="ref-preview-img" />
+              <img v-else-if="editSceneForm.id && (editSceneForm.image_url || editSceneForm.local_path)"
+                :src="assetImageUrl(editSceneForm)" class="ref-preview-img" style="opacity:0.5" />
+              <div v-else class="ref-upload-hint"><span class="ref-upload-icon">🖼</span><span>点击或拖入参考图</span></div>
+            </div>
+            <div v-if="addSceneRefImage" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingSceneDesc" @click="doExtractFromRef('scene')">提取特征描述</el-button>
+              <el-button size="small" @click="addSceneRefImage = null">移除</el-button>
+            </div>
+            <div v-else-if="editSceneForm.ref_image" class="ref-actions">
+              <el-button type="primary" size="small" :loading="extractingSceneDesc" @click="doExtractSceneFromImage">从参考图提取描述</el-button>
+              <el-button size="small" @click="clearSceneRefImage">移除参考图</el-button>
+            </div>
+            <div v-else-if="editSceneForm.id && (editSceneForm.image_url || editSceneForm.local_path) && !editSceneForm.prompt" class="ref-actions">
+              <el-button size="small" :loading="extractingSceneDesc" @click="doExtractSceneFromImage">从主图提取描述</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="地点" required>
           <el-input v-model="editSceneForm.location" placeholder="如：森林、教室" />
         </el-form-item>
@@ -1953,19 +2050,33 @@ const showEditCharacter = ref(false)
 const editCharacterForm = ref(null)
 const editCharacterSaving = ref(false)
 const editCharacterPromptGenerating = ref(false)
+const extractingCharAppearance = ref(false)
+const addCharRefImage = ref(null)   // { dataUrl, filename }
+const addCharRefFileInput = ref(null)
 let editCharacterPollTimer = null
 
 const showEditProp = ref(false)
 const editPropForm = ref(null)
 const editPropSaving = ref(false)
 const editPropPromptGenerating = ref(false)
+const extractingPropDesc = ref(false)
+const addPropRefImage = ref(null)
+const addPropRefFileInput = ref(null)
 let editPropPollTimer = null
 
 const showEditScene = ref(false)
 const editSceneForm = ref(null)
 const editSceneSaving = ref(false)
 const editScenePromptGenerating = ref(false)
+const extractingSceneDesc = ref(false)
+const addSceneRefImage = ref(null)
+const addSceneRefFileInput = ref(null)
 let editScenePollTimer = null
+
+// 「添加道具」简单弹窗的独立参考图状态
+const addPropAddRefImage = ref(null)
+const addPropAddRefFileInput = ref(null)
+const extractingPropAddDesc = ref(false)
 
 // 资源管理大面板及子区块折叠状态
 const resourcePanelCollapsed = ref(false)
@@ -3113,7 +3224,10 @@ function editCharacter(char) {
     appearance: char.appearance || '',
     personality: char.personality || '',
     description: char.description || '',
-    polished_prompt: char.polished_prompt || ''
+    polished_prompt: char.polished_prompt || '',
+    image_url: char.image_url || '',
+    local_path: char.local_path || '',
+    ref_image: char.ref_image || '',
   }
   showEditCharacter.value = true
   // 如果提示词还没有，说明后台异步可能还在跑，轮询等待（最多 60 秒）
@@ -3144,6 +3258,32 @@ function editCharacter(char) {
   }
 }
 
+/** 将 base64 dataUrl 转为 File 对象 */
+function dataUrlToFile(dataUrl, filename) {
+  const arr = dataUrl.split(',')
+  const mime = (arr[0].match(/:(.*?);/) || [])[1] || 'image/png'
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  while (n--) u8arr[n] = bstr.charCodeAt(n)
+  return new File([u8arr], filename || 'reference.png', { type: mime })
+}
+
+/** 上传临时参考图并保存到角色的 ref_image 字段（不覆盖主图） */
+async function saveCharRefImageIfAny(characterId) {
+  const refImg = addCharRefImage.value
+  if (!refImg || !characterId) return
+  try {
+    const file = dataUrlToFile(refImg.dataUrl, refImg.filename || 'reference.png')
+    const uploadRes = await uploadAPI.uploadImage(file)
+    // 只更新 ref_image，不动 image_url / local_path（主图）
+    const refPath = uploadRes.local_path || uploadRes.url || ''
+    await characterAPI.putRefImage(characterId, refPath)
+  } catch (e) {
+    console.warn('[saveCharRefImage] 保存参考图失败:', e.message)
+  }
+}
+
 async function submitEditCharacter() {
   const form = editCharacterForm.value
   if (!form?.name?.trim() || !store.dramaId) return
@@ -3158,6 +3298,7 @@ async function submitEditCharacter() {
         description: form.description || undefined,
         polished_prompt: form.polished_prompt || undefined
       })
+      await saveCharRefImageIfAny(form.id)
       ElMessage.success('角色已保存')
     } else {
       const existing = (store.drama?.characters || []).map((c) => ({
@@ -3167,12 +3308,19 @@ async function submitEditCharacter() {
         description: c.description || undefined,
         personality: c.personality || undefined,
         appearance: c.appearance || undefined,
-        image_url: c.image_url || undefined
+        image_url: c.image_url || undefined,
+        local_path: c.local_path || undefined
       }))
       await dramaAPI.saveCharacters(store.dramaId, {
         characters: [...existing, { name: form.name.trim(), role: form.role || undefined, appearance: form.appearance || undefined, personality: form.personality || undefined, description: form.description || undefined }],
         episode_id: currentEpisodeId.value ?? undefined
       })
+      // 新增角色后重新加载，再找到刚添加的角色 ID，保存参考图
+      await loadDrama()
+      if (addCharRefImage.value) {
+        const newChar = (store.drama?.characters || []).find(c => c.name === form.name.trim())
+        if (newChar?.id) await saveCharRefImageIfAny(newChar.id)
+      }
       ElMessage.success('角色已添加')
     }
     await loadDrama()
@@ -3198,6 +3346,148 @@ async function doGenerateCharacterPrompt() {
     ElMessage.error(e.message || '生成提示词失败')
   } finally {
     editCharacterPromptGenerating.value = false
+  }
+}
+
+async function doExtractCharFromImage() {
+  const form = editCharacterForm.value
+  if (!form?.id) return
+  extractingCharAppearance.value = true
+  try {
+    const res = await characterAPI.extractFromImage(form.id)
+    if (res?.appearance) {
+      form.appearance = res.appearance
+      ElMessage.success('已从图片提取外貌描述')
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '提取失败，请检查角色是否已上传参考图片')
+  } finally {
+    extractingCharAppearance.value = false
+  }
+}
+
+async function clearCharRefImage() {
+  const form = editCharacterForm.value
+  if (!form?.id) return
+  try {
+    await characterAPI.putRefImage(form.id, null)
+    form.ref_image = ''
+    ElMessage.success('参考图已移除')
+  } catch (e) {
+    ElMessage.error('移除失败')
+  }
+}
+
+// 具名 close 处理（避免在模板 inline 箭头函数里做 ref 赋值）
+function onCloseCharDialog() {
+  showEditCharacter.value = false
+  stopCharacterPromptPoll()
+  editCharacterPromptGenerating.value = false
+  addCharRefImage.value = null
+}
+function onClosePropDialog() {
+  showEditProp.value = false
+  stopPropPromptPoll()
+  editPropPromptGenerating.value = false
+  addPropRefImage.value = null
+}
+function onCloseSceneDialog() {
+  showEditScene.value = false
+  stopScenePromptPoll()
+  editScenePromptGenerating.value = false
+  addSceneRefImage.value = null
+}
+
+/** 读取选择/拖入的图片文件为 dataUrl，存入对应 ref */
+function onRefImageFileChange(type, event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  event.target.value = ''
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const dataUrl = e.target.result
+    if (type === 'character') addCharRefImage.value = { dataUrl, filename: file.name }
+    else if (type === 'prop') addPropRefImage.value = { dataUrl, filename: file.name }
+    else if (type === 'scene') addSceneRefImage.value = { dataUrl, filename: file.name }
+  }
+  reader.readAsDataURL(file)
+}
+
+function onRefImageDrop(type, event) {
+  const file = event.dataTransfer?.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const dataUrl = e.target.result
+    if (type === 'character') addCharRefImage.value = { dataUrl, filename: file.name }
+    else if (type === 'prop') addPropRefImage.value = { dataUrl, filename: file.name }
+    else if (type === 'scene') addSceneRefImage.value = { dataUrl, filename: file.name }
+  }
+  reader.readAsDataURL(file)
+}
+
+/** 从「添加」弹窗的临时参考图提取特征描述 */
+async function doExtractFromRef(type) {
+  const refMap = { character: addCharRefImage, prop: addPropRefImage, scene: addSceneRefImage }
+  const loadingMap = { character: extractingCharAppearance, prop: extractingPropDesc, scene: extractingSceneDesc }
+  const formMap = { character: editCharacterForm, prop: editPropForm, scene: editSceneForm }
+  const fieldMap = { character: 'appearance', prop: 'description', scene: 'prompt' }
+  const nameFieldMap = { character: 'name', prop: 'name', scene: 'location' }
+
+  const refImage = refMap[type]?.value
+  if (!refImage) return
+  loadingMap[type].value = true
+  try {
+    const form = formMap[type].value
+    const entityName = form?.[nameFieldMap[type]] || ''
+    const res = await uploadAPI.extractDescriptionFromImage(type, refImage.dataUrl, entityName)
+    if (res?.description) {
+      form[fieldMap[type]] = res.description
+      ElMessage.success('已从参考图提取特征描述')
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '提取失败，请检查 AI 配置中是否有支持视觉的模型')
+  } finally {
+    loadingMap[type].value = false
+  }
+}
+
+// 「添加道具」简单弹窗的专属 file / drop / extract 处理
+function onRefImageFileChange2(type, event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  event.target.value = ''
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    if (type === 'addProp') addPropAddRefImage.value = { dataUrl: e.target.result, filename: file.name }
+  }
+  reader.readAsDataURL(file)
+}
+function onRefImageDrop2(type, event) {
+  const file = event.dataTransfer?.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    if (type === 'addProp') addPropAddRefImage.value = { dataUrl: e.target.result, filename: file.name }
+  }
+  reader.readAsDataURL(file)
+}
+async function doExtractFromRef2(type) {
+  if (type !== 'addProp') return
+  const refImage = addPropAddRefImage.value
+  if (!refImage) return
+  extractingPropAddDesc.value = true
+  try {
+    const entityName = addPropForm.value?.name || ''
+    const res = await uploadAPI.extractDescriptionFromImage('prop', refImage.dataUrl, entityName)
+    if (res?.description) {
+      addPropForm.value.description = res.description
+      ElMessage.success('已从参考图提取特征描述')
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '提取失败，请检查 AI 配置中是否有支持视觉的模型')
+  } finally {
+    extractingPropAddDesc.value = false
   }
 }
 
@@ -3835,7 +4125,10 @@ function editProp(prop) {
     name: prop.name || '',
     type: prop.type || '',
     description: prop.description || '',
-    prompt: prop.prompt || ''
+    prompt: prop.prompt || '',
+    image_url: prop.image_url || '',
+    local_path: prop.local_path || '',
+    ref_image: prop.ref_image || '',
   }
   showEditProp.value = true
   if (!prop.prompt && prop.id && prop.description) {
@@ -3871,6 +4164,49 @@ async function doGeneratePropPrompt() {
   }
 }
 
+/** 上传临时参考图并保存到道具的 ref_image 字段 */
+async function savePropRefImageIfAny(propId) {
+  const refImg = addPropRefImage.value
+  if (!refImg || !propId) return
+  try {
+    const file = dataUrlToFile(refImg.dataUrl, refImg.filename || 'reference.png')
+    const uploadRes = await uploadAPI.uploadImage(file)
+    const refPath = uploadRes.local_path || uploadRes.url || ''
+    await propAPI.putRefImage(propId, refPath)
+  } catch (e) {
+    console.warn('[savePropRefImage] 保存参考图失败:', e.message)
+  }
+}
+
+async function clearPropRefImage() {
+  const form = editPropForm.value
+  if (!form?.id) return
+  try {
+    await propAPI.putRefImage(form.id, null)
+    form.ref_image = ''
+    ElMessage.success('参考图已移除')
+  } catch (e) {
+    ElMessage.error('移除失败')
+  }
+}
+
+async function doExtractPropFromImage() {
+  const form = editPropForm.value
+  if (!form?.id) return
+  extractingPropDesc.value = true
+  try {
+    const res = await propAPI.extractFromImage(form.id)
+    if (res?.description) {
+      form.description = res.description
+      ElMessage.success('已从图片提取道具描述')
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '提取失败，请检查道具是否已上传参考图片')
+  } finally {
+    extractingPropDesc.value = false
+  }
+}
+
 async function submitEditProp() {
   if (!editPropForm.value?.id) return
   editPropSaving.value = true
@@ -3881,6 +4217,7 @@ async function submitEditProp() {
       description: editPropForm.value.description || undefined,
       prompt: editPropForm.value.prompt || undefined
     })
+    await savePropRefImageIfAny(editPropForm.value.id)
     await loadDrama()
     showEditProp.value = false
     ElMessage.success('道具已保存')
@@ -3986,7 +4323,10 @@ function editScene(scene) {
     location: scene.location || '',
     time: scene.time || '',
     prompt: scene.prompt || '',
-    polished_prompt: scene.polished_prompt || ''
+    polished_prompt: scene.polished_prompt || '',
+    image_url: scene.image_url || '',
+    local_path: scene.local_path || '',
+    ref_image: scene.ref_image || '',
   }
   showEditScene.value = true
   // polished_prompt 为空时轮询等待后台异步生成
@@ -4023,6 +4363,49 @@ async function doGenerateScenePrompt() {
   }
 }
 
+/** 上传临时参考图并保存到场景的 ref_image 字段 */
+async function saveSceneRefImageIfAny(sceneId) {
+  const refImg = addSceneRefImage.value
+  if (!refImg || !sceneId) return
+  try {
+    const file = dataUrlToFile(refImg.dataUrl, refImg.filename || 'reference.png')
+    const uploadRes = await uploadAPI.uploadImage(file)
+    const refPath = uploadRes.local_path || uploadRes.url || ''
+    await sceneAPI.putRefImage(sceneId, refPath)
+  } catch (e) {
+    console.warn('[saveSceneRefImage] 保存参考图失败:', e.message)
+  }
+}
+
+async function clearSceneRefImage() {
+  const form = editSceneForm.value
+  if (!form?.id) return
+  try {
+    await sceneAPI.putRefImage(form.id, null)
+    form.ref_image = ''
+    ElMessage.success('参考图已移除')
+  } catch (e) {
+    ElMessage.error('移除失败')
+  }
+}
+
+async function doExtractSceneFromImage() {
+  const form = editSceneForm.value
+  if (!form?.id) return
+  extractingSceneDesc.value = true
+  try {
+    const res = await sceneAPI.extractFromImage(form.id)
+    if (res?.prompt) {
+      form.prompt = res.prompt
+      ElMessage.success('已从图片提取场景描述')
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '提取失败，请检查场景是否已上传参考图片')
+  } finally {
+    extractingSceneDesc.value = false
+  }
+}
+
 async function submitEditScene() {
   const form = editSceneForm.value
   if (!form?.location?.trim() || !store.dramaId) return
@@ -4035,6 +4418,7 @@ async function submitEditScene() {
         prompt: form.prompt || undefined,
         polished_prompt: form.polished_prompt || undefined
       })
+      await saveSceneRefImageIfAny(form.id)
       ElMessage.success('场景已保存')
     } else {
       await sceneAPI.create({
@@ -4043,6 +4427,14 @@ async function submitEditScene() {
         time: form.time || undefined,
         prompt: form.prompt || undefined
       })
+      // 新增场景后找到 ID 保存参考图
+      await loadDrama()
+      if (addSceneRefImage.value) {
+        const newScene = (store.drama?.scenes || []).find(
+          s => s.location === form.location.trim() && (s.time || '') === (form.time || '')
+        )
+        if (newScene?.id) await saveSceneRefImageIfAny(newScene.id)
+      }
       ElMessage.success('场景已添加')
     }
     await loadDrama()
@@ -6327,6 +6719,55 @@ html.light .section-title { color: #18181b; }
   margin-left: 4px;
   flex-shrink: 0;
 }
+/* 参考图上传区（添加角色/道具/场景弹窗顶部） */
+.ref-image-zone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ref-image-box {
+  width: 120px;
+  height: 120px;
+  border: 2px dashed #c0c4cc;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  background: #fafafa;
+  flex-shrink: 0;
+  transition: border-color 0.2s;
+}
+.ref-image-box:hover {
+  border-color: #409eff;
+}
+.ref-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ref-upload-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #909399;
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+}
+.ref-upload-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.ref-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* 资源管理大面板 + 可折叠标题 */
 .resource-panel {
   padding: 0;

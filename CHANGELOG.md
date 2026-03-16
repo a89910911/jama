@@ -8,18 +8,30 @@
 
 ---
 
-## [1.2.1] - 2026-03-15
+## [1.2.1] - 2026-03-16
 
 ### 新增
 
 - **可灵 Kling AI 接入**：新增可灵图片生成协议（kling-image / kling-omni-image）及视频生成协议（kling-video / kling-omni-video / kling-motion-control），AI 配置页可直接选择可灵作为服务商，Base URL / 端点自动填充
 - **场景/道具"加入本集"**：场景库和道具库弹窗新增「加入本集」按钮，与角色库体验对齐；后端 `createScene` / `create`（prop）补充保存 `image_url`、`local_path` 字段，确保素材图片 URL 正确保存
 - **视频历史记录与主视频选择**：分镜视频重新生成后保留历史版本，下方缩略图条带一览可选；点击历史缩略图即切换主视频，并将选择持久化到分镜记录的 `video_url`；合成视频时后端优先使用用户选定版本，兜底取最新生成记录
+- **参考图独立字段（ref_image）**：角色、场景、道具各自新增 `ref_image` 数据库字段，专门存储用户手动上传的参考图，与 AI 生成的主图（`image_url`/`local_path`）完全分离，互不干扰；`migrate.js` 自动迁移
+- **编辑弹窗参考图区域（角色/道具/场景）**：添加与编辑模式均显示参考图上传区；编辑时优先展示已保存的 `ref_image`，其次半透明展示主图；上传新参考图后点击保存自动上传并持久化到 `ref_image` 字段；支持"移除参考图"操作
+- **从参考图提取描述**：参考图存在时一键调用视觉 AI 提取角色外貌/场景/道具描述，直接填入对应文本框；`resolveEntityImageSource` 优先使用 `ref_image`（高于主图和 `extra_images`）
 
 ### 修复
 
 - **合成视频主视频不对**：`getVideoUrlForStoryboard` 调整为优先读 `storyboard.video_url`（用户选定主视频），再兜底 `video_generations ORDER BY created_at DESC`，修复合成时始终取最新生成记录、忽略用户已选定历史视频的问题
 - **重新生成视频后主视频混乱**：`onGenerateSbVideo` / `startBatchVideoGeneration` 在提交新生成任务前自动清除 `storyboard.video_url` 及前端 `sbSelectedVideoId`，确保新视频生成完成后合成使用最新记录
+- **视觉 AI 返回空内容（o4-mini）**：`max_tokens: 400` 过小导致推理模型（o4-mini）推理过程耗尽 token 而输出为空；改为 `max_tokens: 2000`；同时检测模型名是否以 `o数字` 开头，推理模型改用 `max_completion_tokens`（不能同时传两个参数），并跳过 `temperature` 参数（推理模型不支持）
+- **视觉 API system 消息兼容性**：推理模型（o1/o3/o4 系列）不识别 `system` role，改为将 system prompt 合并到 user 消息前缀传入
+- **提取描述后保存的参考图覆盖主图**：修复原先将参考图存为 `image_url/local_path`（覆盖 AI 生成主图）的问题，改为存入独立的 `ref_image` 字段；`putImage` 路由调整为只有明确传入 `image_url` 时才更新主图
+- **场景导入重复**：工程导入时按 `location|time` 去重，避免多次导入同名场景累积重复条目
+
+### 优化
+
+- **视觉提示词重构**：角色外貌提取提示词改为"角色造型设计"语境（cosplay/概念图），明确要求描述发型/五官/体型/服装四维度，忽略背景，并加入推断指引和拒绝检测（`isRefusalResponse`）；场景/道具提示词同步优化
+- **提示词单一来源**：`EXTRACT_PROMPTS` 常量统一在 `aiClient.js` 定义并导出，`characterLibraryService`、`sceneService`、`propService` 直接引用，消除多处重复维护
 
 ### 文档
 

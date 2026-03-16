@@ -145,6 +145,24 @@ function generatePropPrompt(db, log, cfg) {
   };
 }
 
+function extractPropFromImage(db, log, cfg) {
+  return async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return response.badRequest(res, '无效的ID');
+    try {
+      const out = await propService.extractPropFromImage(db, log, cfg, id);
+      if (!out.ok) {
+        if (out.error === 'prop not found') return response.notFound(res, '道具不存在');
+        return response.badRequest(res, out.error);
+      }
+      response.success(res, { message: '道具描述已提取', description: out.description });
+    } catch (err) {
+      log.error('extractPropFromImage failed', { error: err.message });
+      response.internalError(res, err.message);
+    }
+  };
+}
+
 module.exports = function propRoutes(db, log, cfg) {
   return {
     listProps: listProps(db),
@@ -158,5 +176,6 @@ module.exports = function propRoutes(db, log, cfg) {
     associateProps: associateProps(db, log),
     addToLibrary: addToLibrary(db, log),
     addToMaterialLibrary: addToMaterialLibrary(db, log),
+    extractPropFromImage: extractPropFromImage(db, log, cfg),
   };
 };

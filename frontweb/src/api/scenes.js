@@ -24,5 +24,11 @@ export const sceneAPI = {
   },
   addToMaterialLibrary(sceneId) {
     return request.post(`/scenes/${sceneId}/add-to-material-library`, {})
+  },
+  extractFromImage(sceneId) {
+    return request.post(`/scenes/${sceneId}/extract-from-image`, {})
+  },
+  putRefImage(sceneId, refImagePath) {
+    return request.put(`/scenes/${sceneId}`, { ref_image: refImagePath ?? null })
   }
 }
