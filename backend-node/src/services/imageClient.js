@@ -128,29 +128,6 @@ function getModelFromConfig(config, preferredModel) {
   return models[0] || 'dall-e-3';
 }
 
-// doubao-seedream-4-5 及更新版本要求最小像素 3686400（=1920×1920）
-// 若传入 size 不足，按宽高比等比放大到满足要求；步长取 8
-const SEEDREAM_MIN_PIXELS = 3686400;
-
-function seedreamSize(size) {
-  if (!size || typeof size !== 'string') return '1920x1920';
-  // 兼容 "WxH" 与 "W*H" 两种写法
-  const s = String(size).trim().toLowerCase().replace(/\*/g, 'x');
-  const match = s.match(/^(\d+)\s*x\s*(\d+)$/);
-  if (!match) return '1920x1920';
-  let w = parseInt(match[1], 10);
-  let h = parseInt(match[2], 10);
-  if (!w || !h) return '1920x1920';
-  if (w * h >= SEEDREAM_MIN_PIXELS) return `${w}x${h}`;
-  // 等比放大，步长 8
-  const scale = Math.sqrt(SEEDREAM_MIN_PIXELS / (w * h));
-  w = Math.max(8, Math.round((w * scale) / 8) * 8);
-  h = Math.max(8, Math.round((h * scale) / 8) * 8);
-  // 四舍五入后仍可能略低，循环补足直到满足最低像素
-  while (w * h < SEEDREAM_MIN_PIXELS) w += 8;
-  return `${w}x${h}`;
-}
-
 // 通义万象 size：格式 "宽*高"，总像素须在 589824(768*768)～1638400(1280*1280) 之间
 const DASHSCOPE_MIN_PIXELS = 589824;
 const DASHSCOPE_MAX_PIXELS = 1638400;
