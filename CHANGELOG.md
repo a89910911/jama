@@ -8,6 +8,30 @@
 
 ---
 
+## [1.3.0] - 2026-03-17
+
+### 新增（竞品差距追赶）
+
+- **P0-1 视频帧连贯性**：批量生成分镜视频新增「连贯帧模式」开关；启用后强制顺序生成，每条视频完成后自动用浏览器 Canvas 提取末帧，上传后作为下一条视频的 `first_frame_url` 参考图，有效减少视频片段间的跳跃感
+- **P0-2 角色视觉锚点（identity_anchors）**：角色编辑弹窗新增「视觉锚点」区域，展示 AI 从外貌描述提炼的6层特征（骨相/五官/发型/肤色/颜色/特征标记）；新增「提炼视觉锚点」按钮，触发后台异步提炼并轮询写入；后端 `characterGenerationService.enrichIdentityAnchors` 函数对外导出，新增 `/characters/:id/extract-anchors` 路由
+- **P0-3 分镜图超分辨率**：分镜图操作栏新增「超分」按钮，调用 `/storyboards/:id/upscale` 后端接口，使用 sharp 以 Lanczos3 算法将图片放大 2×，替换为高清版本
+- **P1-2 小说/长文章节导入**：故事生成区域新增「导入小说」按钮；支持粘贴文本或上传 `.txt/.md` 文件；后端基于正则识别章节标题自动分割，可选 AI 改写为剧本格式；返回章节列表自动填入剧本编辑区，每章对应一集
+- **P1-3 多阶段角色造型**：角色编辑弹窗新增「多阶段造型」字段（JSON 格式），支持记录角色在不同集次的外貌变化（如第1-5集白衣、第6-10集黑衣）；数据库迁移 `17_character_stages.sql`，后端更新接口支持 `stages` 字段读写
+- **P2-1 自由创作模式**：新增独立页面 `/free-create`（FreeCreate.vue），不依赖剧集直接生成图片或视频；支持文字提示词、风格、比例/时长选择；视频模式可上传参考图；生成结果支持下载
+- **P2-2 媒体素材库**：新增独立页面 `/media-library`（MediaLibrary.vue），批量上传图片/视频素材，支持类型筛选、关键词搜索、多选批量删除、单项预览；主导航添加入口
+- **P2-3 场景多视角生成**：场景卡片操作栏新增「多视角」按钮，触发 `/scenes/:id/generate-four-view-image`，一次生成正/侧/俯/仰多视角图
+- **P2-4 TTS 语音合成**：分镜视频操作栏新增「配音」按钮，为对白自动调用 TTS 服务合成语音（支持 MiniMax T2A-v2）；音频保存到本地 `audio/` 目录；在分镜视频区域内嵌播放器展示；后端 `/audio/extract` 接口全面实现，新增 `storyboards.audio_local_path` 字段
+
+### 技术改进
+
+- `novelImportService.js`：新建小说导入服务，支持章节规则识别和可选 AI 剧本化
+- `ttsService.js`：新建 TTS 合成服务，封装 MiniMax 接口，可按需扩展
+- 数据库新增字段：`characters.stages`、`storyboards.audio_local_path`
+- 前端路由新增 `/free-create`、`/media-library` 两个独立功能页面
+- `sceneAPI.generateFourViewImage`、`storyboardsAPI.upscale`、`characterAPI.extractAnchors` 等新前端 API 方法
+
+---
+
 ## [1.2.1] - 2026-03-16
 
 ### 新增
