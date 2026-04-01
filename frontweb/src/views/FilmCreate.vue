@@ -2763,6 +2763,17 @@ async function onGenerateSbImage(sb) {
   sb.error_msg = ''
   generatingSbImageIds.add(sb.id)
   try {
+    // 仅当本页已同步过该分镜的角色勾选状态时落库（避免用「空数组」误清空未初始化的分镜）
+    const localCharIds = sbCharacterIds.value[sb.id]
+    if (localCharIds !== undefined) {
+      try {
+        await storyboardsAPI.update(sb.id, { character_ids: Array.isArray(localCharIds) ? localCharIds : [] })
+      } catch (e) {
+        console.warn('[分镜图] 保存角色勾选失败', e)
+        ElMessage.warning('保存分镜角色失败，请稍后重试')
+        return
+      }
+    }
     const res = await imagesAPI.create({
       storyboard_id: sb.id,
       drama_id: dramaId.value,
@@ -3020,9 +3031,13 @@ function getSbSelectedProps(sbId) {
   return ids.map((id) => list.find((p) => Number(p.id) === Number(id))).filter(Boolean)
 }
 
-function onStoryboardCharacterChange(sbId) {
+async function onStoryboardCharacterChange(sbId) {
   const ids = sbCharacterIds.value[sbId] || []
-  storyboardsAPI.update(sbId, { character_ids: ids }).catch(() => {})
+  try {
+    await storyboardsAPI.update(sbId, { character_ids: ids })
+  } catch (e) {
+    console.warn('[分镜] 保存角色失败', e)
+  }
 }
 
 function onStoryboardSceneChange(sbId) {
