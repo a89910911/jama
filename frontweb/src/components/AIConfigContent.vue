@@ -202,7 +202,12 @@
         <el-form ref="formRef" :model="form" label-width="100px">
           <el-form-item prop="api_key" :rules="[{ required: true, message: '请输入 API Key', trigger: 'blur' }]">
             <template #label><span class="form-label-tip">API Key</span></template>
-            <el-input v-model="form.api_key" type="password" placeholder="输入你的 API 密钥" show-password />
+            <el-input
+              v-model="form.api_key"
+              type="password"
+              :placeholder="form.provider === 'jimeng_ai_api' ? '即梦 Session，多个用英文逗号分隔' : '输入你的 API 密钥'"
+              show-password
+            />
           </el-form-item>
           <el-form-item>
             <template #label><span class="form-label-tip">默认模型</span></template>
@@ -456,6 +461,15 @@ input_reference = (图片文件，可选)</pre>
                   <b>注意：</b>官方 api.vidu.cn 用 <code>Token</code> 认证，中转站用 <code>Bearer</code>，系统自动识别。localhost 图片自动上传图床。
                 </div>
               </el-collapse-item>
+              <el-collapse-item name="jimeng-ai-api-vid">
+                <template #title><span class="ph-tag ph-tag-vid">视频</span> Jimeng AI API（自建服务）</template>
+                <div class="ph-body">
+                  <b>说明：</b>需自行部署 <code>jimeng-free-api-all</code> 等即梦 OpenAI 兼容服务并启动（如 <code>http://127.0.0.1:8000</code>）。本系统仅作为客户端转发请求。<br>
+                  <b>Base URL：</b>填你的服务根地址，无尾斜杠。<br>
+                  <b>API Key：</b>填即梦网页 <b>Session</b>；多个账号用<b>英文逗号</b>分隔，由对方服务轮询使用。<br>
+                  <b>默认路径：</b><code>POST /v1/videos/generations</code>（可在「Endpoint」覆盖）。Seedance 多图需分镜参考图；响应为同步 <code>data[0].url</code>。
+                </div>
+              </el-collapse-item>
             </el-collapse>
           </div>
           <template #footer>
@@ -503,7 +517,12 @@ input_reference = (图片文件，可选)</pre>
               </el-tooltip>
             </span>
           </template>
-          <el-input v-model="form.api_key" type="password" placeholder="API 密钥" show-password />
+          <el-input
+            v-model="form.api_key"
+            type="password"
+            :placeholder="form.provider === 'jimeng_ai_api' ? '即梦 Session，多个用英文逗号分隔' : 'API 密钥'"
+            show-password
+          />
         </el-form-item>
         <template v-if="form.service_type === 'video' && form.api_protocol === 'kling_omni'">
           <el-form-item>
@@ -1101,6 +1120,18 @@ const providerConfigs = {
     { id: 'minimax', name: 'MiniMax 海螺', models: ['MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'MiniMax-Hailuo-02'] },
     { id: 'gemini', name: 'Google Gemini (Veo)', models: ['veo-3.1-generate-preview', 'veo-3.0-generate-preview', 'veo-3.0-fast-generate-preview'] },
     { id: 'dashscope', name: '通义万相', models: ['wan2.6-r2v-flash', 'wan2.6-t2v', 'wan2.2-kf2v-flash', 'wan2.6-i2v-flash', 'wanx2.1-vace-plus'] },
+    {
+      id: 'jimeng_ai_api',
+      name: 'Jimeng AI API（自建即梦免费 API）',
+      models: [
+        'jimeng-video-seedance-2.0',
+        'seedance-2.0',
+        'jimeng-video-seedance-2.0-fast',
+        'jimeng-video-3.0',
+        'jimeng-video-3.0-pro',
+        'jimeng-video-3.5-pro',
+      ],
+    },
     { id: 'openai', name: 'OpenAI', models: ['sora-2', 'sora-2-pro'] }
   ],
   tts: [
@@ -1129,6 +1160,7 @@ const providerProtocolMap = {
   chatfire: 'openai',
   qwen: 'openai',
   deepseek: 'openai',
+  jimeng_ai_api: 'jimeng_ai_api',
 }
 
 /** 厂商 id → 默认 Base URL（与参考前端 AIConfigDialog 757-775 一致） */
@@ -1148,6 +1180,7 @@ function getBaseUrlForProvider(provider) {
   if (p === 'kling') return 'https://api.klingai.com'
   if (p === 'klingai') return 'https://api-beijing.klingai.com'
   if (p === 'ffir') return 'https://ffir.cn'
+  if (p === 'jimeng_ai_api') return 'http://127.0.0.1:8000'
   return 'https://api.chatfire.site/v1'
 }
 
@@ -1234,6 +1267,13 @@ const endpointPreviewInfo = computed(() => {
       submitPath = '/v1/videos'
     } else if (proto === 'veo3') {
       submitPath = '/v1/video/create'
+    } else if (proto === 'jimeng_ai_api' || p === 'jimeng_ai_api') {
+      submitPath = endpoint || '/v1/videos/generations'
+      return {
+        submit: (base || '(请填 Base URL)') + submitPath + '  （Bearer 为即梦 Session，可多账号英文逗号分隔；同步返回 data[0].url）',
+        query: null,
+        isAuto: true,
+      }
     } else if (proto === 'kling_omni' || p === 'ffir' || p === 'klingai') {
       const omniFfir = p === 'ffir' || /ffir\.cn/i.test(base)
       const omniKlingOfficial = p === 'klingai' || /api(-beijing|-singapore)?\.klingai\.com/i.test(base)
@@ -1310,6 +1350,10 @@ function onProviderChange(providerId) {
   form.value.default_model = (p.models && p.models[0]) || ''
   // 自动填充接口规范
   form.value.api_protocol = providerProtocolMap[providerId] || (st === 'text' ? '' : 'openai')
+  if (st === 'video' && providerId === 'jimeng_ai_api') {
+    form.value.endpoint = ''
+    form.value.query_endpoint = ''
+  }
   if (st === 'video' && (providerId === 'ffir' || providerId === 'klingai')) {
     if (providerId === 'ffir') {
       form.value.endpoint = '/kling/v1/videos/omni-video'

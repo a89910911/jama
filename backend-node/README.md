@@ -346,6 +346,14 @@ style:
 2. 实现对应的 API 调用逻辑
 3. 在前端「AI 配置」页面新增服务商选项（`AIConfigContent.vue`）
 
+### Jimeng AI API（自建即梦 OpenAI 兼容服务）
+
+若使用「视频 → 厂商 **Jimeng AI API（自建即梦免费 API）**」：
+
+1. 自行克隆并启动第三方即梦逆向/兼容服务项目（如 `jimeng-free-api-all`），按对方 README 安装依赖与 Chromium，默认监听端口以对方文档为准（常见 `8000`）。
+2. 在本系统 AI 配置中填写 **Base URL**（如 `http://127.0.0.1:8000`）、**API Key** 填即梦 **Session**（多个用英文逗号分隔）。
+3. 后端会请求对方 `POST /v1/videos/generations`（可用配置项 **Endpoint** 覆盖路径），Seedance 多图场景需分镜带参考图；返回为同步 `data[0].url`，无需轮询。
+
 ### 添加新的数据库字段
 
 1. 在 `migrate.js` 的 `ensureColumns()` 中添加新字段定义（类型 + 默认值）
