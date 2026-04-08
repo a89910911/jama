@@ -264,7 +264,15 @@
             :disabled="!currentEpisodeId || pipelineRunning"
             @click="startOneClickPipeline"
           >
-            开始生成
+            一键成片带图片视频
+          </el-button>
+          <el-button
+            :loading="pipelineRunning && !pipelinePaused"
+            :disabled="!currentEpisodeId || pipelineRunning"
+            title="仅提取角色、场景、道具与生成分镜文本，不生成图片与视频"
+            @click="startTextFrameworkPipeline"
+          >
+            生成文本框架
           </el-button>
           <template v-if="pipelineRunning">
             <el-button v-if="!pipelinePaused" type="warning" @click="pipelinePaused = true">⏸ 暂停</el-button>
@@ -273,7 +281,7 @@
         </div>
         <div v-if="pipelineRunning || pipelineErrorLog.length > 0" class="pipeline-status">
           <div v-if="pipelineCurrentStep" class="pipeline-current-step">
-            <span v-if="pipelineStepIndex > 0" class="pipeline-step-badge">{{ pipelineStepIndex }}/{{ PIPELINE_TOTAL_STEPS }}</span>
+            <span v-if="pipelineStepIndex > 0" class="pipeline-step-badge">{{ pipelineStepIndex }}/{{ pipelineStepTotal }}</span>
             {{ pipelineCurrentStep.replace(/^\[步骤 \d+\/\d+\] /, '') }}
           </div>
           <!-- 阶段间倒计时 -->
@@ -746,6 +754,15 @@
             <span class="sb-ctrl-num">{{ i + 1 }}</span>
             <span class="sb-ctrl-title">{{ sb.title || '未命名分镜' }}</span>
             <el-button size="small" plain class="sb-ctrl-btn sb-ctrl-config-btn" @click="onOpenVideoParamsDialog(sb)">⚙ 分镜配置</el-button>
+            <el-button
+              size="small"
+              plain
+              class="sb-ctrl-btn sb-ctrl-mode-btn"
+              :title="isSbUniversalMode(sb.id) ? '切换为经典分镜（中间显示参考图）' : '切换为全能模式（中间为片段描述，经典字段保留）'"
+              @click="onToggleSbUniversalMode(sb)"
+            >
+              {{ isSbUniversalMode(sb.id) ? '经典分镜' : '全能模式' }}
+            </el-button>
             <el-button size="small" plain class="sb-ctrl-btn" title="在本镜头前增加一个分镜" @click="onInsertStoryboardBefore(sb)">＋ 新增</el-button>
             <el-button
               class="sb-ctrl-delete"
@@ -907,8 +924,46 @@
                 </div>
               </template>
             </div>
-            <!-- 中：分镜图（优先用 /images?storyboard_id 拉取到的图，否则用 composed_image） -->
-            <div class="sb-panel sb-image">
+            <!-- 中：经典模式=分镜参考图；全能模式=片段描述（独立字段，与参考图并存） -->
+            <div class="sb-panel sb-image" :class="{ 'sb-image--universal': isSbUniversalMode(sb.id) }">
+              <template v-if="isSbUniversalMode(sb.id)">
+                <div class="sb-prompt-label sb-universal-label-row">
+                  <div class="sb-universal-label-left">
+                    <span class="sb-dot"></span>
+                    <span>片段描述</span>
+                    <el-tooltip placement="top" :show-after="280" :show-arrow="false" popper-class="sb-universal-tooltip-popper">
+                      <template #content>
+                        <div class="sb-universal-tooltip">
+                          可灵 Omni-Video 全能链路（模型以 <strong>AI 配置 · 视频</strong> 为准，如 <code>kling-video-o1</code>、<code>kling-v3-omni</code>）：此处为提交主提示词；只要本框有内容，生视频时<strong>只</strong>发送这段，不会拼接下方「视频提示词」里的动作/对话/旁白。参考图顺序一般为：场景 → 角色（多张）→ 物品 → 分镜主图；请用 <strong>@图片1</strong>、<strong>@图片2</strong>…（<strong>@图片N 后建议加半角空格</strong>）对应参考图，勿用 @姓名 指图；有场景图时 <strong>@图片1</strong> 只表环境，人物从 <strong>@图片2</strong> 起。若场景参考是<strong>四宫格/多视角拼图</strong>，仅借空间与氛围，须在文案中写明<strong>单镜头完整画幅、禁止分屏宫格</strong>，避免成片模仿拼图布局。「根据分镜生成提示词」时第3行会写明环境仅参考 @图片1 且禁止复刻宫格拼图结构，并自动带上该约束。若本框留空，则退回仅用「视频提示词」。
+                        </div>
+                      </template>
+                      <el-icon class="sb-universal-hint-icon" tabindex="0" role="img" aria-label="片段说明">
+                        <QuestionFilled />
+                      </el-icon>
+                    </el-tooltip>
+                  </div>
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    class="sb-universal-gen-btn"
+                    :loading="generatingUniversalSegmentIds.has(sb.id)"
+                    @click="onGenerateUniversalSegmentPrompt(sb)"
+                  >
+                    根据分镜生成提示词
+                  </el-button>
+                </div>
+                <el-input
+                  v-model="sbUniversalSegmentText[sb.id]"
+                  type="textarea"
+                  :rows="10"
+                  :autosize="{ minRows: 10, maxRows: 22 }"
+                  placeholder="例如：@图片1 为夜景街道，@图片2 从餐厅冲出停在光斑里，低头操作手机…"
+                  class="sb-universal-textarea"
+                  @blur="() => onSaveUniversalSegmentField(sb)"
+                />
+              </template>
+              <template v-else>
               <div
                 class="sb-image-area"
                 :class="{ 'sb-image-area--dragover': dragOverSbId === sb.id, 'sb-image-area--has-quad': getStripItems(sb.id).length > 0 }"
@@ -986,6 +1041,7 @@
                   </el-button>
                 </el-tooltip>
               </div>
+              </template>
             </div>
             <!-- 右：分镜视频（由 /videos?storyboard_id 拉取）；有视频时仍显示提示词与生成按钮便于调整后重新生成 -->
             <div class="sb-panel sb-video">
@@ -1016,7 +1072,7 @@
                     size="small"
                     class="sb-generate-video-btn"
                     :loading="generatingSbVideoIds.has(sb.id)"
-                    :disabled="!sb.video_prompt"
+                    :disabled="!sbCanSubmitVideo(sb)"
                     @click="onGenerateSbVideo(sb)"
                   >
                     生成分镜视频
@@ -1040,7 +1096,7 @@
                 </div>
               </div>
               <div v-if="getSbVideo(sb.id)" class="sb-video-actions">
-                <el-button size="small" :loading="generatingSbVideoIds.has(sb.id)" :disabled="!sb.video_prompt" @click="onGenerateSbVideo(sb)">重新生成</el-button>
+                <el-button size="small" :loading="generatingSbVideoIds.has(sb.id)" :disabled="!sbCanSubmitVideo(sb)" @click="onGenerateSbVideo(sb)">重新生成</el-button>
                 <el-tooltip v-if="sb.dialogue" content="对白配音（TTS）" placement="top">
                   <el-button size="small" :loading="ttsSbIds.has(sb.id)" @click="onTtsSbDialogue(sb)">
                     对白配音
@@ -1693,8 +1749,20 @@
       :title="`分镜 ${videoParamsTarget?.storyboard_number ?? ''} · 视频参数`"
       width="680px"
       destroy-on-close
+      @close="onVideoParamsDialogClosed"
     >
       <el-form v-if="videoParamsTarget" label-width="70px" size="small" class="vp-dialog-form">
+        <el-form-item label="创作模式">
+          <el-radio-group
+            :model-value="sbCreationMode[videoParamsTarget.id] === 'universal' ? 'universal' : 'classic'"
+            size="small"
+            @change="(v) => setSbCreationModeId(videoParamsTarget.id, v)"
+          >
+            <el-radio-button value="classic">经典分镜</el-radio-button>
+            <el-radio-button value="universal">全能模式</el-radio-button>
+          </el-radio-group>
+          <div class="vp-mode-hint">全能模式走可灵 Omni-Video：中间为片段描述；生视频时使用 <strong>AI 配置里当前启用的视频模型</strong>（如 <code>kling-video-o1</code>、<code>kling-v3-omni</code>）并合并多素材参考图。经典字段保留，可随时切回。</div>
+        </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="标题">
@@ -2046,7 +2114,8 @@ const pipelinePaused = ref(false)
 const pipelineErrorLog = ref([])
 const pipelineCurrentStep = ref('')
 const pipelineStepIndex = ref(0)    // 当前步骤序号（1-based）
-const PIPELINE_TOTAL_STEPS = 10     // 固定 10 大步骤
+/** 全流程 10 步；仅文本框架为前 4 步 */
+const pipelineStepTotal = ref(10)
 let pipelineResolveResume = null
 // 倒计时（两个生成阶段之间的确认窗口）
 const pipelineCountdown = ref(0)      // 剩余秒数，0 表示不在倒计时
@@ -2285,12 +2354,17 @@ const sbAngleS = ref({})   // 结构化视角：景别
 const sbMovement = ref({})
 const sbLighting = ref({})   // 灯光风格
 const sbDof = ref({})        // 景深
+/** 分镜创作模式：classic | universal（默认 classic，存库 storyboards.creation_mode） */
+const sbCreationMode = ref({})
+/** 全能模式片段描述（存库 universal_segment_text，与经典参考图字段独立） */
+const sbUniversalSegmentText = ref({})
 // 分镜图片/视频列表（由 /images?storyboard_id=xx 和 /videos?storyboard_id=xx 拉取）
 const sbImages = ref({})
 const sbVideos = ref({})
 const sbVideoErrors = ref({})
 const generatingSbImageIds = reactive(new Set())
 const generatingSbVideoIds = reactive(new Set())
+const generatingUniversalSegmentIds = reactive(new Set())
 // 重新生成角色/场景关联分镜图的 loading set，key: 'char-{id}' | 'scene-{id}'
 const regenSbImagesForAsset = reactive(new Set())
 const regenSbImagesProgress = ref({})
@@ -2876,6 +2950,8 @@ function syncStoryboardStateFromEpisode(ep) {
   const nextMovement = {}
   const nextLighting = {}
   const nextDof = {}
+  const nextCreationMode = {}
+  const nextUniversalSegment = {}
   for (const sb of boards) {
     nextScene[sb.id] = sb.scene_id ?? null
     nextDialogue[sb.id] = sb.dialogue ?? ''
@@ -2898,6 +2974,8 @@ function syncStoryboardStateFromEpisode(ep) {
     const charList = Array.isArray(sb.characters) ? sb.characters : (sb.characters != null ? [sb.characters] : [])
     nextCharIds[sb.id] = charList.map((c) => (typeof c === 'object' && c != null ? Number(c.id) : Number(c))).filter((n) => Number.isFinite(n))
     nextPropIds[sb.id] = Array.isArray(sb.prop_ids) ? sb.prop_ids : []
+    nextCreationMode[sb.id] = sb.creation_mode === 'universal' ? 'universal' : 'classic'
+    nextUniversalSegment[sb.id] = (sb.universal_segment_text ?? '').toString()
   }
   sbCharacterIds.value = nextCharIds
   sbPropIds.value = nextPropIds
@@ -2919,6 +2997,8 @@ function syncStoryboardStateFromEpisode(ep) {
   sbMovement.value = nextMovement
   sbLighting.value = nextLighting
   sbDof.value = nextDof
+  sbCreationMode.value = nextCreationMode
+  sbUniversalSegmentText.value = nextUniversalSegment
 }
 
 function onEpisodeSelect(epId) {
@@ -3785,6 +3865,82 @@ async function onSaveSbNarrationField(sb) {
   } catch (_) { /* 静默失败，避免打断输入 */ }
 }
 
+function isSbUniversalMode(sbId) {
+  return sbCreationMode.value[sbId] === 'universal'
+}
+
+function setSbCreationModeId(sbId, mode) {
+  if (sbId == null) return
+  const m = mode === 'universal' ? 'universal' : 'classic'
+  sbCreationMode.value = { ...sbCreationMode.value, [sbId]: m }
+}
+
+async function onToggleSbUniversalMode(sb) {
+  if (!sb?.id) return
+  const cur = isSbUniversalMode(sb.id) ? 'universal' : 'classic'
+  const next = cur === 'universal' ? 'classic' : 'universal'
+  sbCreationMode.value = { ...sbCreationMode.value, [sb.id]: next }
+  try {
+    await storyboardsAPI.update(sb.id, { creation_mode: next })
+    const list = store.currentEpisode?.storyboards
+    if (Array.isArray(list)) {
+      const row = list.find((x) => Number(x.id) === Number(sb.id))
+      if (row) row.creation_mode = next
+    }
+  } catch (e) {
+    sbCreationMode.value = { ...sbCreationMode.value, [sb.id]: cur }
+    ElMessage.error(e.message || '保存失败')
+  }
+}
+
+async function onSaveUniversalSegmentField(sb) {
+  if (!sb?.id) return
+  const next = (sbUniversalSegmentText.value[sb.id] || '').toString()
+  const prev = (sb.universal_segment_text || '').toString()
+  if (next === prev) return
+  try {
+    await storyboardsAPI.update(sb.id, { universal_segment_text: next.trim() || null })
+    const list = store.currentEpisode?.storyboards
+    if (Array.isArray(list)) {
+      const row = list.find((x) => Number(x.id) === Number(sb.id))
+      if (row) row.universal_segment_text = next.trim() || null
+    }
+  } catch (_) { /* 静默失败，避免打断输入 */ }
+}
+
+/** 全能模式：根据当前分镜结构化字段调用文本模型生成片段描述（含运镜、机位等） */
+async function onGenerateUniversalSegmentPrompt(sb) {
+  if (!sb?.id || generatingUniversalSegmentIds.has(sb.id)) return
+  generatingUniversalSegmentIds.add(sb.id)
+  try {
+    const dUi = Number(sbDuration.value[sb.id])
+    const dRow = Number(sb.duration)
+    const dProj = Number(videoClipDuration.value)
+    const durationSec =
+      Number.isFinite(dUi) && dUi > 0
+        ? dUi
+        : Number.isFinite(dRow) && dRow > 0
+          ? dRow
+          : Number.isFinite(dProj) && dProj > 0
+            ? dProj
+            : 5
+    const data = await storyboardsAPI.generateUniversalSegmentPrompt(sb.id, { duration: durationSec })
+    const text = (data?.universal_segment_text ?? '').toString().trim()
+    if (!text) throw new Error('未返回提示词')
+    sbUniversalSegmentText.value = { ...sbUniversalSegmentText.value, [sb.id]: text }
+    const list = store.currentEpisode?.storyboards
+    if (Array.isArray(list)) {
+      const row = list.find((x) => Number(x.id) === Number(sb.id))
+      if (row) row.universal_segment_text = text
+    }
+    ElMessage.success('已根据分镜生成全能片段提示词')
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e.message || '生成失败，请检查文本模型配置')
+  } finally {
+    generatingUniversalSegmentIds.delete(sb.id)
+  }
+}
+
 /** P2-3: 生成场景多视角图 */
 async function onGenerateSceneMultiView(scene) {
   if (!scene?.id || generatingSceneMultiViewIds.has(scene.id)) return
@@ -3817,6 +3973,54 @@ function toAbsoluteImageUrl(url) {
   if (s.startsWith('http://') || s.startsWith('https://')) return s
   const base = (baseUrl.value || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '')
   return base ? base + (s.startsWith('/') ? s : '/' + s) : s
+}
+
+function sbUniversalSegmentTrimmed(sb) {
+  if (!sb?.id) return ''
+  return (sbUniversalSegmentText.value[sb.id] ?? sb.universal_segment_text ?? '').toString().trim()
+}
+
+function sbCanSubmitVideo(sb) {
+  if (!sb) return false
+  const vp = (sb.video_prompt || '').toString().trim()
+  if (vp) return true
+  if (isSbUniversalMode(sb.id)) return !!sbUniversalSegmentTrimmed(sb)
+  return false
+}
+
+/** 提交给视频 API 的文案：全能模式有片段描述时仅提交该段（不拼接 video_prompt，避免动作/旁白盖过 @图片 等编排） */
+function buildSbVideoPromptForApi(sb) {
+  const vp = (sb.video_prompt || '').toString().trim()
+  const seg = sbUniversalSegmentTrimmed(sb)
+  if (isSbUniversalMode(sb.id)) {
+    if (seg) return seg
+    return vp
+  }
+  return vp
+}
+
+/** 全能模式：场景/角色/物品/分镜主图 → 绝对 URL 列表（供 Omni image_list，最多 10） */
+function collectSbOmniReferenceAbsoluteUrls(sb) {
+  if (!sb?.id) return []
+  const urls = []
+  const seen = new Set()
+  function pushAbs(u) {
+    const abs = toAbsoluteImageUrl(u)
+    if (!abs || seen.has(abs)) return
+    seen.add(abs)
+    urls.push(abs)
+  }
+  const scene = getSbSelectedScene(sb.id)
+  if (scene && hasAssetImage(scene)) pushAbs(assetImageUrl(scene))
+  for (const c of getSbSelectedCharacters(sb.id)) {
+    if (hasAssetImage(c)) pushAbs(assetImageUrl(c))
+  }
+  for (const p of getSbSelectedProps(sb.id)) {
+    if (hasAssetImage(p)) pushAbs(assetImageUrl(p))
+  }
+  const main = getSbFirstFrameUrl(sb)
+  if (main) pushAbs(main)
+  return urls.slice(0, 10)
 }
 
 function onEditSbImagePrompt(sb) {
@@ -3974,7 +4178,9 @@ async function onSaveSbVideoFields(sb) {
       lighting_style: sbLighting.value[sb.id] || null,
       depth_of_field: sbDof.value[sb.id] || null,
       shot_type: (sbShotType.value[sb.id] || '').toString().trim() || null,
-      video_prompt
+      video_prompt,
+      creation_mode: sbCreationMode.value[sb.id] === 'universal' ? 'universal' : 'classic',
+      universal_segment_text: (sbUniversalSegmentText.value[sb.id] || '').toString().trim() || null
     })
     await loadDrama()
     ElMessage.success('已保存并更新视频提示词')
@@ -3998,6 +4204,16 @@ async function onSaveSbVideoPrompt(sb) {
 function onOpenVideoParamsDialog(sb) {
   videoParamsTarget.value = sb
   showVideoParamsDialog.value = true
+}
+
+/** 取消关闭弹窗时，将创作模式与片段描述与服务器状态对齐（避免仅改单选未保存导致本地漂移） */
+function onVideoParamsDialogClosed() {
+  const sb = videoParamsTarget.value
+  if (!sb?.id) return
+  const row = (storyboards.value || []).find((x) => Number(x.id) === Number(sb.id))
+  if (!row) return
+  sbCreationMode.value = { ...sbCreationMode.value, [sb.id]: row.creation_mode === 'universal' ? 'universal' : 'classic' }
+  sbUniversalSegmentText.value = { ...sbUniversalSegmentText.value, [sb.id]: (row.universal_segment_text ?? '').toString() }
 }
 
 async function onSaveVideoParams() {
@@ -4029,12 +4245,18 @@ async function onBatchInferParams() {
 }
 
 async function onGenerateSbVideo(sb) {
-  if (!dramaId.value || !sb?.id || !sb.video_prompt) return
-  if (!getSbFirstFrameUrl(sb)) {
+  if (!dramaId.value || !sb?.id || !sbCanSubmitVideo(sb)) return
+  const universal = isSbUniversalMode(sb.id)
+  const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
+  const hasClassicFrame = !!getSbFirstFrameUrl(sb)
+  const hasAnyImage = omniRefs.length > 0 || hasClassicFrame
+  if (!hasAnyImage) {
     try {
       await ElMessageBox.confirm(
-        '当前没有分镜参考图，将根据文字提示词直接生成视频，效果可能不稳定。确认继续？',
-        '没有分镜参考图',
+        universal
+          ? '当前没有可用的参考图（场景/角色/分镜图等），将按纯文案提交 Omni-Video（模型以 AI 配置为准），效果可能不稳定。确认继续？'
+          : '当前没有分镜参考图，将根据文字提示词直接生成视频，效果可能不稳定。确认继续？',
+        universal ? '全能模式无参考图' : '没有分镜参考图',
         { confirmButtonText: '继续生成', cancelButtonText: '取消', type: 'warning' }
       )
     } catch {
@@ -4051,17 +4273,24 @@ async function onGenerateSbVideo(sb) {
   }
   storyboardsAPI.update(sb.id, { video_url: null }).catch(() => {})
   try {
-    const firstFrameUrl = await getMainImageUrlForVideo(sb)
-    const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+    let absoluteUrl = ''
+    let referenceUrls = undefined
+    if (universal) {
+      referenceUrls = omniRefs.length ? omniRefs : undefined
+      absoluteUrl = omniRefs[0] || ''
+    } else {
+      const firstFrameUrl = await getMainImageUrlForVideo(sb)
+      absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+      referenceUrls = absoluteUrl ? [absoluteUrl] : undefined
+    }
     const res = await videosAPI.create({
       drama_id: dramaId.value,
       storyboard_id: sb.id,
-      prompt: sb.video_prompt,
+      prompt: buildSbVideoPromptForApi(sb),
       image_url: absoluteUrl || undefined,
-      reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
-      model: undefined,
+      reference_image_urls: referenceUrls,
       style: getSelectedStyle(),
-      aspect_ratio: projectAspectRatio.value,
+      aspect_ratio: projectAspectRatio.value || '16:9',
       resolution: videoResolution.value || undefined,
       duration: videoClipDuration.value || undefined,
     })
@@ -4110,7 +4339,7 @@ async function onGenerateStoryboard() {
       style: getSelectedStyle(),
       storyboard_count: storyboardCount.value || undefined,
       video_duration: videoDuration.value || undefined,
-      aspect_ratio: projectAspectRatio.value,
+      aspect_ratio: projectAspectRatio.value || '16:9',
       include_narration: !!storyboardIncludeNarration.value,
     })
     const taskId = res?.task_id ?? (typeof res === 'string' ? res : null)
@@ -4261,12 +4490,15 @@ async function startBatchVideoGeneration() {
       await loadStoryboardMedia()
     }
     const boards = store.storyboards || []
-    // 只处理：有图片 且 还没有已完成视频 的分镜
+    // 只处理：有参考图（经典=分镜主图；全能=场景/角色/分镜等）且 还没有已完成视频 的分镜
     const todo = boards.filter((sb) => {
-      const firstFrameUrl = getSbFirstFrameUrl(sb)
-      if (!firstFrameUrl) return false
       const vidList = sbVideos.value[sb.id] || []
-      return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+      if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
+      if (isSbUniversalMode(sb.id)) {
+        if (!sbCanSubmitVideo(sb)) return false
+        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+      }
+      return !!getSbFirstFrameUrl(sb)
     })
     if (todo.length === 0) {
       ElMessage.info('没有需要生成视频的分镜（分镜缺少图片，或视频已全部生成）')
@@ -4284,7 +4516,14 @@ async function startBatchVideoGeneration() {
       while (videoQueueIdx < todo.length) {
         if (batchVideoStopping.value) break
         const sb = todo[videoQueueIdx++]
-        if (!getSbFirstFrameUrl(sb)) {
+        const universal = isSbUniversalMode(sb.id)
+        const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
+        if (!universal && !getSbFirstFrameUrl(sb)) {
+          videoDoneCount++
+          batchVideoProgress.value = { ...batchVideoProgress.value, current: videoDoneCount }
+          continue
+        }
+        if (universal && !omniRefs.length && !getSbFirstFrameUrl(sb)) {
           videoDoneCount++
           batchVideoProgress.value = { ...batchVideoProgress.value, current: videoDoneCount }
           continue
@@ -4298,10 +4537,10 @@ async function startBatchVideoGeneration() {
             sbSelectedVideoId.value = next
           }
           const firstFrameUrl = await getMainImageUrlForVideo(sb)
-          const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
-          // 连贯帧：提取上一条视频末帧作为参考
+          const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+          // 连贯帧：提取上一条视频末帧作为参考（全能模式不走连贯帧替换）
           let contiguityFirstFrameUrl = absoluteUrl
-          if (contiguity && prevVideoItem) {
+          if (contiguity && prevVideoItem && !universal) {
             const prevVideoUrl = prevVideoItem.local_path
               ? toAbsoluteImageUrl('/static/' + prevVideoItem.local_path.replace(/^\//, ''))
               : prevVideoItem.video_url
@@ -4318,15 +4557,18 @@ async function startBatchVideoGeneration() {
               } catch (_) {}
             }
           }
+          const refUrls = universal
+            ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+            : (absoluteUrl ? [absoluteUrl] : undefined)
           const res = await videosAPI.create({
             drama_id: dramaId.value,
             storyboard_id: sb.id,
-            prompt: sb.video_prompt,
+            prompt: buildSbVideoPromptForApi(sb),
             image_url: contiguityFirstFrameUrl || undefined,
             first_frame_url: contiguityFirstFrameUrl || undefined,
-            reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
+            reference_image_urls: refUrls,
             style: getSelectedStyle(),
-            aspect_ratio: projectAspectRatio.value,
+            aspect_ratio: projectAspectRatio.value || '16:9',
             resolution: videoResolution.value || undefined,
             duration: videoClipDuration.value || undefined,
           })
@@ -4570,10 +4812,28 @@ async function startOneClickPipeline() {
   pipelineCurrentStep.value = ''
   pipelineStepIndex.value = 0
   pipelineActiveTasks.clear()
+  pipelineStepTotal.value = 10
   pipelineRunning.value = true
   pipelinePaused.value = false
   try {
-    await runOneClickPipeline()
+    await runOneClickPipeline(false)
+  } finally {
+    pipelineRunning.value = false
+    pipelineActiveTasks.clear()
+  }
+}
+
+async function startTextFrameworkPipeline() {
+  if (!currentEpisodeId.value || pipelineRunning.value) return
+  pipelineErrorLog.value = []
+  pipelineCurrentStep.value = ''
+  pipelineStepIndex.value = 0
+  pipelineActiveTasks.clear()
+  pipelineStepTotal.value = 4
+  pipelineRunning.value = true
+  pipelinePaused.value = false
+  try {
+    await runOneClickPipeline(true)
   } finally {
     pipelineRunning.value = false
     pipelineActiveTasks.clear()
@@ -4582,10 +4842,10 @@ async function startOneClickPipeline() {
 
 function setPipelineStep(idx, text) {
   pipelineStepIndex.value = idx
-  pipelineCurrentStep.value = `[步骤 ${idx}/${PIPELINE_TOTAL_STEPS}] ${text}`
+  pipelineCurrentStep.value = `[步骤 ${idx}/${pipelineStepTotal.value}] ${text}`
 }
 
-async function runOneClickPipeline() {
+async function runOneClickPipeline(textOnly = false) {
   const episodeId = currentEpisodeId.value
   const dramaIdVal = dramaId.value
   if (!episodeId || !dramaIdVal) return
@@ -4683,7 +4943,7 @@ async function runOneClickPipeline() {
       try {
         const res = await dramaAPI.generateStoryboard(episodeId, {
           style,
-          aspect_ratio: projectAspectRatio.value,
+          aspect_ratio: projectAspectRatio.value || '16:9',
           storyboard_count: storyboardCount.value || undefined,
           video_duration: videoDuration.value || undefined,
           include_narration: !!storyboardIncludeNarration.value,
@@ -4716,6 +4976,12 @@ async function runOneClickPipeline() {
       boards = store.storyboards || []
     } else {
       setPipelineStep(4, `已有 ${boards.length} 个分镜，跳过生成`)
+    }
+
+    if (textOnly) {
+      pipelineCurrentStep.value = '文本框架已就绪（未生成图片与视频）'
+      ElMessage.success('文本框架已生成：角色、场景、道具与分镜脚本已就绪')
+      return
     }
 
     // ════════════════════════════════════════════════════════
@@ -4891,9 +5157,13 @@ async function runOneClickPipeline() {
     {
       await loadStoryboardMedia()
       const boards2 = (store.storyboards || []).filter((sb) => {
-        if (!getSbFirstFrameUrl(sb)) return false
         const vidList = sbVideos.value[sb.id] || []
-        return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+        if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
+        if (isSbUniversalMode(sb.id)) {
+          if (!sbCanSubmitVideo(sb)) return false
+          return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+        }
+        return !!getSbFirstFrameUrl(sb)
       })
       const concurrency = pipelineVideoConcurrency.value
       setPipelineStep(9, `生成分镜视频（${boards2.length} 个，并发 ${concurrency}）...`)
@@ -4903,17 +5173,21 @@ async function runOneClickPipeline() {
         try {
           const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
           const ok = await pipelineWithRetry(stepName, async () => {
+            const universal = isSbUniversalMode(sb.id)
+            const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
             const firstFrameUrl = await getMainImageUrlForVideo(sb)
-            const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+            const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+            const refUrls = universal
+              ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+              : (absoluteUrl ? [absoluteUrl] : undefined)
             const res = await videosAPI.create({
               drama_id: dramaIdVal,
               storyboard_id: sb.id,
-              prompt: sb.video_prompt,
+              prompt: buildSbVideoPromptForApi(sb),
               image_url: absoluteUrl || undefined,
-              reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
-              model: undefined,
+              reference_image_urls: refUrls,
               style,
-              aspect_ratio: projectAspectRatio.value,
+              aspect_ratio: projectAspectRatio.value || '16:9',
               resolution: videoResolution.value || undefined,
               duration: videoClipDuration.value || undefined,
             })
@@ -5138,7 +5412,7 @@ async function runRepairPipeline() {
       pipelineCurrentStep.value = '正在生成分镜...'
       try {
         const res = await dramaAPI.generateStoryboard(episodeId, {
-          aspect_ratio: projectAspectRatio.value,
+          aspect_ratio: projectAspectRatio.value || '16:9',
           storyboard_count: storyboardCount.value || undefined,
           video_duration: videoDuration.value || undefined,
           include_narration: !!storyboardIncludeNarration.value,
@@ -5187,9 +5461,13 @@ async function runRepairPipeline() {
     }
     await loadStoryboardMedia()
     const boards2 = (store.storyboards || []).filter((sb) => {
-      if (!getSbFirstFrameUrl(sb)) return false
       const vidList = sbVideos.value[sb.id] || []
-      return !vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))
+      if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
+      if (isSbUniversalMode(sb.id)) {
+        if (!sbCanSubmitVideo(sb)) return false
+        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+      }
+      return !!getSbFirstFrameUrl(sb)
     })
     {
       const concurrency = pipelineVideoConcurrency.value
@@ -5198,16 +5476,20 @@ async function runRepairPipeline() {
         await checkPause()
         const stepName = '分镜视频 #' + (sb.storyboard_number ?? sb.id)
         const ok = await pipelineWithRetry(stepName, async () => {
+          const universal = isSbUniversalMode(sb.id)
+          const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
           const firstFrameUrl = await getMainImageUrlForVideo(sb)
-          const absoluteUrl = toAbsoluteImageUrl(firstFrameUrl)
+          const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+          const refUrls = universal
+            ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+            : (absoluteUrl ? [absoluteUrl] : undefined)
           const res = await videosAPI.create({
             drama_id: dramaIdVal,
             storyboard_id: sb.id,
-            prompt: sb.video_prompt,
+            prompt: buildSbVideoPromptForApi(sb),
             image_url: absoluteUrl || undefined,
-            reference_image_urls: absoluteUrl ? [absoluteUrl] : undefined,
-            model: undefined,
-            aspect_ratio: projectAspectRatio.value,
+            reference_image_urls: refUrls,
+            aspect_ratio: projectAspectRatio.value || '16:9',
             resolution: videoResolution.value || undefined,
             duration: videoClipDuration.value || undefined,
           })
@@ -6814,6 +7096,102 @@ html.light .sb-image-area:hover {
 .sb-image-file-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 .sb-gen-btn { margin-top: 4px; }
 .sb-image-area img.sb-generated-img { cursor: pointer; }
+.sb-panel.sb-image.sb-image--universal {
+  min-height: 300px;
+  justify-content: flex-start;
+}
+.sb-universal-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.sb-universal-label-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sb-universal-hint-icon {
+  cursor: help;
+  color: #9ca3af;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.sb-universal-hint-icon:hover {
+  color: #a78bfa;
+}
+.sb-universal-gen-btn {
+  flex-shrink: 0;
+}
+:global(.sb-universal-tooltip-popper.el-popper) {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sb-universal-tooltip {
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #f1f5f9;
+  background: #0f172a;
+  border: 1px solid rgba(248, 250, 252, 0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.sb-universal-tooltip strong {
+  font-weight: 600;
+  color: #ffffff;
+}
+html.light .sb-universal-tooltip {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+html.light .sb-universal-tooltip strong {
+  color: #020617;
+}
+.sb-universal-textarea {
+  flex: 1;
+  min-height: 0;
+}
+.sb-universal-textarea :deep(.el-textarea__inner) {
+  min-height: 220px !important;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.vp-mode-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.45;
+  margin-top: 8px;
+  max-width: 520px;
+}
+.sb-ctrl-mode-btn.el-button {
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.08);
+}
+.sb-ctrl-mode-btn.el-button:hover {
+  border-color: #22c55e;
+  color: #fff;
+  background: rgba(34, 197, 94, 0.45);
+}
+html.light .sb-ctrl-mode-btn.el-button {
+  border-color: rgba(22, 163, 74, 0.35);
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.06);
+}
+html.light .sb-ctrl-mode-btn.el-button:hover {
+  border-color: #16a34a;
+  color: #fff;
+  background: #16a34a;
+}
 /* 有四宫格或多图时，image-area 改为纵向滚动布局 */
 .sb-image-area--has-quad {
   flex-direction: column;
