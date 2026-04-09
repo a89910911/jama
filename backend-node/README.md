@@ -10,7 +10,7 @@
 
 > 遇到问题或有功能建议，欢迎在 [GitHub Issues](https://github.com/xuanyustudio/LocalMiniDrama/issues) 或 [Gitee Issues](https://gitee.com/bi_shang_a/localminidrama/issues) 提交反馈。
 
-> **本包版本：** `1.2.3`（与仓库根目录 [CHANGELOG](../CHANGELOG.md)、前端与桌面 `package.json` 对齐）
+> **本包版本：** `1.2.5`（与仓库根目录 [CHANGELOG](../CHANGELOG.md)、前端与桌面 `package.json` 对齐）
 
 ---
 
@@ -318,7 +318,7 @@ style:
 2. `videoService.js` 异步处理：调用视频 API → 轮询任务状态 → 下载到本地
 3. 前端轮询 `GET /videos/:id` 直到 status=completed
 
-**视频参数（Volcengine 专用）：**
+**视频参数（Volcengine 经典 Seedance 单链路，示例）：**
 ```json
 {
   "model": "doubao-seedance-1-0-pro-250528",
@@ -331,6 +331,14 @@ style:
   "watermark": false
 }
 ```
+
+**火山方舟 Seedance 2.0 · 全能 / 多参考图（`volcengine_omni`）：**
+
+- 在前端「AI 配置 → 视频生成」选择接口规范 **`volcengine_omni`**，厂商仍为火山引擎；**Base URL** 一般为 `https://ark.cn-beijing.volces.com/api/v3`；**模型**填控制台接入点（如 `doubao-seedance-2-0-260128`、`doubao-seedance-2-0-fast-260128`）。
+- 与制作页分镜 **「全能模式」** 配合：首条为文本提示，其余参考图为场景/角色/道具/分镜主图等，每张 **`role: reference_image`**；方舟侧最多取 **9** 张。
+- **Seedance 2.x** 请求时长会在后端吸附到 **4–15 秒**；默认走 `POST /v1/videos/generations`（可用配置 **Endpoint** 覆盖）。实现见 `videoClient.js`（`volcengine_omni` 分支）。
+
+**可灵 Omni（`kling_omni`）** 同样支持分镜全能模式的多图参考与片段描述-only 提交逻辑，配置方式见前端 AI 配置页说明。
 
 ### 提示词国际化
 
