@@ -961,7 +961,7 @@
                     <el-tooltip placement="top" :show-after="280" :show-arrow="false" popper-class="sb-universal-tooltip-popper">
                       <template #content>
                         <div class="sb-universal-tooltip">
-                          全能生视频链路（<strong>AI 配置 · 视频</strong> 中选接口规范：<code>kling_omni</code> 可灵 Omni，或 <code>volcengine_omni</code> 火山即梦 Seedance 2.0 多图参考；模型如 <code>kling-video-o1</code>、<code>doubao-seedance-2-0-260128</code> 等以控制台为准）：此处为提交主提示词；只要本框有内容，生视频时<strong>只</strong>发送这段，不会拼接下方「视频提示词」里的动作/对话/旁白。参考图顺序一般为：场景 → 角色（多张）→ 物品 → 分镜主图；请用 <strong>@图片1</strong>、<strong>@图片2</strong>…（<strong>@图片N 后建议加半角空格</strong>）对应参考图，勿用 @姓名 指图；有场景图时 <strong>@图片1</strong> 只表环境，人物从 <strong>@图片2</strong> 起。若场景参考是<strong>四宫格/多视角拼图</strong>，仅借空间与氛围，须在文案中写明<strong>单镜头完整画幅、禁止分屏宫格</strong>，避免成片模仿拼图布局。「根据分镜生成提示词」时第3行会写明环境仅参考 @图片1 且禁止复刻宫格拼图结构，并自动带上该约束。若本框留空，则退回仅用「视频提示词」。
+                          全能生视频链路（<strong>AI 配置 · 视频</strong> 中选接口规范：<code>kling_omni</code> 可灵 Omni，或 <code>volcengine_omni</code> 火山即梦 Seedance 2.0 多图参考；模型如 <code>kling-video-o1</code>、<code>doubao-seedance-2-0-260128</code> 等以控制台为准）：此处为提交主提示词；只要本框有内容，生视频时<strong>只</strong>发送这段，不会拼接下方「视频提示词」里的动作/对话/旁白。参考图顺序一般为：场景 → 角色（多张）→ 物品（<strong>不含</strong>经典分镜中间主图）；请用 <strong>@图片1</strong>、<strong>@图片2</strong>…（<strong>@图片N 后建议加半角空格</strong>）对应参考图，勿用 @姓名 指图；有场景图时 <strong>@图片1</strong> 只表环境，人物从 <strong>@图片2</strong> 起。若场景参考是<strong>四宫格/多视角拼图</strong>，仅借空间与氛围，须在文案中写明<strong>单镜头完整画幅、禁止分屏宫格</strong>，避免成片模仿拼图布局。「根据分镜生成提示词」时第3行会写明环境仅参考 @图片1 且禁止复刻宫格拼图结构，并自动带上该约束。若本框留空，则退回仅用「视频提示词」。
                         </div>
                       </template>
                       <el-icon class="sb-universal-hint-icon" tabindex="0" role="img" aria-label="片段说明">
@@ -1788,7 +1788,7 @@
             <el-radio-button value="classic">经典分镜</el-radio-button>
             <el-radio-button value="universal">全能模式</el-radio-button>
           </el-radio-group>
-          <div class="vp-mode-hint">全能模式：中间为片段描述；生视频时使用 <strong>AI 配置里当前启用的视频</strong>（接口规范 <code>kling_omni</code> 或 <code>volcengine_omni</code>，模型如 <code>kling-video-o1</code>、<code>doubao-seedance-2-0-260128</code> 等）并合并多素材参考图。经典字段保留，可随时切回。</div>
+          <div class="vp-mode-hint">全能模式：中间为片段描述；生视频时使用 <strong>AI 配置里当前启用的视频</strong>（接口规范 <code>kling_omni</code> 或 <code>volcengine_omni</code>，模型如 <code>kling-video-o1</code>、<code>doubao-seedance-2-0-260128</code> 等）并合并场景/角色/道具等参考图（不含经典分镜主图）。经典字段保留，可随时切回。</div>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
@@ -4141,7 +4141,7 @@ function buildSbVideoPromptForApi(sb) {
   return vp
 }
 
-/** 全能模式：场景/角色/物品/分镜主图 → 绝对 URL 列表（供可灵 Omni / 火山多图参考，最多 10，方舟侧最多取 9 张） */
+/** 全能模式：场景/角色/物品 → 绝对 URL 列表（不含经典分镜中间主图；供可灵 Omni / 火山多图参考，最多 10，方舟侧最多取 9 张） */
 function collectSbOmniReferenceAbsoluteUrls(sb) {
   if (!sb?.id) return []
   const urls = []
@@ -4160,8 +4160,6 @@ function collectSbOmniReferenceAbsoluteUrls(sb) {
   for (const p of getSbSelectedProps(sb.id)) {
     if (hasAssetImage(p)) pushAbs(assetImageUrl(p))
   }
-  const main = getSbFirstFrameUrl(sb)
-  if (main) pushAbs(main)
   return urls.slice(0, 10)
 }
 
@@ -4391,12 +4389,12 @@ async function onGenerateSbVideo(sb) {
   const universal = isSbUniversalMode(sb.id)
   const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
   const hasClassicFrame = !!getSbFirstFrameUrl(sb)
-  const hasAnyImage = omniRefs.length > 0 || hasClassicFrame
+  const hasAnyImage = universal ? omniRefs.length > 0 : hasClassicFrame
   if (!hasAnyImage) {
     try {
       await ElMessageBox.confirm(
         universal
-          ? '当前没有可用的参考图（场景/角色/分镜图等），将按纯文案提交 Omni-Video（模型以 AI 配置为准），效果可能不稳定。确认继续？'
+          ? '当前没有可用的参考图（场景/角色/道具等；不含经典分镜主图），将按纯文案提交 Omni-Video（模型以 AI 配置为准），效果可能不稳定。确认继续？'
           : '当前没有分镜参考图，将根据文字提示词直接生成视频，效果可能不稳定。确认继续？',
         universal ? '全能模式无参考图' : '没有分镜参考图',
         { confirmButtonText: '继续生成', cancelButtonText: '取消', type: 'warning' }
@@ -4633,13 +4631,13 @@ async function startBatchVideoGeneration() {
       await loadStoryboardMedia()
     }
     const boards = store.storyboards || []
-    // 只处理：有参考图（经典=分镜主图；全能=场景/角色/分镜等）且 还没有已完成视频 的分镜
+    // 只处理：有参考图（经典=分镜主图；全能=场景/角色/道具，不含经典主图）且 还没有已完成视频 的分镜
     const todo = boards.filter((sb) => {
       const vidList = sbVideos.value[sb.id] || []
       if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
       if (isSbUniversalMode(sb.id)) {
         if (!sbCanSubmitVideo(sb)) return false
-        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
       }
       return !!getSbFirstFrameUrl(sb)
     })
@@ -4666,7 +4664,7 @@ async function startBatchVideoGeneration() {
           batchVideoProgress.value = { ...batchVideoProgress.value, current: videoDoneCount }
           continue
         }
-        if (universal && !omniRefs.length && !getSbFirstFrameUrl(sb)) {
+        if (universal && !omniRefs.length) {
           videoDoneCount++
           batchVideoProgress.value = { ...batchVideoProgress.value, current: videoDoneCount }
           continue
@@ -4680,7 +4678,7 @@ async function startBatchVideoGeneration() {
             sbSelectedVideoId.value = next
           }
           const firstFrameUrl = await getMainImageUrlForVideo(sb)
-          const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+          const absoluteUrl = universal ? (omniRefs[0] || '') : toAbsoluteImageUrl(firstFrameUrl)
           // 连贯帧：提取上一条视频末帧作为参考（全能模式不走连贯帧替换）
           let contiguityFirstFrameUrl = absoluteUrl
           if (contiguity && prevVideoItem && !universal) {
@@ -4701,7 +4699,7 @@ async function startBatchVideoGeneration() {
             }
           }
           const refUrls = universal
-            ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+            ? (omniRefs.length ? omniRefs : undefined)
             : (absoluteUrl ? [absoluteUrl] : undefined)
           const res = await videosAPI.create({
             drama_id: dramaId.value,
@@ -5305,7 +5303,7 @@ async function runOneClickPipeline(textOnly = false) {
         if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
         if (isSbUniversalMode(sb.id)) {
           if (!sbCanSubmitVideo(sb)) return false
-          return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+          return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
         }
         return !!getSbFirstFrameUrl(sb)
       })
@@ -5320,9 +5318,9 @@ async function runOneClickPipeline(textOnly = false) {
             const universal = isSbUniversalMode(sb.id)
             const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
             const firstFrameUrl = await getMainImageUrlForVideo(sb)
-            const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+            const absoluteUrl = universal ? (omniRefs[0] || '') : toAbsoluteImageUrl(firstFrameUrl)
             const refUrls = universal
-              ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+              ? (omniRefs.length ? omniRefs : undefined)
               : (absoluteUrl ? [absoluteUrl] : undefined)
             const res = await videosAPI.create({
               drama_id: dramaIdVal,
@@ -5610,7 +5608,7 @@ async function runRepairPipeline() {
       if (vidList.some((v) => v.status === 'completed' && (v.video_url || v.local_path))) return false
       if (isSbUniversalMode(sb.id)) {
         if (!sbCanSubmitVideo(sb)) return false
-        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0 || !!getSbFirstFrameUrl(sb)
+        return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
       }
       return !!getSbFirstFrameUrl(sb)
     })
@@ -5624,9 +5622,9 @@ async function runRepairPipeline() {
           const universal = isSbUniversalMode(sb.id)
           const omniRefs = universal ? collectSbOmniReferenceAbsoluteUrls(sb) : []
           const firstFrameUrl = await getMainImageUrlForVideo(sb)
-          const absoluteUrl = universal ? (omniRefs[0] || toAbsoluteImageUrl(firstFrameUrl)) : toAbsoluteImageUrl(firstFrameUrl)
+          const absoluteUrl = universal ? (omniRefs[0] || '') : toAbsoluteImageUrl(firstFrameUrl)
           const refUrls = universal
-            ? (omniRefs.length ? omniRefs : (absoluteUrl ? [absoluteUrl] : undefined))
+            ? (omniRefs.length ? omniRefs : undefined)
             : (absoluteUrl ? [absoluteUrl] : undefined)
           const res = await videosAPI.create({
             drama_id: dramaIdVal,

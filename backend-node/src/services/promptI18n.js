@@ -1117,7 +1117,7 @@ Reference images — CRITICAL:
 - Use ONLY the tokens listed in IMAGE_SLOT_MAP: @图片1, @图片2, @图片3, … (Arabic digits, no full-width numerals).
 - Follow IMAGE_SLOT_MAP and CHARACTER_IMAGE_BINDING. When @图片1 is 场景, it is ONLY for environment (space, lighting, furniture, weather, background): NEVER put a named character's face, body, pose, skin, or costume on @图片1. In that case characters use @图片2 onward as listed. When @图片1 is not 场景, bind characters exactly to the @图片N shown in the map (may include @图片1).
 - When describing a character named in the script, map them to the correct @图片N from CHARACTER_IMAGE_BINDING.
-- Props and 分镜主图 use their @图片N from the map.
+- Props use their @图片N from the map.
 - Spacing: after EVERY @图片N token, insert one ASCII space (0x20) before the next Chinese/English character if the model would otherwise concatenate (e.g. write 「在 @图片1 的卧室里，@图片2 侧脸…」, not 「在@图片1的卧室里」without spaces after @ tokens). Before full stop 。 you may omit the extra space.
 - You may mention a person's name in plain text for story clarity, but any reference-image binding must use @图片N only — never @姓名 as image token.
 - Do NOT use @场景 as image token.

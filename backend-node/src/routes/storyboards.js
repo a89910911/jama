@@ -488,15 +488,7 @@ function routes(db, log) {
           }
         }
 
-        const ig = db.prepare(
-          `SELECT 1 FROM image_generations
-           WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL
-             AND (local_path IS NOT NULL AND TRIM(local_path) != '' OR image_url IS NOT NULL AND TRIM(image_url) != '')
-           LIMIT 1`
-        ).get(sbId);
-        const sbHasFrame = !!(sb.local_path && String(sb.local_path).trim()) || !!ig;
-
-        /** 与 collectSbOmniReferenceAbsoluteUrls 一致：场景(有图) → 角色(有图,绑定序) → 道具(有图) → 分镜主图 */
+        /** 与 collectSbOmniReferenceAbsoluteUrls 一致：场景(有图) → 角色(有图,绑定序) → 道具(有图)；不含经典分镜主图 */
         const slots = [];
         const pushSlot = (kind, summary) => {
           const num = slots.length + 1;
@@ -529,9 +521,6 @@ function routes(db, log) {
           if (!hasMediaRef(pr)) continue;
           pushSlot('道具', String(pr.name || '道具').trim());
         }
-        if (sbHasFrame) {
-          pushSlot('分镜主图', '分镜首帧或主参考图');
-        }
 
         const imageSlotMapBlock = [
           'IMAGE_SLOT_MAP（全能模式提交视频时参考图顺序；正文仅可使用下列占位符，与 API 一致）:',
@@ -559,7 +548,7 @@ function routes(db, log) {
         if (slots.length === 0) {
           return response.badRequest(
             res,
-            '请至少为场景、角色或分镜上传一张参考图后再生成，以便对应 @图片1、@图片2 与 API 参考顺序一致'
+            '请至少为场景、角色或道具上传一张参考图后再生成，以便对应 @图片1、@图片2 与 API 参考顺序一致'
           );
         }
 
