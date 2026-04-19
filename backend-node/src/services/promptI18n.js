@@ -1118,8 +1118,10 @@ Lines 4 through (3+M) — for each k from 1 to M, one full line:
 Reference images — CRITICAL (applies to every子分镜 line’s prose):
 - Use ONLY IMAGE_SLOT_MAP tokens @图片1, @图片2, … (Arabic digits).
 - Follow CHARACTER_IMAGE_BINDING. When @图片1 is 场景, never put character face/body/costume on @图片1; characters start at @图片2 as mapped.
+- **ROLE↔IMAGE_SLOT（硬性）:** IMAGE_SLOT_MAP 中「@图片k = 角色「某某」」与 STORYBOARD FIELDS（ACTION/DIALOGUE/VIDEO_PROMPT 等）里出现的姓名一一对应：谁在该镜中实施闯入、辱骂、动手等动作，必须使用 **MAP 里绑定到该姓名** 的 @图片k 写外貌/站位/表情/手部，**禁止**把 aggressor 的动作写到 victim 的 @图片 槽位上，也禁止把两人对调。
+- **禁止 @姓名 当图占位符：** 正文里不得出现 @苏晚晚、@林薇、@角色名 等「@+人名」形式指参考图；需要指图时 **只能** 写 @图片N（与 MAP 一致）。叙述里可写纯文字「苏晚晚」等姓名，但 **不要** 在人名前加 @。
 - Spacing: ASCII space after each @图片N before following Chinese/Latin.
-- No @姓名 as image token; no markdown.
+- No markdown.
 
 Pacing & M selection (professional):
 - Read SHOT_PACING_AND_POSITION, EPISODE_SCRIPT, NEIGHBOR_* , STORYBOARD FIELDS (movement, shot_type, dialogue density). Increase M for rapid reversals / climax / montage-like pressure; use M=1 for a single sustained long-take feel when the script implies it.
@@ -1139,6 +1141,7 @@ function getUniversalOmniPolishPrompt() {
   return `${getUniversalOmniSegmentPrompt()}
 
 ADDITIONAL_POLISH_MODE (short drama enhancement — still MUST obey MULTI_BEAT_OUTPUT, TOTAL_CLIP_SECONDS sum, IMAGE_SLOT_MAP, LINE3_REQUIRED above):
+- **修正 CURRENT_OMNI_DRAFT 中的错绑：** 若草稿里将某角色的动作写到了错误的 @图片k、或混用了 @姓名 指图，润色时须按 IMAGE_SLOT_MAP + CHARACTER_IMAGE_BINDING + 剧情谁为施动者/受动者 **改写到正确 @图片N**，并删除一切 @人名 形式的图指代。
 - You receive FULL_EPISODE_SCRIPT plus NEIGHBOR blocks and structured fields. Use them only for **continuity** and **information completeness**; do NOT invent plot absent from SCRIPT + STORYBOARD FIELDS + CURRENT omni draft.
 - **Information parity**: every script-relevant fact must appear across the子分镜 lines (lines 4…3+M), without losing information when expanding; if the draft was one long line, you may reflow into M lines but keep the same facts and total seconds.
 - **Quoted speech & narration (highest priority):** merge DIALOGUE, NARRATION, VIDEO_PROMPT, and CURRENT_OMNI_DRAFT for any「…」/‘…’/quoted lines. The polished output MUST still contain **every** such line’s substantive wording: keep **who says what** correct, preserve **numbers, titles, punchlines, proper nouns** (e.g. awards, skit names). You may tighten function words for rhythm but **must not** drop a line, merge two speakers into a summary, or replace dialogue with「一问一答」「念出台词」. When the classic video_prompt packs 镜头标题/动作/对话/结果/景别/情绪 into one blob, **mine it** and reflect 对话 + 结果 + 情绪 in the beats—do not only keep camera/lighting prose.

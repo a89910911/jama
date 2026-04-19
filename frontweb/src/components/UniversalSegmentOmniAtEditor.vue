@@ -5,7 +5,7 @@
       class="omni-at-editor"
       contenteditable="true"
       spellcheck="false"
-      data-placeholder="例如：@图片1 为夜景街道，@图片2 从餐厅冲出…"
+      data-placeholder="输入 @ 选择素材；编辑区显示 @场景名 / @角色名，保存与提交仍为 @图片N"
       @input="onInput"
       @blur="onBlur"
       @keydown="onKeydown"
@@ -37,16 +37,27 @@
           <span class="omni-at-menu-meta">
             <span class="omni-at-menu-tag" :class="'omni-at-menu-tag--' + s.kind">{{ kindLabel(s.kind) }}</span>
             <span class="omni-at-menu-name">{{ s.name }}</span>
-            <span class="omni-at-menu-at">@图片{{ s.index }}</span>
+            <span class="omni-at-menu-at">{{ menuPrimaryAt(s) }}</span>
+            <span class="omni-at-menu-at-sub">提交 {{ canonicalAt(s.index) }}</span>
           </span>
         </button>
       </div>
     </teleport>
+    <div class="omni-at-footer">
+      <el-tooltip content="复制为 @图片N 格式（与提交视频一致）" placement="top">
+        <el-button type="default" text size="small" class="omni-at-copy-btn" @click="onCopyCanonical">
+          <el-icon><DocumentCopy /></el-icon>
+          复制提示词
+        </el-button>
+      </el-tooltip>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
+import { DocumentCopy } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -78,6 +89,34 @@ function kindLabel(kind) {
   return '参考'
 }
 
+function slotByIndex(index) {
+  const list = props.slots || []
+  return list.find((s) => Number(s.index) === Number(index))
+}
+
+function canonicalAt(index) {
+  const n = Number(index)
+  if (!Number.isFinite(n) || n < 1) return '@图片1'
+  return `@图片${n}`
+}
+
+/** 编辑区展示用 @token；与存库/提交的 @图片N 一一对应 */
+function makeDisplayAtToken(index) {
+  const n = Number(index)
+  const slot = slotByIndex(n)
+  const name = slot && slot.name != null ? String(slot.name).trim() : ''
+  if (!name) return canonicalAt(n)
+  const list = props.slots || []
+  const dup = list.filter((x) => String(x.name || '').trim() === name).length > 1
+  if (!dup) return `@${name}`
+  const prefix = slot.kind === 'scene' ? '场景' : slot.kind === 'prop' ? '物品' : '角色'
+  return `@${prefix}·${name}`
+}
+
+function menuPrimaryAt(s) {
+  return makeDisplayAtToken(s.index)
+}
+
 function applyPlainTextToEditor(el, text) {
   if (!el) return
   const raw = text == null ? '' : String(text)
@@ -95,10 +134,11 @@ function applyPlainTextToEditor(el, text) {
     span.className = CHIP_CLASS
     span.contentEditable = 'false'
     span.dataset.n = m[1]
-    span.textContent = `@图片${m[1]}`
+    const disp = makeDisplayAtToken(m[1])
+    span.textContent = disp
     span.setAttribute('role', 'button')
     span.setAttribute('tabindex', '0')
-    span.setAttribute('aria-label', `参考图 @图片${m[1]}，点击可更换`)
+    span.setAttribute('aria-label', `${disp}（提交为 ${canonicalAt(m[1])}），点击可更换`)
     span.addEventListener('mousedown', onChipMouseDown)
     span.addEventListener('click', onChipClick)
     el.appendChild(span)
@@ -107,58 +147,91 @@ function applyPlainTextToEditor(el, text) {
   if (last < raw.length) el.appendChild(document.createTextNode(raw.slice(last)))
 }
 
+/** 规范串：仅含 @图片N，供 v-model / 存库 / 提交视频 / 复制 */
 function serializeEditor(el) {
   if (!el) return ''
-  return el.innerText.replace(/\u00a0/g, ' ')
+  let out = ''
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.nodeValue || ''
+      return
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.classList?.contains(CHIP_CLASS)) {
+        out += canonicalAt(node.dataset?.n)
+        return
+      }
+      for (const c of node.childNodes) walk(c)
+    }
+  }
+  walk(el)
+  return out.replace(/\u00a0/g, ' ')
 }
 
-function getCaretOffset(el) {
+function chipCanonicalLength(node) {
+  if (!node?.classList?.contains(CHIP_CLASS)) return 0
+  return canonicalAt(node.dataset?.n).length
+}
+
+/** 光标在「规范串」中的偏移（与 serializeEditor 一致） */
+function getCaretCanonicalOffset(el) {
   const win = el?.ownerDocument?.defaultView || window
   const sel = win.getSelection()
-  if (!sel || sel.rangeCount === 0) return 0
+  if (!sel || sel.rangeCount === 0 || !el) return 0
   const range = sel.getRangeAt(0)
-  const pre = range.cloneRange()
-  pre.selectNodeContents(el)
-  pre.setEnd(range.endContainer, range.endOffset)
-  return pre.toString().length
+  const r = el.ownerDocument.createRange()
+  r.selectNodeContents(el)
+  r.setEnd(range.endContainer, range.endOffset)
+  let len = 0
+  function measure(n) {
+    if (n.nodeType === Node.TEXT_NODE) len += (n.textContent || '').length
+    else if (n.nodeType === Node.ELEMENT_NODE) {
+      if (n.classList?.contains(CHIP_CLASS)) len += chipCanonicalLength(n)
+      else n.childNodes.forEach(measure)
+    }
+  }
+  const frag = r.cloneContents()
+  frag.childNodes.forEach(measure)
+  return len
 }
 
-function setCaretOffset(el, target) {
+function setCaretCanonicalOffset(el, target) {
   if (!el || target < 0) return
-  const win = el.ownerDocument.defaultView || window
-  const sel = win.getSelection()
-  const range = el.ownerDocument.createRange()
+  const doc = el.ownerDocument
+  const sel = (doc.defaultView || window).getSelection()
+  const range = doc.createRange()
   let seen = 0
   let placed = false
 
   function walk(node) {
     if (placed) return
     if (node.nodeType === Node.TEXT_NODE) {
-      const len = node.nodeValue.length
-      if (seen + len >= target) {
-        range.setStart(node, target - seen)
+      const L = (node.nodeValue || '').length
+      if (seen + L >= target) {
+        range.setStart(node, Math.min(target - seen, L))
         range.collapse(true)
         placed = true
         return
       }
-      seen += len
+      seen += L
       return
     }
     if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains(CHIP_CLASS)) {
-      const len = node.textContent.length
-      if (seen + len >= target) {
-        range.setStartAfter(node)
+      const L = chipCanonicalLength(node)
+      if (seen + L >= target) {
+        if (target <= seen) range.setStartBefore(node)
+        else range.setStartAfter(node)
         range.collapse(true)
         placed = true
         return
       }
-      seen += len
+      seen += L
       return
     }
     for (const c of node.childNodes) walk(c)
   }
 
-  walk(el)
+  for (const c of el.childNodes) walk(c)
   if (!placed) {
     range.selectNodeContents(el)
     range.collapse(false)
@@ -213,7 +286,7 @@ function maybeOpenAtMenu() {
   const el = editorRef.value
   if (!el) return
   const s = serializeEditor(el)
-  const off = getCaretOffset(el)
+  const off = getCaretCanonicalOffset(el)
   if (off < 1 || s[off - 1] !== '@') return
   const before = s.slice(0, off)
   if (/@图片\d+$/.test(before)) return
@@ -294,8 +367,9 @@ function onPickSlot(index) {
   if (!el) return
   if (menuMode === 'replace' && replaceChipEl) {
     replaceChipEl.dataset.n = String(index)
-    replaceChipEl.textContent = `@图片${index}`
-    replaceChipEl.setAttribute('aria-label', `参考图 @图片${index}，点击可更换`)
+    const disp = makeDisplayAtToken(index)
+    replaceChipEl.textContent = disp
+    replaceChipEl.setAttribute('aria-label', `${disp}（提交为 ${canonicalAt(index)}），点击可更换`)
     const next = serializeEditor(el)
     skipNextModelWatch = true
     emit('update:modelValue', next)
@@ -315,7 +389,7 @@ function onPickSlot(index) {
   emit('update:modelValue', next)
   nextTick(() => {
     const pos = at - 1 + (`@图片${index}`).length
-    setCaretOffset(el, pos)
+    setCaretCanonicalOffset(el, pos)
     el.focus()
   })
   closeMenu()
@@ -336,9 +410,26 @@ watch(
     const hadFocus = document.activeElement === el
     applyPlainTextToEditor(el, next)
     if (hadFocus) {
-      setCaretOffset(el, next.length)
+      setCaretCanonicalOffset(el, next.length)
     }
   }
+)
+
+watch(
+  () => props.slots,
+  () => {
+    const el = editorRef.value
+    if (!el) return
+    el.querySelectorAll(`.${CHIP_CLASS}`).forEach((chip) => {
+      if (!(chip instanceof HTMLElement)) return
+      const n = chip.dataset?.n
+      if (n == null) return
+      const disp = makeDisplayAtToken(n)
+      chip.textContent = disp
+      chip.setAttribute('aria-label', `${disp}（提交为 ${canonicalAt(n)}），点击可更换`)
+    })
+  },
+  { deep: true }
 )
 
 function onDocClick(ev) {
@@ -347,6 +438,29 @@ function onDocClick(ev) {
   if (wrapRef.value?.contains(t)) return
   if (t.closest?.('.omni-at-menu')) return
   closeMenu()
+}
+
+async function onCopyCanonical() {
+  const el = editorRef.value
+  const text = serializeEditor(el)
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制（@图片N 格式，与提交一致）')
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      ElMessage.success('已复制（@图片N 格式）')
+    } catch (e2) {
+      ElMessage.error(e2?.message || '复制失败')
+    }
+  }
 }
 
 onMounted(() => {
@@ -367,6 +481,22 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.omni-at-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 2px 0;
+  flex-shrink: 0;
+}
+.omni-at-copy-btn {
+  color: #a78bfa !important;
+}
+.omni-at-copy-btn:hover {
+  color: #c4b5fd !important;
+}
+html.light .omni-at-copy-btn {
+  color: #6d28d9 !important;
 }
 .omni-at-editor {
   flex: 1;
@@ -573,7 +703,15 @@ html.light .omni-at-menu-name {
   font-family: ui-monospace, monospace;
   color: #a78bfa;
 }
+.omni-at-menu-at-sub {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: #94a3b8;
+}
 html.light .omni-at-menu-at {
   color: #6d28d9;
+}
+html.light .omni-at-menu-at-sub {
+  color: #64748b;
 }
 </style>

@@ -105,6 +105,8 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
       nameHint: nameHint != null && String(nameHint).trim() ? String(nameHint).trim() : '',
     });
   };
+  /** 与前端 collectSbOmniReferenceAbsoluteUrls / 视频 API 参考图顺序一致：仅以分镜 characters JSON 的本剧角色顺序为准，避免再追加 storyboard_characters 导致槽位与界面 @图片N 错位。 */
+  let charOrderFromDramaJson = false;
   try {
     if (sb.characters) {
       const parsed = JSON.parse(sb.characters);
@@ -117,13 +119,18 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
             typeof item === 'object' && item != null && item.name != null ? String(item.name).trim() : '';
           pushCharEntry(`drama:${idNum}`, nm);
         }
+        if (charOrderEntries.length > 0) charOrderFromDramaJson = true;
       }
     }
-    const libLinks = db.prepare('SELECT character_id FROM storyboard_characters WHERE storyboard_id = ? ORDER BY id ASC').all(sbId);
-    for (const link of libLinks) {
-      const lid = Number(link.character_id);
-      if (!Number.isFinite(lid)) continue;
-      pushCharEntry(`lib:${lid}`, '');
+    if (!charOrderFromDramaJson) {
+      const libLinks = db
+        .prepare('SELECT character_id FROM storyboard_characters WHERE storyboard_id = ? ORDER BY id ASC')
+        .all(sbId);
+      for (const link of libLinks) {
+        const lid = Number(link.character_id);
+        if (!Number.isFinite(lid)) continue;
+        pushCharEntry(`lib:${lid}`, '');
+      }
     }
   } catch (_) {}
 
