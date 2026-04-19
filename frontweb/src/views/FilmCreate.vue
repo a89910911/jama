@@ -4519,6 +4519,20 @@ function buildSbVideoPromptForApi(sb) {
   return vp
 }
 
+/** 全能槽位里场景的展示名（与制作页场景卡一致：主用地点，不用易空的 name） */
+function pickSceneOmniSlotName(scene) {
+  if (!scene) return '场景'
+  const loc = (scene.location && String(scene.location).trim()) || ''
+  if (loc) return loc
+  const n = (scene.name && String(scene.name).trim()) || ''
+  if (n) return n
+  const p = (scene.prompt && String(scene.prompt).trim()) || ''
+  if (p) return p.length > 36 ? `${p.slice(0, 36)}…` : p
+  const d = (scene.description && String(scene.description).trim()) || ''
+  if (d) return d.length > 36 ? `${d.slice(0, 36)}…` : d
+  return '场景'
+}
+
 /** 全能模式：与 collectSbOmniReferenceAbsoluteUrls 同序的参考槽位（用于 @ 选择器缩略图） */
 function getSbUniversalOmniRefSlots(sb) {
   if (!sb?.id) return []
@@ -4529,7 +4543,7 @@ function getSbUniversalOmniRefSlots(sb) {
     out.push({
       index: idx++,
       kind: 'scene',
-      name: (scene.name || '场景').toString(),
+      name: pickSceneOmniSlotName(scene),
       thumbUrl: assetImageUrl(scene),
     })
   }
