@@ -2614,8 +2614,29 @@ const storyboardCount = ref(null) // 分镜数量
 const videoDuration = ref(null) // 视频总长度
 /** 分镜生成时是否要求 AI 输出 narration（解说旁白） */
 const storyboardIncludeNarration = ref(false)
-/** 分镜生成是否使用全能模式（universal_segment_text，对接 Seedance / 可灵 Omni） */
-const storyboardUniversalOmni = ref(true)
+/** 分镜生成是否使用全能模式（universal_segment_text，对接 Seedance / 可灵 Omni）；初始 false，进页后按默认视频配置与项目 metadata 再定 */
+const storyboardUniversalOmni = ref(false)
+/** 与全能分镜链路一致的视频接口规范（与 AI 配置 · 视频 一致） */
+const OMNI_VIDEO_API_PROTOCOLS = new Set(['kling_omni', 'volcengine_omni'])
+
+function resolveStoryboardUniversalOmniFromMetadataAndVideoDefault(metadata, videoConfigs) {
+  const arr = Array.isArray(videoConfigs) ? videoConfigs : []
+  const videoRows = arr.filter((c) => c && c.service_type === 'video')
+  const def = videoRows.find((c) => c.is_default) || videoRows[0] || null
+  const proto = (def?.api_protocol || '').toString().toLowerCase()
+  const omniDefault = OMNI_VIDEO_API_PROTOCOLS.has(proto)
+  if (!omniDefault) return false
+  return metadata?.storyboard_universal_omni !== false
+}
+
+async function fetchStoryboardUniversalOmniForLoad(metadata) {
+  try {
+    const list = await aiAPI.list('video')
+    return resolveStoryboardUniversalOmniFromMetadataAndVideoDefault(metadata, list)
+  } catch {
+    return metadata?.storyboard_universal_omni !== false
+  }
+}
 const gridMode = ref('single') // 序列图模式：single / quad_grid / nine_grid
 
 // ── 剧本长度 → 估算总时长；自动分镜数与项目「每段秒数」(videoClipDuration) 对齐 ──
@@ -3332,7 +3353,7 @@ async function loadDrama() {
     projectAspectRatio.value = (d.metadata && d.metadata.aspect_ratio) ? d.metadata.aspect_ratio : '16:9'
     videoClipDuration.value = (d.metadata && d.metadata.video_clip_duration) ? Number(d.metadata.video_clip_duration) : 5
     storyboardIncludeNarration.value = !!(d.metadata && d.metadata.storyboard_include_narration)
-    storyboardUniversalOmni.value = d.metadata?.storyboard_universal_omni !== false
+    storyboardUniversalOmni.value = await fetchStoryboardUniversalOmniForLoad(d.metadata)
     const list = d.episodes || []
     // 优先保持当前选中的集（按 id 在最新列表中查找），避免 AI 生成角色等操作后误切到其他集
     const currentId = selectedEpisodeId.value

@@ -2,6 +2,7 @@
 
 const storageLayout = require('./storageLayout');
 const { resolveStylePreset } = require('../constants/generationStylePresets');
+const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 /**
  * 清理 image_url：如果数据库中存储的是 base64 data URL，则返回 null。
@@ -560,6 +561,17 @@ function saveCharacters(db, log, dramaId, req) {
         const imgParams = [];
         if ('image_url' in char) { imgFields.push('image_url = ?'); imgParams.push(char.image_url ?? null); }
         if ('local_path' in char) { imgFields.push('local_path = ?'); imgParams.push(char.local_path ?? null); }
+        if (imgFields.length > 0) {
+          const prevC = db
+            .prepare('SELECT id, local_path, image_url, seedance2_asset FROM characters WHERE id = ? AND deleted_at IS NULL')
+            .get(char.id);
+          if (prevC) {
+            seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, prevC, {
+              image_url: 'image_url' in char ? char.image_url : prevC.image_url,
+              local_path: 'local_path' in char ? char.local_path : prevC.local_path,
+            });
+          }
+        }
         const imgSql = imgFields.length > 0 ? ', ' + imgFields.join(', ') : '';
         db.prepare(
           `UPDATE characters SET name = ?, role = ?, description = ?, personality = ?, appearance = ?${imgSql}, updated_at = ? WHERE id = ?`
@@ -575,6 +587,17 @@ function saveCharacters(db, log, dramaId, req) {
       const imgParamsN = [];
       if ('image_url' in char) { imgFieldsN.push('image_url = ?'); imgParamsN.push(char.image_url ?? null); }
       if ('local_path' in char) { imgFieldsN.push('local_path = ?'); imgParamsN.push(char.local_path ?? null); }
+      if (imgFieldsN.length > 0) {
+        const prevN = db
+          .prepare('SELECT id, local_path, image_url, seedance2_asset FROM characters WHERE id = ?')
+          .get(byName.id);
+        if (prevN) {
+          seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, prevN, {
+            image_url: 'image_url' in char ? char.image_url : prevN.image_url,
+            local_path: 'local_path' in char ? char.local_path : prevN.local_path,
+          });
+        }
+      }
       const imgSqlN = imgFieldsN.length > 0 ? ', ' + imgFieldsN.join(', ') : '';
       db.prepare(
         `UPDATE characters SET role = ?, description = ?, personality = ?, appearance = ?${imgSqlN}, updated_at = ?, deleted_at = NULL WHERE id = ?`

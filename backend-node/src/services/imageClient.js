@@ -8,6 +8,7 @@ const storageLayout = require('./storageLayout');
 const taskService = require('./taskService');
 const { loadConfig } = require('../config');
 const { postJSONWithTimeout } = require('./aiClient');
+const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 /** 图生 POST 使用 Node http(s)，默认 10 分钟，避免 undici fetch 大包体/慢链路下模糊失败 */
 const IMAGE_HTTP_TIMEOUT_MS = 600000;
@@ -1623,13 +1624,19 @@ function createAndGenerateImage(db, log, opts) {
       if (charIdNum != null) {
         try {
           // 旧图追加到 extra_images，与上传逻辑保持一致
-          const oldChar = db.prepare('SELECT local_path, image_url, extra_images FROM characters WHERE id = ?').get(charIdNum);
+          const oldChar = db
+            .prepare('SELECT local_path, image_url, extra_images, seedance2_asset FROM characters WHERE id = ?')
+            .get(charIdNum);
           const oldPath = oldChar?.local_path || oldChar?.image_url || '';
           let extras = [];
           try { extras = oldChar?.extra_images ? JSON.parse(oldChar.extra_images) : []; } catch (_) {}
           if (!Array.isArray(extras)) extras = [];
           if (oldPath && !extras.includes(oldPath)) extras.push(oldPath);
           const extraJson = extras.length ? JSON.stringify(extras) : null;
+          seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, { ...oldChar, id: charIdNum }, {
+            image_url: result.image_url,
+            local_path: localPath,
+          });
           db.prepare('UPDATE characters SET image_url = ?, local_path = ?, extra_images = ?, updated_at = ? WHERE id = ?').run(
             result.image_url,
             localPath,

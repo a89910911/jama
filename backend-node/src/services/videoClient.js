@@ -2382,17 +2382,73 @@ function sd2CandidateUrlKeysForCharacter(row, filesBaseUrl) {
   return keys;
 }
 
-function buildSd2ActiveAssetUrlLookup(db, dramaId, filesBaseUrl) {
+/**
+ * 限制 SD2 素材替换仅作用于「本分镜/本集」相关角色，避免参考图 URL 偶然命中剧中其他已认证角色仍被改成 asset://。
+ * - 优先 storyboards.characters（非空数组则只用其中 id）
+ * - 若未配置或解析失败：用该分镜所属集的 episode_characters
+ * - 若仍无法得到列表：返回 null，表示不限制（兼容旧数据）
+ * - characters 存合法 JSON 空数组 []：返回 []，表示本分镜不关联任何剧内角色，不做任何 asset 替换
+ */
+function resolveSd2RestrictCharacterIds(db, storyboardId) {
+  if (!db || !storyboardId) return null;
+  let sb;
+  try {
+    sb = db
+      .prepare('SELECT characters, episode_id FROM storyboards WHERE id = ? AND deleted_at IS NULL')
+      .get(Number(storyboardId));
+  } catch (_) {
+    return null;
+  }
+  if (!sb) return null;
+  const raw = sb.characters;
+  if (raw != null && String(raw).trim() !== '') {
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) {
+        const ids = [];
+        for (const item of parsed) {
+          const cid = typeof item === 'object' && item != null ? item.id : item;
+          const n = Number(cid);
+          if (Number.isFinite(n) && n > 0) ids.push(n);
+        }
+        if (ids.length > 0) return [...new Set(ids)];
+        if (parsed.length === 0) return [];
+      }
+    } catch (_) {
+      /* fall through to episode */
+    }
+  }
+  if (sb.episode_id != null) {
+    try {
+      const rows = db.prepare('SELECT character_id FROM episode_characters WHERE episode_id = ?').all(Number(sb.episode_id));
+      const ids = [...new Set((rows || []).map((r) => Number(r.character_id)).filter((n) => Number.isFinite(n) && n > 0))];
+      if (ids.length > 0) return ids;
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function buildSd2ActiveAssetUrlLookup(db, dramaId, filesBaseUrl, restrictCharacterIds) {
   const urlToAsset = new Map();
   const relPathToAsset = new Map();
   if (!db || !dramaId) return { urlToAsset, relPathToAsset };
+  if (Array.isArray(restrictCharacterIds) && restrictCharacterIds.length === 0) {
+    return { urlToAsset, relPathToAsset };
+  }
   let rows;
   try {
-    rows = db
-      .prepare(
-        'SELECT image_url, local_path, seedance2_asset FROM characters WHERE drama_id = ? AND deleted_at IS NULL'
-      )
-      .all(Number(dramaId));
+    let sql =
+      'SELECT image_url, local_path, seedance2_asset FROM characters WHERE drama_id = ? AND deleted_at IS NULL';
+    const params = [Number(dramaId)];
+    if (Array.isArray(restrictCharacterIds) && restrictCharacterIds.length > 0) {
+      const uniq = [...new Set(restrictCharacterIds.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0))];
+      if (uniq.length === 0) return { urlToAsset, relPathToAsset };
+      sql += ` AND id IN (${uniq.map(() => '?').join(',')})`;
+      params.push(...uniq);
+    }
+    rows = db.prepare(sql).all(...params);
   } catch (_) {
     return { urlToAsset, relPathToAsset };
   }
@@ -2401,6 +2457,25 @@ function buildSd2ActiveAssetUrlLookup(db, dramaId, filesBaseUrl) {
     if (!asset || String(asset.status || '').toLowerCase() !== 'active') continue;
     const uri = normalizeMaterialHubAssetUrlForVideo(asset.asset_url || asset.hub_asset_id);
     if (!uri) continue;
+    const certLpRaw = (asset.certified_local_path != null && String(asset.certified_local_path).trim())
+      ? String(asset.certified_local_path).trim()
+      : '';
+    const certLp = certLpRaw ? normalizeStorageRelativePath(certLpRaw) : '';
+    const certImg = (asset.certified_image_url != null && String(asset.certified_image_url).trim())
+      ? String(asset.certified_image_url).trim()
+      : '';
+    if (certLp || certImg) {
+      const certRow = { image_url: certImg, local_path: certLp };
+      for (const k of sd2CandidateUrlKeysForCharacter(certRow, filesBaseUrl)) {
+        urlToAsset.set(k, uri);
+      }
+      if (certLp) relPathToAsset.set(certLp, uri);
+      if (certImg && /^https?:\/\//i.test(certImg)) {
+        const relFromCertImg = storageRelativeFromPublicUrl(certImg);
+        if (relFromCertImg) relPathToAsset.set(relFromCertImg, uri);
+      }
+      continue;
+    }
     for (const k of sd2CandidateUrlKeysForCharacter(row, filesBaseUrl)) {
       urlToAsset.set(k, uri);
     }
@@ -2441,12 +2516,15 @@ function rewriteOneImageUrlForSd2(original, lookup) {
 
 function applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts) {
   const out = { ...opts };
-  const lookup = buildSd2ActiveAssetUrlLookup(db, opts.drama_id, opts.files_base_url);
+  const restrictCharIds = resolveSd2RestrictCharacterIds(db, opts.storyboard_id);
+  const lookup = buildSd2ActiveAssetUrlLookup(db, opts.drama_id, opts.files_base_url, restrictCharIds);
   if (sd2LookupIsEmpty(lookup)) {
     if (log?.info) {
       log.info('[视频][SD2认证图] 本剧无 active 角色素材或未配置映射，跳过', {
         video_gen_id: opts.video_gen_id,
         drama_id: opts.drama_id,
+        storyboard_id: opts.storyboard_id || null,
+        restrict_character_ids: restrictCharIds === null ? '(未限制)' : restrictCharIds,
       });
     }
     return out;
@@ -2455,6 +2533,8 @@ function applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts) {
     log.info('[视频][SD2认证图] 映射表已构建', {
       video_gen_id: opts.video_gen_id,
       drama_id: opts.drama_id,
+      storyboard_id: opts.storyboard_id || null,
+      restrict_character_ids: restrictCharIds === null ? '(未限制)' : restrictCharIds,
       files_base_url: String(opts.files_base_url || '').slice(0, 200),
       url_key_count: lookup.urlToAsset.size,
       rel_key_count: lookup.relPathToAsset.size,

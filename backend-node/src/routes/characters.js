@@ -2,6 +2,7 @@ const path = require('path');
 const response = require('../response');
 const characterLibraryService = require('../services/characterLibraryService');
 const storageLayout = require('../services/storageLayout');
+const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 function routes(db, cfg, log, uploadService) {
   return {
@@ -146,17 +147,26 @@ function routes(db, cfg, log, uploadService) {
     putImage: (req, res) => {
       try {
         const body = req.body || {};
+        const charIdNum = Number(req.params.id);
+        const prevFull = db
+          .prepare('SELECT id, local_path, image_url, seedance2_asset FROM characters WHERE id = ? AND deleted_at IS NULL')
+          .get(charIdNum);
+        if (!prevFull) return response.notFound(res, '角色不存在');
+        const nextImg = body.image_url !== undefined ? body.image_url : prevFull.image_url;
+        const nextLp = body.local_path !== undefined ? body.local_path : prevFull.local_path;
+        seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, prevFull, {
+          image_url: nextImg,
+          local_path: nextLp,
+        });
         // 只有明确传了 image_url 时才更新主图，避免只传 ref_image 时清掉主图
         if (body.image_url !== undefined) {
-          const out = characterLibraryService.uploadCharacterImage(db, log, req.params.id, body.image_url);
+          const out = characterLibraryService.uploadCharacterImage(db, log, req.params.id, body.image_url, {
+            skipStaleMark: true,
+          });
           if (!out.ok) {
             if (out.error === 'character not found') return response.notFound(res, '角色不存在');
             return response.badRequest(res, out.error);
           }
-        } else {
-          // 没传 image_url 时，至少验证角色存在
-          const charRow = db.prepare('SELECT id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(req.params.id));
-          if (!charRow) return response.notFound(res, '角色不存在');
         }
         const extraFields = [];
         const extraParams = [];

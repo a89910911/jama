@@ -8,6 +8,7 @@ const promptI18n = require('./promptI18n');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 const jimengMaterialHubService = require('./jimengMaterialHubService');
 const uploadService = require('./uploadService');
+const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 function applyStyleOverrideToCfg(cfg, styleOverride) {
   const o = (styleOverride || '').toString().trim();
@@ -178,10 +179,16 @@ function deleteLibraryItem(db, log, id) {
 function applyLibraryItemToCharacter(db, log, characterId, libraryItemId) {
   const item = getLibraryItem(db, libraryItemId);
   if (!item) return { ok: false, error: 'library item not found' };
-  const charRow = db.prepare('SELECT id, drama_id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(characterId));
+  const charRow = db
+    .prepare('SELECT id, drama_id, local_path, image_url, seedance2_asset FROM characters WHERE id = ? AND deleted_at IS NULL')
+    .get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const drama = db.prepare('SELECT id FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!drama) return { ok: false, error: 'unauthorized' };
+  seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, charRow, {
+    image_url: item.image_url || null,
+    local_path: item.local_path || null,
+  });
   const now = new Date().toISOString();
   db.prepare('UPDATE characters SET image_url = ?, local_path = ?, updated_at = ? WHERE id = ?').run(
     item.image_url || null,
@@ -193,11 +200,16 @@ function applyLibraryItemToCharacter(db, log, characterId, libraryItemId) {
   return { ok: true };
 }
 
-function uploadCharacterImage(db, log, characterId, imageUrl) {
-  const charRow = db.prepare('SELECT id, drama_id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(characterId));
+function uploadCharacterImage(db, log, characterId, imageUrl, opts = {}) {
+  const charRow = db
+    .prepare('SELECT id, drama_id, local_path, image_url, seedance2_asset FROM characters WHERE id = ? AND deleted_at IS NULL')
+    .get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const drama = db.prepare('SELECT id FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!drama) return { ok: false, error: 'unauthorized' };
+  if (!opts.skipStaleMark) {
+    seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, charRow, { image_url: imageUrl });
+  }
   const now = new Date().toISOString();
   db.prepare('UPDATE characters SET image_url = ?, updated_at = ? WHERE id = ?').run(imageUrl || null, now, Number(characterId));
   log.info('Character image uploaded', { character_id: characterId });
@@ -244,7 +256,9 @@ function addCharacterToMaterialLibrary(db, log, characterId) {
 }
 
 function updateCharacter(db, log, characterId, req) {
-  const charRow = db.prepare('SELECT id, drama_id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(characterId));
+  const charRow = db
+    .prepare('SELECT id, drama_id, local_path, image_url, seedance2_asset FROM characters WHERE id = ? AND deleted_at IS NULL')
+    .get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const drama = db.prepare('SELECT id FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!drama) return { ok: false, error: 'unauthorized' };
@@ -260,6 +274,12 @@ function updateCharacter(db, log, characterId, req) {
   if (req.polished_prompt != null) { updates.push('polished_prompt = ?'); params.push(req.polished_prompt); }
   if (req.stages != null) { updates.push('stages = ?'); params.push(typeof req.stages === 'string' ? req.stages : JSON.stringify(req.stages)); }
   if (updates.length === 0) return { ok: true };
+  if (req.image_url != null || req.local_path != null) {
+    seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, charRow, {
+      image_url: req.image_url != null ? req.image_url : charRow.image_url,
+      local_path: req.local_path != null ? req.local_path : charRow.local_path,
+    });
+  }
   params.push(new Date().toISOString(), characterId);
   db.prepare('UPDATE characters SET ' + updates.join(', ') + ', updated_at = ? WHERE id = ?').run(...params);
   log.info('Character updated', { character_id: characterId });
@@ -753,11 +773,16 @@ async function registerCharacterJimengMaterialAsset(db, log, cfg, characterId) {
   }
 
   const now = new Date().toISOString();
+  const certifiedLp = seedance2AssetGuards.normalizeStorageRelPath(charRow.local_path || '') || null;
+  const certifiedImg = (charRow.image_url || '').toString().trim() || null;
   const basePayload = {
     hub_asset_id: assetId,
     asset_url: created.asset_url || null,
     status: created.status || 'processing',
     source_image_url: registerImageUrl,
+    /** 仅当参考图与认证时主图路径一致时才在视频中替换为 asset://（换主图后须重新认证） */
+    certified_local_path: certifiedLp,
+    certified_image_url: certifiedImg,
     character_display: {
       name: charRow.name || '',
       appearance: (charRow.appearance || '').slice(0, 500) || null,
