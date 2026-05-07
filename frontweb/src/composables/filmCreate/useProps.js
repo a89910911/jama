@@ -15,9 +15,10 @@ import { uploadAPI } from '@/api/upload'
  * @param {Function} deps.pollTask
  * @param {Function} deps.pollUntilResourceHasImage
  * @param {Function} deps.hasAssetImage
+ * @param {Function} [deps.getAssetImageModel]
  */
 export function useProps(deps) {
-  const { store, dramaId, currentEpisodeId, getSelectedStyle, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage } = deps
+  const { store, dramaId, currentEpisodeId, getSelectedStyle, getAssetImageModel, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage } = deps
 
   function dataUrlToFile(dataUrl, filename) {
     const arr = dataUrl.split(',')
@@ -109,6 +110,7 @@ export function useProps(deps) {
       image_url: prop.image_url || '',
       local_path: prop.local_path || '',
       ref_image: prop.ref_image || '',
+      negative_prompt: prop.negative_prompt || '',
     }
     showEditProp.value = true
     if (!prop.prompt && prop.id && prop.description) {
@@ -203,7 +205,8 @@ export function useProps(deps) {
         name: editPropForm.value.name?.trim(),
         type: editPropForm.value.type || undefined,
         description: editPropForm.value.description || undefined,
-        prompt: editPropForm.value.prompt || undefined
+        prompt: editPropForm.value.prompt || undefined,
+        negative_prompt: (editPropForm.value.negative_prompt || '').trim() || null,
       })
       await savePropRefImageIfAny(editPropForm.value.id)
       await loadDrama()
@@ -267,7 +270,7 @@ export function useProps(deps) {
     prop.error_msg = ''
     generatingPropIds.add(prop.id)
     try {
-      const res = await propAPI.generateImage(prop.id, undefined, getSelectedStyle())
+      const res = await propAPI.generateImage(prop.id, getAssetImageModel?.(), getSelectedStyle())
       const taskId = res?.task_id
       if (taskId) {
         const pollRes = await pollTask(taskId, () => loadDrama())

@@ -26,6 +26,7 @@ function updateScene(db, log, sceneId, req) {
   if (req.time != null) { updates.push('time = ?'); params.push(req.time); }
   if (req.prompt != null) { updates.push('prompt = ?'); params.push(req.prompt); }
   if (req.polished_prompt != null) { updates.push('polished_prompt = ?'); params.push(req.polished_prompt); }
+  if (req.negative_prompt !== undefined) { updates.push('negative_prompt = ?'); params.push(req.negative_prompt); }
   if (req.image_url != null) { updates.push('image_url = ?'); params.push(req.image_url); }
   if (req.local_path !== undefined) { updates.push('local_path = ?'); params.push(req.local_path); }
   if (req.extra_images !== undefined) { updates.push('extra_images = ?'); params.push(req.extra_images ?? null); }
@@ -59,14 +60,15 @@ function createScene(db, log, dramaId, req) {
   const episodeId = req.episode_id != null ? Number(req.episode_id) : null;
   try {
     const info = db.prepare(
-      `INSERT INTO scenes (drama_id, episode_id, location, time, prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
+      `INSERT INTO scenes (drama_id, episode_id, location, time, prompt, negative_prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
     ).run(
       Number(dramaId),
       episodeId,
       req.location || '',
       req.time || '',
       req.prompt || '',
+      req.negative_prompt ?? null,
       req.image_url ?? null,
       req.local_path ?? null,
       now,
@@ -78,9 +80,9 @@ function createScene(db, log, dramaId, req) {
     // 老库可能没有 episode_id 列，降级为不含 episode_id 的 INSERT
     if ((e.message || '').includes('episode_id')) {
       const info = db.prepare(
-        `INSERT INTO scenes (drama_id, location, time, prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
-      ).run(Number(dramaId), req.location || '', req.time || '', req.prompt || '', req.image_url ?? null, req.local_path ?? null, now, now);
+        `INSERT INTO scenes (drama_id, location, time, prompt, negative_prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
+      ).run(Number(dramaId), req.location || '', req.time || '', req.prompt || '', req.negative_prompt ?? null, req.image_url ?? null, req.local_path ?? null, now, now);
       return getSceneById(db, info.lastInsertRowid);
     }
     throw e;
@@ -112,9 +114,11 @@ function getSceneById(db, id) {
     time: row.time,
     prompt: row.prompt,
     polished_prompt: row.polished_prompt || null,
+    negative_prompt: row.negative_prompt || null,
     image_url: row.image_url,
     local_path: row.local_path,
     extra_images: row.extra_images || null,
+    ref_image: row.ref_image || null,
     status: row.status,
     created_at: row.created_at,
     updated_at: row.updated_at
@@ -212,7 +216,7 @@ async function generateScenePromptOnly(db, log, cfg, sceneId, modelName, style) 
  */
 async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, style) {
   const sceneRow = db.prepare(
-    'SELECT id, drama_id, location, time, prompt, polished_prompt FROM scenes WHERE id = ? AND deleted_at IS NULL'
+    'SELECT id, drama_id, location, time, prompt, polished_prompt, negative_prompt FROM scenes WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(sceneId));
   if (!sceneRow) return { ok: false, error: 'scene not found' };
   const dramaFull = db.prepare('SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL').get(sceneRow.drama_id);
@@ -267,6 +271,7 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
     log.info('[场景四视图] Step1 完成，开始Step2生图', { scene_id: sceneId });
   }
 
+  const userNeg = imageClient.resolveAssetUserNegativeForApi(modelName, sceneRow.negative_prompt);
   const imageGen = imageClient.createAndGenerateImage(db, log, {
     drama_id: sceneRow.drama_id,
     scene_id: sceneId,
@@ -275,6 +280,7 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
     size: '1792x1024',
     quality: 'standard',
     provider: 'openai',
+    user_negative_prompt: userNeg || undefined,
   });
 
   log.info('[场景四视图] Step2 图片生成任务已提交', { scene_id: sceneId, image_gen_id: imageGen?.id });

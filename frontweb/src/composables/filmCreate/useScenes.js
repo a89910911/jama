@@ -16,10 +16,11 @@ import { uploadAPI } from '@/api/upload'
  * @param {Function} deps.pollTask
  * @param {Function} deps.pollUntilResourceHasImage
  * @param {Function} deps.hasAssetImage
+ * @param {Function} [deps.getAssetImageModel]
  * @param {object} deps.dramaAPI
  */
 export function useScenes(deps) {
-  const { store, dramaId, currentEpisodeId, getSelectedStyle, scriptLanguage, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage, dramaAPI } = deps
+  const { store, dramaId, currentEpisodeId, getSelectedStyle, getAssetImageModel, scriptLanguage, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage, dramaAPI } = deps
 
   function dataUrlToFile(dataUrl, filename) {
     const arr = dataUrl.split(',')
@@ -89,7 +90,7 @@ export function useScenes(deps) {
   }
 
   function openAddScene() {
-    editSceneForm.value = { location: '', time: '', prompt: '' }
+    editSceneForm.value = { location: '', time: '', prompt: '', negative_prompt: '' }
     showEditScene.value = true
   }
 
@@ -108,6 +109,7 @@ export function useScenes(deps) {
       image_url: scene.image_url || '',
       local_path: scene.local_path || '',
       ref_image: scene.ref_image || '',
+      negative_prompt: scene.negative_prompt || '',
     }
     showEditScene.value = true
     if (!scene.polished_prompt && scene.id && (scene.location || scene.time)) {
@@ -204,7 +206,8 @@ export function useScenes(deps) {
           location: form.location.trim(),
           time: form.time || undefined,
           prompt: form.prompt || undefined,
-          polished_prompt: form.polished_prompt || undefined
+          polished_prompt: form.polished_prompt || undefined,
+          negative_prompt: (form.negative_prompt || '').trim() || null,
         })
         await saveSceneRefImageIfAny(form.id)
         ElMessage.success('场景已保存')
@@ -214,7 +217,8 @@ export function useScenes(deps) {
           episode_id: currentEpisodeId.value || undefined,
           location: form.location.trim(),
           time: form.time || undefined,
-          prompt: form.prompt || undefined
+          prompt: form.prompt || undefined,
+          negative_prompt: (form.negative_prompt || '').trim() || null,
         })
         await loadDrama()
         if (addSceneRefImage.value) {
@@ -264,7 +268,7 @@ export function useScenes(deps) {
     try {
       const res = await sceneAPI.generateImage({
         scene_id: scene.id,
-        model: undefined,
+        model: getAssetImageModel?.(),
         style: getSelectedStyle()
       })
       const taskId = res?.image_generation?.task_id ?? res?.task_id

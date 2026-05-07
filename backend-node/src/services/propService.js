@@ -13,9 +13,11 @@ function listByDramaId(db, dramaId) {
     type: r.type,
     description: r.description,
     prompt: r.prompt,
+    negative_prompt: r.negative_prompt || null,
     image_url: r.image_url,
     local_path: r.local_path,
     extra_images: r.extra_images || null,
+    ref_image: r.ref_image || null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
@@ -25,8 +27,8 @@ function create(db, log, req) {
   const now = new Date().toISOString();
   const episodeId = req.episode_id != null ? Number(req.episode_id) : null;
   const info = db.prepare(
-    `INSERT INTO props (drama_id, episode_id, name, type, description, prompt, image_url, local_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO props (drama_id, episode_id, name, type, description, prompt, negative_prompt, image_url, local_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.drama_id,
     episodeId,
@@ -34,6 +36,7 @@ function create(db, log, req) {
     req.type ?? null,
     req.description ?? null,
     req.prompt ?? null,
+    req.negative_prompt ?? null,
     req.image_url ?? null,
     req.local_path ?? null,
     now,
@@ -53,9 +56,11 @@ function getById(db, id) {
     type: r.type,
     description: r.description,
     prompt: r.prompt,
+    negative_prompt: r.negative_prompt || null,
     image_url: r.image_url,
     local_path: r.local_path,
     extra_images: r.extra_images || null,
+    ref_image: r.ref_image || null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -70,6 +75,7 @@ function update(db, log, id, updates) {
   if (updates.type != null) { set.push('type = ?'); params.push(updates.type); }
   if (updates.description != null) { set.push('description = ?'); params.push(updates.description); }
   if (updates.prompt != null) { set.push('prompt = ?'); params.push(updates.prompt); }
+  if (updates.negative_prompt !== undefined) { set.push('negative_prompt = ?'); params.push(updates.negative_prompt); }
   if (updates.image_url != null) { set.push('image_url = ?'); params.push(updates.image_url); }
   if (updates.local_path !== undefined) { set.push('local_path = ?'); params.push(updates.local_path ?? null); }
   if (updates.extra_images !== undefined) { set.push('extra_images = ?'); params.push(updates.extra_images ?? null); }

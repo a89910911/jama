@@ -37,7 +37,7 @@ function appendPrompt(base, extra) {
 
 function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
   const charRow = db.prepare(
-    'SELECT id, drama_id, name, appearance, description FROM characters WHERE id = ? AND deleted_at IS NULL'
+    'SELECT id, drama_id, name, appearance, description, negative_prompt FROM characters WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const drama = db.prepare('SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
@@ -77,6 +77,7 @@ function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
     if (meta && meta.aspect_ratio) imageSize = aspectRatioToSize(meta.aspect_ratio);
   } catch (_) {}
   imageSize = imageSize || '1920x1920';
+  const userNeg = imageClient.resolveAssetUserNegativeForApi(modelName, charRow.negative_prompt);
   const imageGen = imageClient.createAndGenerateImage(db, log, {
     drama_id: charRow.drama_id,
     character_id: charRow.id,
@@ -85,6 +86,7 @@ function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
     size: imageSize,
     quality: 'standard',
     provider: 'openai',
+    user_negative_prompt: userNeg || undefined,
   });
   return { ok: true, image_generation: imageGen };
 }
@@ -273,6 +275,7 @@ function updateCharacter(db, log, characterId, req) {
   if (req.local_path != null) { updates.push('local_path = ?'); params.push(req.local_path); }
   if (req.polished_prompt != null) { updates.push('polished_prompt = ?'); params.push(req.polished_prompt); }
   if (req.stages != null) { updates.push('stages = ?'); params.push(typeof req.stages === 'string' ? req.stages : JSON.stringify(req.stages)); }
+  if (req.negative_prompt !== undefined) { updates.push('negative_prompt = ?'); params.push(req.negative_prompt); }
   if (updates.length === 0) return { ok: true };
   if (req.image_url != null || req.local_path != null) {
     seedance2AssetGuards.markStaleOnCharacterMainImageDrift(db, log, charRow, {
@@ -479,7 +482,7 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
 
 async function generateCharacterFourViewImage(db, log, cfg, characterId, modelName, style) {
   const charRow = db.prepare(
-    'SELECT id, drama_id, name, appearance, description, polished_prompt FROM characters WHERE id = ? AND deleted_at IS NULL'
+    'SELECT id, drama_id, name, appearance, description, polished_prompt, negative_prompt FROM characters WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const dramaFull = db.prepare('SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
@@ -535,6 +538,7 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
     log.info('[四视图] Step1 完成，开始Step2生图', { character_id: characterId });
   }
 
+  const userNeg = imageClient.resolveAssetUserNegativeForApi(modelName, charRow.negative_prompt);
   const imageGen = imageClient.createAndGenerateImage(db, log, {
     drama_id: charRow.drama_id,
     character_id: charRow.id,
@@ -543,6 +547,7 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
     size: '1792x1024',
     quality: 'standard',
     provider: 'openai',
+    user_negative_prompt: userNeg || undefined,
   });
 
   log.info('[四视图] Step2 图片生成任务已提交', { character_id: characterId, image_gen_id: imageGen?.id });

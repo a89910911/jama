@@ -17,9 +17,10 @@ import { uploadAPI } from '@/api/upload'
  * @param {Function} deps.pollTask - 轮询异步任务
  * @param {Function} deps.pollUntilResourceHasImage - 等待资源有图片
  * @param {Function} deps.hasAssetImage - 判断资源是否有图片
+ * @param {Function} [deps.getAssetImageModel] - 本集配置的资产生图模型 id（非空时与资产负面词一并传给后端）
  */
 export function useCharacters(deps) {
-  const { store, dramaId, currentEpisodeId, getSelectedStyle, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage } = deps
+  const { store, dramaId, currentEpisodeId, getSelectedStyle, getAssetImageModel, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage } = deps
 
   function dataUrlToFile(dataUrl, filename) {
     const arr = dataUrl.split(',')
@@ -101,7 +102,8 @@ export function useCharacters(deps) {
       appearance: '',
       personality: '',
       description: '',
-      polished_prompt: ''
+      polished_prompt: '',
+      negative_prompt: '',
     }
     showEditCharacter.value = true
   }
@@ -128,6 +130,7 @@ export function useCharacters(deps) {
       ref_image: char.ref_image || '',
       identity_anchors: char.identity_anchors || '',
       stages: char.stages ? (typeof char.stages === 'string' ? char.stages : JSON.stringify(char.stages, null, 2)) : '',
+      negative_prompt: char.negative_prompt || '',
     }
     showEditCharacter.value = true
     if (!char.polished_prompt && char.id && (char.appearance || char.description)) {
@@ -182,7 +185,8 @@ export function useCharacters(deps) {
           personality: form.personality || undefined,
           description: form.description || undefined,
           polished_prompt: form.polished_prompt || undefined,
-          stages: form.stages ? form.stages.trim() || undefined : undefined
+          stages: form.stages ? form.stages.trim() || undefined : undefined,
+          negative_prompt: (form.negative_prompt || '').trim() || null,
         })
         await saveCharRefImageIfAny(form.id)
         ElMessage.success('角色已保存')
@@ -203,7 +207,8 @@ export function useCharacters(deps) {
             role: form.role || undefined,
             appearance: form.appearance || undefined,
             personality: form.personality || undefined,
-            description: form.description || undefined
+            description: form.description || undefined,
+            negative_prompt: (form.negative_prompt || '').trim() || null,
           }],
           episode_id: currentEpisodeId.value ?? undefined
         })
@@ -298,7 +303,7 @@ export function useCharacters(deps) {
     char.error_msg = ''
     generatingCharIds.add(char.id)
     try {
-      const res = await characterAPI.generateImage(char.id, undefined, getSelectedStyle())
+      const res = await characterAPI.generateImage(char.id, getAssetImageModel?.(), getSelectedStyle())
       const taskId = res?.image_generation?.task_id ?? res?.task_id
       if (taskId) {
         const pollRes = await pollTask(taskId, () => loadDrama())
