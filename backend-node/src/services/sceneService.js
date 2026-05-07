@@ -61,7 +61,7 @@ function createScene(db, log, dramaId, req) {
   try {
     const info = db.prepare(
       `INSERT INTO scenes (drama_id, episode_id, location, time, prompt, negative_prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
     ).run(
       Number(dramaId),
       episodeId,
@@ -81,7 +81,7 @@ function createScene(db, log, dramaId, req) {
     if ((e.message || '').includes('episode_id')) {
       const info = db.prepare(
         `INSERT INTO scenes (drama_id, location, time, prompt, negative_prompt, image_url, local_path, storyboard_count, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?)`
       ).run(Number(dramaId), req.location || '', req.time || '', req.prompt || '', req.negative_prompt ?? null, req.image_url ?? null, req.local_path ?? null, now, now);
       return getSceneById(db, info.lastInsertRowid);
     }
