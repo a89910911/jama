@@ -509,19 +509,20 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
         log.info('[VolcOmni][SD2] content 使用素材库 asset 引用', { video_gen_id, index: i, asset_head: String(u).slice(0, 80) });
       }
     }
-    if (body.content.length > 1) body.task_type = 'i2v';
+    // if (body.content.length > 1) body.task_type = 'i2v';
   }
 
   log.info('[VolcOmni] 创建任务', {
     url,
-    model: finalModel,
-    ratio,
-    duration: effectiveDuration,
-    resolution: effectiveResolution || '(默认)',
-    image_count: urls.length,
-    asset_ref_count: volcOmniAssetRefCount,
-    video_gen_id,
-    prompt_head: ((prompt || '').trim()).slice(0, 120),
+    body
+    // model: finalModel,
+    // ratio,
+    // duration: effectiveDuration,
+    // resolution: effectiveResolution || '(默认)',
+    // image_count: urls.length,
+    // asset_ref_count: volcOmniAssetRefCount,
+    // video_gen_id,
+    // prompt_head: ((prompt || '').trim()).slice(0, 120),
   });
 
   const res = await fetch(url, {
