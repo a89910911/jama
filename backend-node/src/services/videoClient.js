@@ -842,16 +842,75 @@ function coerceHttpVideoUrl(s) {
   return isPlausibleHttpVideoUrl(s) ? String(s).trim() : null;
 }
 
+/** 轮询 JSON 中的任务状态（兼容中转 data.data.status = FAILURE） */
+function extractPollTaskStatus(data) {
+  if (!data || typeof data !== 'object') return '';
+  const candidates = [
+    data.status,
+    data.state,
+    data.task_status,
+    data.data?.status,
+    data.data?.state,
+    data.data?.task_status,
+    data.output?.task_status,
+  ];
+  for (const c of candidates) {
+    if (c != null && String(c).trim() !== '') return String(c).trim().toLowerCase();
+  }
+  return '';
+}
+
+function isPollTaskFailed(status) {
+  return (
+    status === 'failed' ||
+    status === 'failure' ||
+    status === 'error' ||
+    status === 'cancelled' ||
+    status === 'canceled' ||
+    status === 'fail'
+  );
+}
+
+/** 失败时的可读错误（fail_reason、非 http 的 result_url 等） */
+function extractPollFailureMessage(data) {
+  if (!data || typeof data !== 'object') return '';
+  const inner = data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data : null;
+  const deep = inner?.data && typeof inner.data === 'object' ? inner.data : null;
+  const candidates = [
+    inner?.fail_reason,
+    data.fail_reason,
+    inner?.message,
+    deep?.msg,
+    data.error?.message,
+    typeof data.error === 'string' ? data.error : null,
+    data.message,
+    typeof data.msg === 'string' ? data.msg : null,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    const s = String(c).trim();
+    if (s && !/^https?:\/\//i.test(s)) return s;
+  }
+  for (const rec of [inner, data]) {
+    if (!rec || typeof rec !== 'object') continue;
+    for (const k of ['result_url', 'video_url']) {
+      const u = rec[k];
+      if (typeof u === 'string' && u.trim() && !isPlausibleHttpVideoUrl(u)) return u.trim();
+    }
+  }
+  return '';
+}
+
 /** 单层对象上的视频地址：兼容中转站使用 result_url 而非 video_url */
 function videoUrlFromRecord(rec) {
   if (!rec || typeof rec !== 'object') return null;
-  for (const k of ['video_url', 'result_url', 'url', 'output_url']) {
-    const v = rec[k];
-    if (typeof v !== 'string' || !v.trim()) continue;
-    const t = v.trim();
-    if (isPlausibleHttpVideoUrl(t)) return t;
-  }
-  return null;
+  return (
+    coerceHttpVideoUrl(rec.video_url) ||
+    coerceHttpVideoUrl(rec.result_url) ||
+    coerceHttpVideoUrl(rec.url) ||
+    coerceHttpVideoUrl(rec.output_url) ||
+    null
+  );
 }
 
 /** 方舟 / 豆包 Seedance 等：video.transcoded_video.origin.video_url，或 play/download 直链 */
@@ -886,10 +945,7 @@ function pickVideoUrlFromItemList(list) {
       ? ca.transcoded_video.origin.video_url.trim()
       : null;
   const fromVideo = videoUrlFromArkVideoNode(item.video);
-  const fromResult =
-    typeof item.result_url === 'string' && item.result_url.trim() && isPlausibleHttpVideoUrl(item.result_url)
-      ? item.result_url.trim()
-      : null;
+  const fromResult = coerceHttpVideoUrl(item.result_url);
   const flat = videoUrlFromRecord(item);
   return fromCommon || fromVideo || fromResult || flat || null;
 }
@@ -3164,19 +3220,12 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       }
 
       if (isVeo3) {
-        const status = (data.status || data.data?.status || data.task_status || '').toLowerCase();
+        const status = extractPollTaskStatus(data);
         log.info('[Veo3 poll] task status', { video_gen_id: videoGenId, attempt, status, id: data.task_id || data.id });
-        if (status === 'failed' || status === 'error' || status === 'failure') {
-          const innerFail = data.data && typeof data.data === 'object' ? data.data : null;
-          const msg =
-            data.error?.message ||
-            data.error ||
-            innerFail?.fail_reason ||
-            data.message ||
-            data.data?.error ||
-            'Veo3 task failed';
+        if (isPollTaskFailed(status)) {
+          const msg = extractPollFailureMessage(data) || data.data?.error || 'Veo3 task failed';
           log.warn('[Veo3 poll] task failed', { video_gen_id: videoGenId, msg });
-          return { error: String(msg) };
+          return { error: String(msg).slice(0, 500) };
         }
         const videoUrl = pickProxyVideoUrl(data);
         if (videoUrl) {
@@ -3191,22 +3240,16 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       }
 
       if (isSora) {
-        const status = (data.status || '').toLowerCase();
+        const status = extractPollTaskStatus(data);
         log.info('[Sora poll] ????', { video_gen_id: videoGenId, attempt, status, progress: data.progress, id: data.id });
-        if (status === 'failed' || status === 'error' || status === 'failure') {
-          const innerFail = data.data && typeof data.data === 'object' ? data.data : null;
-          const msg =
-            data.error?.message ||
-            data.error ||
-            innerFail?.fail_reason ||
-            data.message ||
-            'Sora 任务失败';
+        if (isPollTaskFailed(status)) {
+          const msg = extractPollFailureMessage(data) || 'Sora 任务失败';
           log.warn('[Sora poll] 任务失败', { video_gen_id: videoGenId, msg, data: JSON.stringify(data).slice(0, 300) });
-          return { error: String(msg) };
+          return { error: String(msg).slice(0, 500) };
         }
         // succeeded / completed / done ? ??? URL
         const videoUrl = pickProxyVideoUrl(data);
-        if (videoUrl) {
+        if (videoUrl && isPlausibleHttpVideoUrl(videoUrl)) {
           log.info('[Sora poll] ????', { video_gen_id: videoGenId, video_url: videoUrl });
           return { video_url: videoUrl };
         }
@@ -3272,24 +3315,10 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
         }
         continue;
       }
-      const inner = data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data : null;
-      const innerTask =
-        inner && inner.data && typeof inner.data === 'object' && !Array.isArray(inner.data) ? inner.data : null;
-      const statusRaw = data.status || inner?.status || innerTask?.status || '';
-      const statusNorm = String(statusRaw || '').toLowerCase();
+      const status = extractPollTaskStatus(data);
       const videoUrl = pickProxyVideoUrl(data);
-      const errMsg =
-        (data.error && (typeof data.error === 'string' ? data.error : data.error.message)) ||
-        (inner && inner.fail_reason && String(inner.fail_reason).trim()) ||
-        (innerTask?.error &&
-          (typeof innerTask.error === 'string' ? innerTask.error : innerTask.error.message)) ||
-        null;
-      const isTerminalFailure =
-        statusNorm === 'failed' ||
-        statusNorm === 'failure' ||
-        statusNorm === 'error' ||
-        statusNorm === 'cancelled' ||
-        statusNorm === 'canceled';
+      const failMsg = extractPollFailureMessage(data);
+      const errMsg = data.error && (typeof data.error === 'string' ? data.error : data.error.message);
       if (isVolcPoll) {
         const summaryJson = JSON.stringify(data);
         const sum =
@@ -3301,18 +3330,21 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
         log.info('[poll] 方舟/火山 解析摘要', {
           video_gen_id: videoGenId,
           round: pollRound,
-          top_level_status: statusRaw,
+          top_level_status: status,
           has_video_url: !!videoUrl,
-          error_hint: errMsg || data?.error?.code || data?.message || innerTask?.error?.code || null,
+          error_hint: failMsg || errMsg || data?.error?.code || data?.message || null,
           parsed_json: sum,
         });
       }
-      if (isTerminalFailure) {
-        return { error: errMsg || String(statusRaw || '') || '任务失败' };
+      if (isPollTaskFailed(status) || errMsg) {
+        const msg = failMsg || errMsg || status || '任务失败';
+        log.warn('[poll] 任务失败', { video_gen_id: videoGenId, round: pollRound, status, msg });
+        return { error: String(msg).slice(0, 500) };
       }
       if (videoUrl && isPlausibleHttpVideoUrl(videoUrl)) return { video_url: videoUrl };
-      if (videoUrl) {
-        log.warn('[poll] 忽略非 http 视频地址', { video_gen_id: videoGenId, round: pollRound, url_head: String(videoUrl).slice(0, 120) });
+      if (failMsg) {
+        log.warn('[poll] 上游返回失败文案', { video_gen_id: videoGenId, round: pollRound, msg: failMsg.slice(0, 200) });
+        return { error: failMsg.slice(0, 500) };
       }
     } catch (e) {
       log.warn('Video poll request failed', { attempt, error: e.message });
