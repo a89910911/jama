@@ -2152,21 +2152,32 @@ function formatGrokVideo3Size(resolution) {
   return '720P';
 }
 
-/** 与官方 / 中转 grok-video-3 示例一致：images[] + size，而非旧版 image.url */
-function isGrokVideoCreateStyleModel(modelName) {
-  return /grok-video/i.test(String(modelName || ''));
-}
-
 function clampXaiDuration(d) {
   const n = Math.round(Number(d));
   if (!Number.isFinite(n) || n < 1) return 8;
   return Math.min(15, Math.max(1, n));
 }
 
+/** 模型名同时含 grok 与 video（不必相邻，如 grok-video-3、grok_imagine_1.0_video_apimart）→ images[] + size */
+function isXaiGrokVideoStyleModel(modelName) {
+  const m = String(modelName || '').toLowerCase();
+  return /grok/.test(m) && /video/.test(m);
+}
+
+/** 主图 + reference_urls 去重合并为公网 URL 字符串数组 */
+function mergeXaiVideoImageUrls(imageUrlForApi, resolvedRefStrings, max = 10) {
+  const images = [];
+  if (imageUrlForApi) images.push(imageUrlForApi);
+  for (const s of resolvedRefStrings) {
+    if (s && !images.includes(s)) images.push(s);
+  }
+  return images.slice(0, max);
+}
+
 /**
- * xAI 视频：
- * - grok-video-3 等：与官方一致 body 含 images[]、size（720P），见中转文档示例。
- * - grok-imagine 旧形态：image.url、resolution、duration、reference_images。
+ * xAI 视频（官方两套）：
+ * - grok + video 模型：images: string[]、size（720P）、aspect_ratio、duration（中转 grok-video-3 等同此）。
+ * - 其余 grok-imagine：image.url、resolution、duration、reference_images（主图与额外参考图可同时存在）。
  */
 async function callXaiVideoApi(config, log, opts) {
   const {
@@ -2191,7 +2202,7 @@ async function callXaiVideoApi(config, log, opts) {
   const dur = clampXaiDuration(duration != null ? duration : 8);
   const reso = resolveXaiVideoResolution(resolution);
   const modelName = model || 'grok-imagine-video';
-  const useGrokVideoCreate = isGrokVideoCreateStyleModel(modelName);
+  const useGrokVideoImages = isXaiGrokVideoStyleModel(modelName);
 
   let imageUrlForApi = '';
   const rawMain = (image_url || '').trim();
@@ -2217,16 +2228,12 @@ async function callXaiVideoApi(config, log, opts) {
     }
   }
 
+  const mergedImages = mergeXaiVideoImageUrls(imageUrlForApi, resolvedRefStrings);
+
   let body;
-  let mainTransport = 'none';
   let logExtra = {};
 
-  if (useGrokVideoCreate) {
-    const images = [];
-    if (imageUrlForApi) images.push(imageUrlForApi);
-    for (const s of resolvedRefStrings) {
-      if (s && !images.includes(s)) images.push(s);
-    }
+  if (useGrokVideoImages) {
     body = {
       model: modelName,
       prompt: prompt || '',
@@ -2234,18 +2241,13 @@ async function callXaiVideoApi(config, log, opts) {
       size: formatGrokVideo3Size(resolution),
       duration: dur,
     };
-    if (images.length) body.images = images.slice(0, 10);
-    const first = images[0] || '';
-    mainTransport =
-      first && String(first).startsWith('data:') ? 'data_url' : first ? 'http_url' : 'none';
+    if (mergedImages.length) body.images = mergedImages;
     logExtra = {
       body_shape: 'grok-video',
       images_count: body.images?.length || 0,
       size: body.size,
-      image_transport: mainTransport,
     };
   } else {
-    const hasImage = !!imageUrlForApi;
     body = {
       model: modelName,
       prompt: prompt || '',
@@ -2253,20 +2255,26 @@ async function callXaiVideoApi(config, log, opts) {
       aspect_ratio: ratio,
       resolution: reso,
     };
-    if (hasImage && imageUrlForApi) {
+    if (imageUrlForApi) {
       body.image = { url: imageUrlForApi };
-    } else if (resolvedRefStrings.length > 0) {
-      body.reference_images = resolvedRefStrings.map((u) => ({ url: u }));
+      const extraRefs = mergedImages.filter((u) => u !== imageUrlForApi);
+      if (extraRefs.length > 0) {
+        body.reference_images = extraRefs.map((u) => ({ url: u }));
+      }
+    } else if (mergedImages.length > 0) {
+      body.reference_images = mergedImages.map((u) => ({ url: u }));
     }
-    mainTransport =
-      body.image?.url && String(body.image.url).startsWith('data:') ? 'data_url' : body.image?.url ? 'http_url' : 'none';
     logExtra = {
       body_shape: 'grok-imagine',
       has_image: !!body.image,
-      image_transport: mainTransport,
       ref_count: body.reference_images?.length || 0,
+      total_unique_images: mergedImages.length,
     };
   }
+
+  const first = mergedImages[0] || '';
+  const mainTransport =
+    first && String(first).startsWith('data:') ? 'data_url' : first ? 'http_url' : 'none';
 
   log.info('[xAI视频] 提交', {
     video_gen_id,
@@ -2275,7 +2283,13 @@ async function callXaiVideoApi(config, log, opts) {
     aspect_ratio: ratio,
     duration: body.duration != null ? body.duration : dur,
     resolution: body.resolution != null ? body.resolution : undefined,
+    image_transport: mainTransport,
     ...logExtra,
+    images: body.images,
+    image_url_head: body.image?.url ? String(body.image.url).slice(0, 100) : null,
+    reference_images_heads: Array.isArray(body.reference_images)
+      ? body.reference_images.map((r) => String(r?.url || '').slice(0, 100))
+      : undefined,
   });
 
   const res = await fetch(url, {
