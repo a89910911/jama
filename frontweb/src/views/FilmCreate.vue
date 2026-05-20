@@ -1200,6 +1200,13 @@
                   class="sb-video-player"
                   preload="metadata"
                 />
+                <div
+                  v-else
+                  class="sb-video-error"
+                  :title="getSbVideoError(sb.id) || '视频地址无效'"
+                >
+                  {{ getSbVideoError(sb.id) || '视频地址无效，请重新生成' }}
+                </div>
                 <span v-if="generatingSbVideoIds.has(sb.id)" class="sb-video-regenerating-overlay">
                   <el-icon class="is-loading"><Loading /></el-icon>
                   正在重新生成...
@@ -3009,12 +3016,18 @@ function assetVideoUrl(item) {
   if (item.video_url) return imageUrl(item.video_url)
   return ''
 }
+/** 远程视频须为 http(s)，避免上游 FAILURE 时把错误文案写入 video_url */
+function isHttpVideoUrl(url) {
+  if (!url || typeof url !== 'string') return false
+  const t = url.trim()
+  return t.startsWith('http://') || t.startsWith('https://')
+}
 /** 列表项是否具备可播放地址（避免仅有空白 local_path 时外层有卡片、内层无 <video>） */
 function recordHasPlayableVideoUrl(i) {
   if (!i) return false
-  const u = i.video_url && String(i.video_url).trim()
   const lp = i.local_path && String(i.local_path).trim()
-  return !!(u || lp)
+  if (lp) return true
+  return isHttpVideoUrl(i.video_url)
 }
 /** 主播放器强制随记录/地址重建，避免重新生成后 <video> 仍缓存旧 src */
 function sbMainVideoPlayerKey(sbId) {
@@ -3096,6 +3109,14 @@ function getSbVideoError(storyboardId) {
   if (!Array.isArray(list) || list.length === 0) return ''
   const hasCompleted = list.some((i) => i.status === 'completed' && recordHasPlayableVideoUrl(i))
   if (hasCompleted) return ''
+  const bogusCompleted = list.find(
+    (i) => i.status === 'completed' && i.video_url && !recordHasPlayableVideoUrl(i)
+  )
+  if (bogusCompleted) {
+    const u = String(bogusCompleted.video_url || '').trim()
+    if (u) return u
+    if (bogusCompleted.error_msg) return bogusCompleted.error_msg
+  }
   const failed = list.filter((i) => i.status === 'failed' && i.error_msg)
   if (failed.length === 0) return ''
   return failed[0].error_msg

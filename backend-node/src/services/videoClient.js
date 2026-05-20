@@ -838,6 +838,10 @@ function isPlausibleHttpVideoUrl(s) {
   return /^https?:\/\//i.test(t);
 }
 
+function coerceHttpVideoUrl(s) {
+  return isPlausibleHttpVideoUrl(s) ? String(s).trim() : null;
+}
+
 /** 单层对象上的视频地址：兼容中转站使用 result_url 而非 video_url */
 function videoUrlFromRecord(rec) {
   if (!rec || typeof rec !== 'object') return null;
@@ -855,12 +859,13 @@ function videoUrlFromArkVideoNode(video) {
   if (!video || typeof video !== 'object') return null;
   const origin =
     video.transcoded_video && typeof video.transcoded_video === 'object' ? video.transcoded_video.origin : null;
-  if (origin && typeof origin === 'object' && typeof origin.video_url === 'string' && origin.video_url.trim()) {
-    return origin.video_url.trim();
+  if (origin && typeof origin === 'object' && typeof origin.video_url === 'string') {
+    const u = coerceHttpVideoUrl(origin.video_url);
+    if (u) return u;
   }
   for (const k of ['download_url', 'play_url', 'url', 'video_url']) {
-    const v = video[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
+    const u = coerceHttpVideoUrl(video[k]);
+    if (u) return u;
   }
   return null;
 }
@@ -918,8 +923,11 @@ function pickProxyVideoUrl(data) {
   const topList = pickVideoUrlFromItemList(data.item_list);
   if (topList) return topList;
   if (data.video && typeof data.video === 'object') {
-    const vu = videoUrlFromArkVideoNode(data.video) || data.video.url || data.video.video_url;
-    if (vu && typeof vu === 'string') return vu.trim();
+    const vu =
+      videoUrlFromArkVideoNode(data.video) ||
+      coerceHttpVideoUrl(data.video.url) ||
+      coerceHttpVideoUrl(data.video.video_url);
+    if (vu) return vu;
   }
   let u = videoUrlFromRecord(data);
   if (u) return u;
@@ -930,8 +938,11 @@ function pickProxyVideoUrl(data) {
     u = videoUrlFromRecord(d);
     if (u) return u;
     if (d.video && typeof d.video === 'object') {
-      const dv = videoUrlFromArkVideoNode(d.video) || d.video.url || d.video.video_url;
-      if (dv && typeof dv === 'string') return dv.trim();
+      const dv =
+        videoUrlFromArkVideoNode(d.video) ||
+        coerceHttpVideoUrl(d.video.url) ||
+        coerceHttpVideoUrl(d.video.video_url);
+      if (dv) return dv;
     }
     if (d.result && typeof d.result === 'object') {
       const dr = pickVideoUrlFromResultShape(d.result);
@@ -950,8 +961,11 @@ function pickProxyVideoUrl(data) {
     u = videoUrlFromRecord(c);
     if (u) return u;
     if (c.video && typeof c.video === 'object') {
-      const cv = videoUrlFromArkVideoNode(c.video) || c.video.url || c.video.video_url;
-      if (cv && typeof cv === 'string') return cv.trim();
+      const cv =
+        videoUrlFromArkVideoNode(c.video) ||
+        coerceHttpVideoUrl(c.video.url) ||
+        coerceHttpVideoUrl(c.video.video_url);
+      if (cv) return cv;
     }
   }
   for (const k of ['videos', 'generations', 'works']) {
@@ -3152,8 +3166,15 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       if (isVeo3) {
         const status = (data.status || data.data?.status || data.task_status || '').toLowerCase();
         log.info('[Veo3 poll] task status', { video_gen_id: videoGenId, attempt, status, id: data.task_id || data.id });
-        if (status === 'failed' || status === 'error') {
-          const msg = data.error?.message || data.error || data.message || data.data?.error || 'Veo3 task failed';
+        if (status === 'failed' || status === 'error' || status === 'failure') {
+          const innerFail = data.data && typeof data.data === 'object' ? data.data : null;
+          const msg =
+            data.error?.message ||
+            data.error ||
+            innerFail?.fail_reason ||
+            data.message ||
+            data.data?.error ||
+            'Veo3 task failed';
           log.warn('[Veo3 poll] task failed', { video_gen_id: videoGenId, msg });
           return { error: String(msg) };
         }
@@ -3172,9 +3193,15 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       if (isSora) {
         const status = (data.status || '').toLowerCase();
         log.info('[Sora poll] ????', { video_gen_id: videoGenId, attempt, status, progress: data.progress, id: data.id });
-        if (status === 'failed' || status === 'error') {
-          const msg = data.error?.message || data.error || data.message || 'Sora ??????';
-          log.warn('[Sora poll] ????', { video_gen_id: videoGenId, msg, data: JSON.stringify(data).slice(0, 300) });
+        if (status === 'failed' || status === 'error' || status === 'failure') {
+          const innerFail = data.data && typeof data.data === 'object' ? data.data : null;
+          const msg =
+            data.error?.message ||
+            data.error ||
+            innerFail?.fail_reason ||
+            data.message ||
+            'Sora 任务失败';
+          log.warn('[Sora poll] 任务失败', { video_gen_id: videoGenId, msg, data: JSON.stringify(data).slice(0, 300) });
           return { error: String(msg) };
         }
         // succeeded / completed / done ? ??? URL
@@ -3283,7 +3310,10 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
       if (isTerminalFailure) {
         return { error: errMsg || String(statusRaw || '') || '任务失败' };
       }
-      if (videoUrl) return { video_url: videoUrl };
+      if (videoUrl && isPlausibleHttpVideoUrl(videoUrl)) return { video_url: videoUrl };
+      if (videoUrl) {
+        log.warn('[poll] 忽略非 http 视频地址', { video_gen_id: videoGenId, round: pollRound, url_head: String(videoUrl).slice(0, 120) });
+      }
     } catch (e) {
       log.warn('Video poll request failed', { attempt, error: e.message });
     }
@@ -3296,4 +3326,5 @@ module.exports = {
   callVideoApi,
   pollVideoTask,
   normalizeAspectRatioForApi,
+  isPlausibleHttpVideoUrl,
 };
