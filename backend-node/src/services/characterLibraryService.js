@@ -714,11 +714,36 @@ function materialHubProxyCacheKey(charRow, imageUrl) {
   return `sd2char:url:${crypto.createHash('sha256').update(String(imageUrl)).digest('hex').slice(0, 48)}`;
 }
 
+function isHubDownloadMediaError(msg) {
+  return /DownloadFailed|download media|accessible|拉取|下载|tos: request error|fetch-object/i.test(String(msg || ''));
+}
+
+function isHubAuthTokenError(msg) {
+  return /无效的\s*token|invalid\s*token|unauthorized|401/i.test(String(msg || ''));
+}
+
+function formatSd2HubError(errMsg, hubCtx) {
+  let out = String(errMsg || '素材库创建素材失败');
+  if (!isHubAuthTokenError(out)) return out;
+  const diag = hubCtx?.hubAuthDiag || {};
+  const parts = [
+    `即梦2素材库拒绝了当前 Token（${out}）。`,
+    '请在「AI 配置」→「即梦2角色认证」中重新粘贴与 curl 测试完全相同的密钥并点击保存（勿带 Bearer 前缀、勿多空格）。',
+    '保存前可用「列出素材」验证；若列出成功而 SD2 仍失败，说明未保存或存在多条配置未设为默认。',
+  ];
+  if (diag.db_config_id != null) parts.push(`当前读取的配置：id=${diag.db_config_id}${diag.db_config_name ? `「${diag.db_config_name}」` : ''}。`);
+  const fp = diag.token_fingerprint || hubCtx?.tokenFingerprint;
+  if (fp) parts.push(`Token 指纹：${fp}（请与 curl 测试通过时 Bearer 密钥的首尾字符对照是否一致）。`);
+  return parts.join('');
+}
+
 /**
  * localhost / 内网 / 相对 URL 等：先查 image_proxy_cache，未命中则读本地文件上传图床，供即梦素材库拉取。
+ * @param {{ forceLocalProxy?: boolean }} [opts] - 为 true 时跳过直链，强制用 local_path 上传图床（网关拉取火山/TOS 等失败时重试）
  */
-async function ensurePublicRegisterImageUrlForMaterialHub(db, log, cfg, charRow, imageUrl) {
-  if (!isNonPublicMaterialHubUrl(imageUrl)) {
+async function ensurePublicRegisterImageUrlForMaterialHub(db, log, cfg, charRow, imageUrl, opts = {}) {
+  const forceLocalProxy = !!opts.forceLocalProxy;
+  if (!forceLocalProxy && !isNonPublicMaterialHubUrl(imageUrl)) {
     return { ok: true, url: imageUrl, via: 'direct' };
   }
   const cacheKey = materialHubProxyCacheKey(charRow, imageUrl);
@@ -778,7 +803,7 @@ async function registerCharacterJimengMaterialAsset(db, log, cfg, characterId) {
 
   const pub = await ensurePublicRegisterImageUrlForMaterialHub(db, log, cfg, charRow, imageUrl);
   if (!pub.ok) return pub;
-  const registerImageUrl = pub.url;
+  let registerImageUrl = pub.url;
 
   const assetName = String(charRow.name || 'role').replace(/\s+/g, '').slice(0, 12) || 'role';
   const registerUrlLooksPrivate = isNonPublicMaterialHubUrl(imageUrl);
@@ -803,7 +828,21 @@ async function registerCharacterJimengMaterialAsset(db, log, cfg, characterId) {
         : '若仍失败，请用浏览器或 curl 在无 VPN 的机器上访问 resolved_register_image_url 确认 200 且 Content-Type 为图片',
   });
 
-  const createRes = await materialHub.createImageAsset(hubCtx, { url: registerImageUrl, name: assetName }, log);
+  let createRes = await materialHub.createImageAsset(hubCtx, { url: registerImageUrl, name: assetName }, log);
+  if (!createRes.ok && isHubDownloadMediaError(createRes.error) && pub.via === 'direct' && charRow.local_path) {
+    const proxyRetry = await ensurePublicRegisterImageUrlForMaterialHub(db, log, cfg, charRow, imageUrl, {
+      forceLocalProxy: true,
+    });
+    if (proxyRetry.ok && proxyRetry.url && proxyRetry.url !== registerImageUrl) {
+      log.info('[SD2认证] 网关无法拉取原图直链，已改用图床 URL 重试', {
+        character_id: Number(characterId),
+        public_image_via: proxyRetry.via,
+        retry_url_head: String(proxyRetry.url).slice(0, 120),
+      });
+      registerImageUrl = proxyRetry.url;
+      createRes = await materialHub.createImageAsset(hubCtx, { url: registerImageUrl, name: assetName }, log);
+    }
+  }
   if (!createRes.ok) {
     log.warn('[SD2认证] create asset 失败', {
       character_id: Number(characterId),
@@ -812,10 +851,10 @@ async function registerCharacterJimengMaterialAsset(db, log, cfg, characterId) {
       resolved_register_image_url: registerImageUrl,
       hub_auth_diag: hubCtx.hubAuthDiag || null,
     });
-    let errMsg = createRes.error || '素材库创建素材失败';
-    if (/DownloadFailed|download media|accessible|拉取|下载/i.test(String(errMsg))) {
+    let errMsg = formatSd2HubError(createRes.error, hubCtx);
+    if (isHubDownloadMediaError(createRes.error)) {
       errMsg +=
-        ' 【说明】素材库会从云端访问你提交的「图片 URL」。若原图为 localhost/内网，本服务会先上传中转图床；若仍失败请检查图床是否公网可达，或换公网 https 直链。';
+        ' 【说明】素材库会从云端访问你提交的「图片 URL」。火山引擎/即梦临时链常无法被网关拉取，本服务已尝试用本地图上传中转图床；若仍失败请检查 local_path 文件是否存在、图床是否可用，或换百度图床等公网直链。';
     }
     return { ok: false, error: errMsg };
   }

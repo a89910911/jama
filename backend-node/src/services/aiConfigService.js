@@ -1,6 +1,14 @@
 // AI 配置 CRUD，与 Go application/services/ai_service.go 对齐
 const fs = require('fs');
 const path = require('path');
+const { normalizeMaterialHubToken } = require('./jimengMaterialHubService');
+
+function normalizeApiKeyForService(serviceType, apiKey) {
+  if (serviceType === 'jimeng2_character_auth' && apiKey != null) {
+    return normalizeMaterialHubToken(apiKey);
+  }
+  return apiKey;
+}
 const { applyDeepSeekConnectivityOptions } = require('./deepseekConfig');
 function modelToDb(model) {
   if (model == null) return null;
@@ -106,7 +114,7 @@ function createConfig(db, log, req) {
     req.api_protocol || '',
     req.name || '',
     req.base_url || '',
-    req.api_key || '',
+    normalizeApiKeyForService(req.service_type, req.api_key || ''),
     model,
     defaultModel,
     endpoint,
@@ -146,7 +154,8 @@ function updateConfig(db, log, id, req) {
   }
   if (req.api_key != null) {
     updates.push('api_key = ?');
-    params.push(req.api_key);
+    const st = req.service_type != null ? req.service_type : existing.service_type;
+    params.push(normalizeApiKeyForService(st, req.api_key));
   }
   if (req.model != null) {
     updates.push('model = ?');
