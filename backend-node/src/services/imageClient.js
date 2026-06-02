@@ -1756,11 +1756,71 @@ function rowToItem(r) {
   };
 }
 
+/** 分镜参考图上限（与 callGeminiImageApi 的 MAX_GEMINI_REF_IMAGES、可灵单图参考等对齐） */
+function getStoryboardReferenceLimits(config, modelName) {
+  const provider = (config?.provider || '').toLowerCase();
+  const protocol = (config?.api_protocol || '').toLowerCase() || inferProtocol(provider, modelName || config?.model);
+  if (protocol === 'kling') {
+    return { total: 1, maxCharacters: 1, maxObjects: 1 };
+  }
+  return { total: 4, maxCharacters: 3, maxObjects: 4 };
+}
+
+function countStoryboardRefsFromLabels(refLabels) {
+  let characters = 0;
+  let objects = 0;
+  for (const lbl of refLabels || []) {
+    if (/character appearance/i.test(lbl)) characters += 1;
+    else if (/scene background|prop\/object/i.test(lbl)) objects += 1;
+  }
+  return { characters, objects };
+}
+
+function canAddStoryboardCharacterRef(refLabels, limits) {
+  const { characters } = countStoryboardRefsFromLabels(refLabels);
+  return refLabels.length < limits.total && characters < limits.maxCharacters;
+}
+
+function canAddStoryboardObjectRef(refLabels, limits) {
+  const { objects } = countStoryboardRefsFromLabels(refLabels);
+  return refLabels.length < limits.total && objects < limits.maxObjects;
+}
+
+/** 去重：同一本地路径或 URL（忽略 query）不重复加入参考图列表 */
+function canonicalRefKey(ref) {
+  if (ref == null || ref === '') return '';
+  let s = String(ref).trim().replace(/\\/g, '/');
+  if (s.startsWith('data:')) return s.slice(0, 120);
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      return `${u.origin}${u.pathname}`.toLowerCase();
+    } catch (_) {
+      return s.split('?')[0].toLowerCase();
+    }
+  }
+  try {
+    return path.normalize(s).toLowerCase();
+  } catch (_) {
+    return s.toLowerCase();
+  }
+}
+
+function refListHasCanonical(list, ref) {
+  const key = canonicalRefKey(ref);
+  if (!key) return false;
+  return (list || []).some((item) => canonicalRefKey(item) === key);
+}
+
 module.exports = {
   getDefaultImageConfig,
   callImageApi,
   createAndGenerateImage,
   resolveAssetUserNegativeForApi,
+  getStoryboardReferenceLimits,
+  canAddStoryboardCharacterRef,
+  canAddStoryboardObjectRef,
+  refListHasCanonical,
   /** 图床 URL 缓存（image_proxy_cache），供 SD2 认证等复用 */
   getProxyCache,
   setProxyCache,
