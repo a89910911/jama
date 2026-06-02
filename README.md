@@ -6,7 +6,7 @@
 
 *LocalMiniDrama · AI-powered short drama creator*
 
-[![version](https://img.shields.io/badge/version-1.2.6-blue?style=flat-square)](../../releases)
+[![version](https://img.shields.io/badge/version-1.2.7-blue?style=flat-square)](../../releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat-square)](#)
 [![stack](https://img.shields.io/badge/Vue3%20%2B%20Node.js%20%2B%20Electron-informational?style=flat-square)](#)
@@ -110,8 +110,10 @@
 
 ### ✏️ 分镜精细编辑
 
-- **经典分镜 / 全能模式**：分镜视图可一键切换。**经典模式**中间为分镜参考图；**全能模式**中间为**片段描述**（独立存库，与参考图并存），适合 **`volcengine_omni`（火山 Seedance 2.0 多图）** 或 **`kling_omni`（可灵 Omni）** 等全能生视频链路；经典字段保留，可随时切回
-- **全能片段与 `@图片N`**：片段描述中可用 **`@图片1`、`@图片2`…** 对应参考图顺序（一般为场景 → 角色 → 物品 → 分镜主图）；支持「根据分镜生成提示词」自动生成含运镜、机位与 `@图片` 约束的文案；有内容时生视频**仅提交该段**，不拼接下方「视频提示词」
+- **经典分镜 / 全能模式**：分镜视图可一键切换。**经典模式**中间为分镜参考图（无图时阻止生视频并提示先出图）；**全能模式**中间为**片段描述**（独立存库，与参考图并存），适合 **`volcengine_omni`（火山 Seedance 2.0 多图）** 或 **`kling_omni`（可灵 Omni）** 等全能生视频链路，提交前会校验 AI 配置是否匹配；经典字段保留，可随时切回
+- **全能片段与 `@图片N`**：片段描述中可用 **`@图片1`、`@图片2`…** 对应参考图顺序（一般为场景 → 角色 → 物品；不含经典分镜主图）；支持「根据分镜生成提示词」自动生成含运镜、机位与 `@图片` 约束的文案；有内容时生视频**仅提交该段**，不拼接下方「视频提示词」
+- **尾帧衔接**（v1.2.7）：从本镜已完成视频提取末帧，一键设为下一镜首帧，便于镜间连贯
+- **导出分镜表**（v1.2.7）：当前集分镜导出 HTML 表格，含对白、解说、全能片段与各提示词，便于审阅与协作
 - **图片提示词**：查看并编辑每个分镜的图片生成提示词，修改后重新生成
 - **视频提示词**：全文编辑 + 字段展开编辑（场景/时长/动作/氛围/运镜/景别），自动重新拼装
 - **图片管理**：AI 生成、手动上传、拖拽上传，随时替换
@@ -239,9 +241,15 @@ LocalMiniDrama/
 
 查看完整更新记录 → **[CHANGELOG](docs/changelog.md)**
 
-**最新版 v1.2.6 亮点：**
-- 🆕 **Seedance 2.0 接入**：火山方舟多参考图视频链路；AI 配置视频中选接口规范 **`volcengine_omni`**，模型如 `doubao-seedance-2-0-260128` 等（以控制台为准）；后端对 Seedance **2.x** 时长 **4–15 秒**吸附、参考图 **`reference_image`** 组装
-- 🆕 **分镜全能模式**：制作页分镜切换「全能模式」，中间编辑**片段描述**（`universal_segment_text`）；与可灵 **`kling_omni`** 或火山 **`volcengine_omni`** 配合，多素材参考图一键提交；**`@图片1`…** 编排与「根据分镜生成提示词」工作流
+**最新版 v1.2.7 亮点：**
+- 🆕 **尾帧衔接**：一键提取本镜视频末帧设为下一镜首帧（服务端 ffmpeg），提升镜间连贯性
+- 🆕 **导出分镜表**：当前集分镜导出为 HTML 表格，含对白、解说、全能片段与各提示词列，便于审阅协作
+- 🆕 **统一生成任务进度**：角色 / 场景 / 道具 / 分镜图 / 视频等异步任务共用任务 Store，支持刷新后恢复轮询
+- 🔧 **生视频模式校验**：全能模式检测 `kling_omni` 或 `volcengine_omni`+Seedance 2.0，不匹配可提示并降级；传统模式无分镜图时阻止提交并提示先出图
+- 🔧 **首帧尾帧分字段绑定**：尾帧不再污染分镜主图；Seedance 2.0 角色素材在主图变更后自动标为需刷新
+
+**v1.2.6 / v1.2.5 亮点：**
+- 🆕 **Seedance 2.0 + 分镜全能模式**：`volcengine_omni` / `kling_omni`、多图 `@图片N`、`universal_segment_text`（详见 [CHANGELOG](CHANGELOG.md)）
 
 **v1.2.3 亮点：**
 - 🆕 **分镜解说旁白（narration）**：分镜生成可选「生成分镜时生成解说旁白」，AI 为每镜输出独立 `narration` 字段（与角色对白 `dialogue` 分离），便于后期 TTS 与成片旁轨
@@ -333,6 +341,30 @@ LocalMiniDrama/
 
 ---
 
+## ☕ 一杯咖啡的鼓励
+
+这个项目**完全开源、无订阅、数据留在本机**——从分镜到 Seedance 2.0 全能链路，都是业余时间一点点磨出来的。  
+若它帮你省下排期、跑通了一条成片，或你愿意为后续功能加把劲，可以用下方方式**随意打赏**（金额不限，心意最重要）。
+
+> 打赏纯属自愿，**不影响**任何功能、Issue 回复或 PR 合并；同样感谢 ⭐ Star、分享给同好、提 Bug / 建议。
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="项目截图/weixinpay.jpg" alt="微信赞赏码" width="200"/><br/>
+      <sub><b>微信支付</b> · 扫码赞赏</sub>
+    </td>
+    <td align="center">
+      <img src="项目截图/ali.jpg" alt="支付宝收款码" width="200"/><br/>
+      <sub><b>支付宝</b> · 扫码赞赏</sub>
+    </td>
+  </tr>
+</table>
+
+感谢每一位愿意支持开源维护的朋友，你们的鼓励是我继续迭代的动力。
+
+---
+
 ## 💬 联系 & 社区
 
 一个游戏搬砖工，用自己熟悉的 JavaScript 做了这个开源项目，先做了再说。
@@ -366,6 +398,7 @@ LocalMiniDrama/
 
 <div align="center">
 
-**如果这个项目对你有帮助，请点一下 ⭐ Star，这是对作者最大的鼓励！**
+**如果这个项目对你有帮助，请点一下 ⭐ Star——这是对作者最大的鼓励！**  
+*也欢迎随缘打赏一杯咖啡（见上文「一杯咖啡的鼓励」），纯属自愿。*
 
 </div>

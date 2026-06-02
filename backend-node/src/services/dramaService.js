@@ -72,10 +72,13 @@ function getDrama(db, dramaId, baseUrl) {
     'SELECT * FROM episodes WHERE drama_id = ? AND deleted_at IS NULL ORDER BY episode_number ASC'
   ).all(drama.id);
   drama.episodes = episodes.map((e) => rowToEpisode(e));
+  const { dedupeStoryboardRowsByNumber } = require('./episodeStoryboardService');
   for (const ep of drama.episodes) {
-    const storyboards = db.prepare(
-      'SELECT * FROM storyboards WHERE episode_id = ? AND deleted_at IS NULL ORDER BY storyboard_number ASC'
-    ).all(ep.id);
+    const storyboards = dedupeStoryboardRowsByNumber(
+      db.prepare(
+        'SELECT * FROM storyboards WHERE episode_id = ? AND deleted_at IS NULL ORDER BY storyboard_number ASC, id ASC'
+      ).all(ep.id)
+    );
     ep.storyboards = storyboards.map((s) => rowToStoryboard(s));
     // 批量加载 storyboard_props，附加到对应分镜
     try {
@@ -192,9 +195,12 @@ function listDramas(db, query) {
     ).all(d.id);
     d.episodes = episodes.map((e) => {
       const ep = rowToEpisode(e);
-      const storyboards = db.prepare(
-        'SELECT * FROM storyboards WHERE episode_id = ? AND deleted_at IS NULL ORDER BY storyboard_number ASC'
-      ).all(ep.id);
+      const { dedupeStoryboardRowsByNumber } = require('./episodeStoryboardService');
+      const storyboards = dedupeStoryboardRowsByNumber(
+        db.prepare(
+          'SELECT * FROM storyboards WHERE episode_id = ? AND deleted_at IS NULL ORDER BY storyboard_number ASC, id ASC'
+        ).all(ep.id)
+      );
       ep.storyboards = storyboards.map((s) => rowToStoryboard(s));
       try {
         const sbIds = ep.storyboards.map((s) => s.id);
@@ -408,6 +414,7 @@ function rowToCharacter(r) {
     negative_prompt: r.negative_prompt || null,
     four_view_image_url: r.four_view_image_url || null,
     seedance2_asset: parseJsonColumn(r.seedance2_asset),
+    seedance2_voice_asset: parseJsonColumn(r.seedance2_voice_asset),
     created_at: r.created_at,
     updated_at: r.updated_at,
   };

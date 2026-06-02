@@ -8,6 +8,33 @@
 
 ---
 
+## [1.2.7] - 2026-06-02
+
+### 新增
+
+- **尾帧衔接**：分镜视频区「尾帧衔接」按钮；后端 `tailFrameLinkService` 用 **ffmpeg** 提取当前镜已完成视频的末帧，写入 `image_generations` 并设为**下一镜首帧**（`first_frame_image_id` / `image_url` / `local_path`），便于镜间画面连续
+- **分镜首帧 / 尾帧独立绑定**：`storyboardFrameBinding` 将尾帧写入 `last_frame_*` 字段，避免尾帧图污染分镜主图或历史记录；支持 `storyboard_first` / `storyboard_last` 等别名归一化
+- **导出分镜表**：制作页一键导出当前集分镜为 **HTML 表格**（`exportStoryboardSheet`），含镜号、景别、运镜、场景/角色/道具、对白、解说、提示词、全能片段等列，便于审阅与对外协作
+- **统一生成任务进度**：新增 `generationTaskStore` 与 `useGenerationTaskSync`，角色/场景/道具/分镜图（含首帧、尾帧）/分镜视频/流水线等异步任务共用轮询、去重与超时清理；刷新页面后可恢复进行中的任务状态
+- **全能片段多子分镜版式统一**：`universalOmniMultiBeatFormat` 与批量分镜生成、「生成 / 润色全能提示词」共用同一套 **分镜1 / 分镜2…** 段落格式与 `@图片1` 环境约束说明
+- **Seedance 2.0 角色素材守护**：`seedance2AssetGuards` 在角色主图变更时自动将已认证 `seedance2_asset` / 音色参考标为 **stale**，避免视频引用过期素材
+- **媒体画幅规格**：`mediaAspectRatioSpec` 统一图片 / 视频请求的宽高比解析与归一化
+- **故事生成 composable**：`useStoryGeneration` 抽离「从梗概生成剧本」流程；`scriptEpisodes` 辅助多集剧本分段
+
+### 优化
+
+- **全能模式生视频校验**：单条「生成 / 重新生成」视频前检测 AI 配置是否为 **`kling_omni`**，或 **`volcengine_omni` + Seedance 2.x 模型**；不匹配时弹窗说明并可选 **强制继续**（降级为仅场景图或分镜主图参考，不再走多图 Omni）
+- **传统模式缺图拦截**：经典分镜在无分镜参考图时弹窗提示「需先生成或上传分镜图片」，不再提供纯文案强行生成
+- **分镜 / 视频 / 导入导出**：`episodeStoryboardService`、`storyboardService`、`framePromptService`、`dramaImportService` / `dramaExportService` 等与全能字段、尾帧、提示词清洗（`framePromptSanitize`）联动优化
+- **工程结构**：桌面壳统一使用仓库内 `backend-node`，移除重复的 `desktop/backend-app-secure` 副本目录
+
+### 文档
+
+- 根目录 `README.md`、`docs/en.md`、`index.html`、各子包 README 同步 **v1.2.7**（版本徽章、下载链接示例、最新亮点）
+- `frontweb` / `backend-node` / `desktop` 的 `package.json` 与 lock 文件顶层 **version** 统一为 **1.2.7**
+
+---
+
 ## [1.2.6] - 2026-04-12
 
 ### 文档
