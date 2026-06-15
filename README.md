@@ -71,6 +71,13 @@
 
 <br/>
 
+<div align="center">
+  <img src="项目截图/画布模式.png" alt="画布工作流 · 分镜流水线" width="960"/><br/>
+  <sub>🆕 画布模式 · 分镜流水线可视化 · 节点内编辑/生成 · 工作流整组重跑</sub>
+</div>
+
+<br/>
+
 <table>
   <tr>
     <td align="center"><img src="项目截图/武侠.png" alt="剧集管理页" width="480"/><br/><sub>剧集管理 · 分集 + 资源库</sub></td>
@@ -152,7 +159,7 @@
 | 工作流组 | 框选分镜 → 创建工作流 → **整组重跑**（生图/视频/配音可勾选） |
 | 布局持久化 | 拖动保存坐标；曲线连线；左键框选、中键/右键平移 |
 
-📖 [画布工作流完整文档](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
+界面预览见 [上方截图](#-界面预览) · 📖 [画布工作流完整文档](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
 
 ### 🤖 AI 配置 · 🌓 亮/暗主题 · 自定义提示词
 
