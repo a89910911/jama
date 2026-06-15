@@ -18,6 +18,9 @@ function createApp() {
   applyVendorLock(db, logger, config);
   const log = logger;
 
+  const { resumeProcessingVideoGenerations } = require('./services/videoService');
+  resumeProcessingVideoGenerations(db, log);
+
   const app = express();
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));

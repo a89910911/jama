@@ -102,6 +102,13 @@ function createConfig(db, log, req) {
         endpoint = '/api/v1/nanobanana/generate-2';
         queryEndpoint = '/api/v1/nanobanana/record-info';
       }
+    } else if (p === 'agnes') {
+      if (st === 'text') endpoint = '/chat/completions';
+      else if (st === 'image' || st === 'storyboard_image') endpoint = '/images/generations';
+      else if (st === 'video') {
+        endpoint = '/videos';
+        queryEndpoint = '/videos/{taskId}';
+      }
     }
   }
   const defaultModel = req.default_model != null ? String(req.default_model).trim() || null : null;
@@ -324,9 +331,9 @@ async function testConnection(opts) {
   const modelLower = model.toLowerCase();
 
   // 兜底识别图片/视频模型（service_type 未传时使用）
-  const looksLikeImageModel = /seedream|image2video|text2image|img2img|wanx|wan\d|flux|stable.?diff|dall.?e|imagen|-image$/i.test(modelLower)
+  const looksLikeImageModel = /seedream|image2video|text2image|img2img|wanx|wan\d|flux|stable.?diff|dall.?e|imagen|agnes-image|-image$/i.test(modelLower)
     || (isVolcengine && /seedream|vision|image/i.test(modelLower));
-  const looksLikeVideoModel = /seedance|video.?gen|video2video|kf2v|cogvideo|sora|kling/i.test(modelLower);
+  const looksLikeVideoModel = /seedance|video.?gen|video2video|kf2v|cogvideo|sora|kling|agnes-video/i.test(modelLower);
   // DashScope 图片/视频专用端点特征
   const isDashscopeNonChatEndpoint = isDashscope && !!(endpoint && (endpoint.includes('aigc') || endpoint.includes('multimodal') || endpoint.includes('video')));
 

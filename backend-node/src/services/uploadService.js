@@ -138,47 +138,75 @@ async function downloadImageToLocal(storagePath, imageUrl, category, log, prefix
   }
 }
 
+function getImageProxyUploadSettings() {
+  try {
+    const cfg = require('../config').loadConfig();
+    const ip = cfg?.image_proxy || {};
+    return {
+      uploadUrl: (ip.upload_url || 'https://imageproxy.zhongzhuan.chat/api/upload').trim(),
+      timeoutMs: Math.max(5000, Number(ip.upload_timeout_seconds ?? 45) * 1000),
+      maxAttempts: Math.max(1, Math.min(5, Number(ip.upload_max_attempts ?? 2))),
+    };
+  } catch (_) {
+    return {
+      uploadUrl: 'https://imageproxy.zhongzhuan.chat/api/upload',
+      timeoutMs: 45000,
+      maxAttempts: 2,
+    };
+  }
+}
+
 /**
  * 将图片 Buffer 上传到中转图床，返回公开访问 URL。
  * 接口：POST https://imageproxy.zhongzhuan.chat/api/upload  (multipart/form-data, field: file)
  * 响应：{ url: "https://imageproxy.zhongzhuan.chat/api/proxy/image/<hash>", created: ... }
- * 失败自动重试，最多 3 次；成功返回 string URL，全部失败返回 null。
+ * 失败自动重试；成功返回 string URL，全部失败返回 null。
  */
 async function uploadToImageProxy(imageBuffer, mimeType, log, tag) {
-  const UPLOAD_URL = 'https://imageproxy.zhongzhuan.chat/api/upload';
+  const { uploadUrl, timeoutMs, maxAttempts } = getImageProxyUploadSettings();
   const extMap = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
   const ext = extMap[mimeType] || 'jpg';
   const filename = `ref_${Date.now()}.${ext}`;
-  const MAX_ATTEMPTS = 3;
-  log.info('[图床上传] ▶ 开始', { tag, filename, size_kb: Math.round(imageBuffer.length / 1024) });
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  log.info('[图床上传] ▶ 开始', {
+    tag,
+    filename,
+    size_kb: Math.round(imageBuffer.length / 1024),
+    upload_url: uploadUrl,
+    timeout_sec: Math.round(timeoutMs / 1000),
+    max_attempts: maxAttempts,
+  });
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const t0 = Date.now();
     try {
       const boundary = 'imgproxy_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       const headerLine = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
       const footerLine = `\r\n--${boundary}--\r\n`;
       const body = Buffer.concat([Buffer.from(headerLine, 'utf-8'), imageBuffer, Buffer.from(footerLine, 'utf-8')]);
-      const res = await fetch(UPLOAD_URL, {
+      const res = await fetch(uploadUrl, {
         method: 'POST',
         headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
         body,
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const raw = await res.text();
       const ms = Date.now() - t0;
       if (!res.ok) {
         log.warn('[图床上传] 失败', { tag, attempt, status: res.status, ms, body: raw.slice(0, 200) });
-        if (attempt < MAX_ATTEMPTS) continue;
+        if (attempt < maxAttempts) continue;
         return null;
       }
       const data = JSON.parse(raw);
       const url = data?.url || null;
       if (url) { log.info('[图床上传] ✓ 成功', { tag, attempt, url, ms }); return url; }
       log.warn('[图床上传] 响应无 url 字段', { tag, attempt, ms, raw: raw.slice(0, 200) });
-      if (attempt < MAX_ATTEMPTS) continue;
+      if (attempt < maxAttempts) continue;
       return null;
     } catch (err) {
-      log.warn('[图床上传] 请求异常', { tag, attempt, ms: Date.now() - t0, err: err.message });
-      if (attempt < MAX_ATTEMPTS) continue;
+      const errMsg = err.name === 'TimeoutError' || err.name === 'AbortError'
+        ? `请求超时（${Math.round(timeoutMs / 1000)}s）`
+        : err.message;
+      log.warn('[图床上传] 请求异常', { tag, attempt, ms: Date.now() - t0, err: errMsg });
+      if (attempt < maxAttempts) continue;
       return null;
     }
   }

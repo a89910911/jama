@@ -4,6 +4,7 @@ const path = require('path');
 const aiConfigService = require('./aiConfigService');
 let sharp; try { sharp = require('sharp'); } catch (_) { sharp = null; }
 const { uploadLocalImageToProxy, uploadToImageProxy } = require('./uploadService');
+const imageClient = require('./imageClient');
 const {
   clampToGeminiImageAspectRatio,
   clampToViduAspectRatio,
@@ -30,6 +31,7 @@ function inferVideoProtocol(provider) {
   if (p === 'kling' || p === 'klingai') return 'kling';
   if (p === 'jimeng_ai_api') return 'jimeng_ai_api';
   if (p === 'xai' || p === 'grok') return 'xai';
+  if (p === 'agnes') return 'agnes';
   return 'openai';
 }
 
@@ -46,6 +48,7 @@ function resolveVideoProtocol(config, modelHint) {
   if (!explicit && protocol === 'openai') {
     if (/api\.x\.ai(\/|$)/.test(baseLower)) protocol = 'xai';
     else if (/grok-imagine|grok.*video/.test(modelLower)) protocol = 'xai';
+    else if (p === 'agnes' || /agnes-video|apihub\.agnes-ai\.com/i.test(baseLower)) protocol = 'agnes';
   }
   return protocol;
 }
@@ -381,6 +384,93 @@ async function resolveVolcOmniImageAsync(rawUrl, files_base_url, storage_local_p
 }
 
 /**
+ * Agnes Video：仅接受公网 http(s) 图片 URL，本地/localhost 须先上传图床，禁止 base64。
+ */
+function isPublicHttpUrl(url) {
+  return /^https?:\/\//i.test(url) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(url);
+}
+
+function isPublicFilesBaseUrl(files_base_url) {
+  const fb = (files_base_url || '').trim();
+  if (!fb || !/^https?:\/\//i.test(fb)) return false;
+  return !/localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./i.test(fb);
+}
+
+function localRefKeyFromRaw(raw) {
+  const s = (raw || '').trim();
+  if (!s || s.startsWith('data:')) return null;
+  if (s.includes('/static/')) {
+    return (s.split('/static/')[1] || '').split(/[?#]/)[0].replace(/^\/+/, '') || null;
+  }
+  if (/^https?:\/\//i.test(s)) return null;
+  return s.replace(/^\/+/, '') || null;
+}
+
+function publicUrlFromLocalRef(raw, files_base_url) {
+  const rel = localRefKeyFromRaw(raw);
+  if (!rel || !isPublicFilesBaseUrl(files_base_url)) return null;
+  return `${String(files_base_url).replace(/\/$/, '')}/${rel}`;
+}
+
+async function resolveImageInputForAgnesAsync(db, rawUrl, files_base_url, storage_local_path, log, video_gen_id, index) {
+  const raw = (rawUrl || '').trim();
+  if (!raw) return null;
+
+  if (isPublicHttpUrl(raw)) return raw;
+
+  const publicFromBase = publicUrlFromLocalRef(raw, files_base_url);
+  if (publicFromBase) {
+    log.info('[Agnes] 使用公网 static URL（跳过图床）', { video_gen_id, index, url_head: publicFromBase.slice(0, 64) });
+    return publicFromBase;
+  }
+
+  const cacheKey = localRefKeyFromRaw(raw);
+  if (db && cacheKey) {
+    const cached = await imageClient.getProxyCacheValidated(db, cacheKey, log, `agnes_vg${video_gen_id}_${index}`);
+    if (cached) {
+      log.info('[Agnes] 使用图床缓存 URL', { video_gen_id, index, cache_key: cacheKey });
+      return cached;
+    }
+  }
+
+  if (raw.startsWith('data:')) {
+    const m = /^data:([^;]+);base64,([\s\S]+)$/i.exec(raw);
+    if (m) {
+      const mime = (m[1] || 'image/jpeg').trim();
+      const b64 = String(m[2] || '').replace(/\s/g, '');
+      try {
+        const buf = Buffer.from(b64, 'base64');
+        if (buf.length > 0) {
+          const tag = `agnes_vg${video_gen_id}_${index}`;
+          const proxyUrl = await uploadToImageProxy(buf, mime, log, tag);
+          if (proxyUrl) {
+            log.info('[Agnes] base64 参考图已上传图床', { video_gen_id, index, url_head: proxyUrl.slice(0, 64) });
+            if (db && cacheKey) imageClient.setProxyCache(db, cacheKey, proxyUrl);
+            return proxyUrl;
+          }
+        }
+      } catch (e) {
+        log.warn('[Agnes] base64 解码或上传失败', { video_gen_id, index, error: e.message });
+      }
+    }
+    return null;
+  }
+
+  if (storage_local_path) {
+    const tag = `agnes_vg${video_gen_id}_${index}`;
+    const proxyUrl = await uploadLocalImageToProxy(storage_local_path, raw, log, tag);
+    if (proxyUrl) {
+      log.info('[Agnes] 本地参考图已上传图床', { video_gen_id, index, url_head: proxyUrl.slice(0, 64) });
+      if (db && cacheKey) imageClient.setProxyCache(db, cacheKey, proxyUrl);
+      return proxyUrl;
+    }
+  }
+
+  log.warn('[Agnes] 参考图无法转为公网 URL', { video_gen_id, index, raw_head: raw.slice(0, 80) });
+  return null;
+}
+
+/**
  * 火山 Seedance 系列：按模型版本归一化时长（秒）。
  * - 2.x：4–15
  * - 1.5 Pro/Lite：5–12（官方文档）
@@ -568,7 +658,13 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     image_count: urls.length,
     has_voice_ref: !!voice_reference_url,
     video_gen_id,
-    prompt_head: ((prompt || '').trim()).slice(0, 120),
+  });
+  logVideoPostRequest(log, 'VolcOmni', url, body, video_gen_id, {
+    model: finalModel,
+    ratio,
+    duration: effectiveDuration,
+    image_count: urls.length,
+    has_voice_ref: !!voice_reference_url,
   });
 
   const res = await fetch(url, {
@@ -712,7 +808,12 @@ async function callKlingOmniVideoApi(config, log, opts) {
     aspect_ratio: ratio,
     image_count: image_list.length,
     video_gen_id,
-    prompt_head: textPrompt.slice(0, 120),
+  });
+  logVideoPostRequest(log, 'KlingOmni', createUrl, body, video_gen_id, {
+    model_name: modelName,
+    duration: durStr,
+    aspect_ratio: ratio,
+    image_count: image_list.length,
   });
 
   const res = await fetch(createUrl, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -843,6 +944,7 @@ function buildQueryUrl(config, taskId) {
   else if (proto === 'veo3') defaultEp = '/v1/video/query?id={taskId}';
   else if (isDashScope) defaultEp = '/api/v1/tasks/{taskId}';
   else if (proto === 'volcengine_omni') defaultEp = '/v1/videos/generations/async/{taskId}';
+  else if (proto === 'agnes') defaultEp = '/videos/{taskId}';
   else defaultEp = '/video/task/{taskId}';
   let ep = config.query_endpoint || defaultEp;
   ep = String(ep).replace(/\{taskId\}/gi, encodeURIComponent(taskId)).replace(/\{task_id\}/gi, encodeURIComponent(taskId)).replace(/\{id\}/gi, encodeURIComponent(taskId));
@@ -955,6 +1057,8 @@ function videoUrlFromRecord(rec) {
     coerceHttpVideoUrl(rec.result_url) ||
     coerceHttpVideoUrl(rec.url) ||
     coerceHttpVideoUrl(rec.output_url) ||
+    // Agnes Video V2.0 完成态有时将 MP4 直链放在 remixed_from_video_id
+    coerceHttpVideoUrl(rec.remixed_from_video_id) ||
     null
   );
 }
@@ -1225,14 +1329,17 @@ async function callKlingVideoApi(config, log, opts) {
     };
   }
 
-  const bodyForLog = {
-    ...body,
-    image: body.image ? { ...body.image, url: body.image.url?.startsWith('data:') ? '(base64)' : body.image.url } : undefined,
-  };
   log.info('[Kling视频] 发送请求', {
     url: createUrl, model: m, task_type: taskType,
     has_image: hasImage, duration: klingDuration, ratio,
-    video_gen_id, body_preview: JSON.stringify(bodyForLog).slice(0, 400),
+    video_gen_id,
+  });
+  logVideoPostRequest(log, 'Kling', createUrl, body, video_gen_id, {
+    model: m,
+    task_type: taskType,
+    has_image: hasImage,
+    duration: klingDuration,
+    ratio,
   });
 
   const res = await fetch(createUrl, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -1916,7 +2023,7 @@ async function callViduVideoApi(config, log, opts) {
     aspect_ratio_in_json: body.aspect_ratio,
     prompt_chars_final: (body.prompt || '').length,
   });
-  log.info('[Vidu] request body', { body: JSON.stringify({ ...body, images: body.images ? ['(url)'] : undefined }), video_gen_id });
+  logVideoPostRequest(log, 'Vidu', url, body, video_gen_id, { model: modelName, auth: isOfficialVidu ? 'Token' : 'Bearer' });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -2093,9 +2200,9 @@ async function callVeo3VideoApi(config, log, opts) {
     url, model,
     has_image: !!body.images,
     prompt_len: (prompt || '').length,
-    prompt_head: (prompt || '').slice(0, 200),
     video_gen_id,
   });
+  logVideoPostRequest(log, 'Veo3', url, body, video_gen_id, { model });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -2139,6 +2246,288 @@ async function callVeo3VideoApi(config, log, opts) {
 
   log.error('[Veo3] cannot parse task_id or video_url', { data: JSON.stringify(data).slice(0, 500), video_gen_id });
   return { error: 'Veo3 no task_id or video_url: ' + JSON.stringify(data).slice(0, 300) };
+}
+
+/** Agnes Video V2.0：POST /videos JSON，轮询 GET /videos/{task_id} */
+const AGNES_ALLOWED_NUM_FRAMES = [81, 121, 161, 241, 441];
+
+/** 调试日志：base64 只记长度，http(s) URL 保留完整以便核对参考图 */
+function summarizeMediaValueForLog(value) {
+  if (value == null) return value;
+  const s = String(value);
+  if (s.startsWith('data:')) return `(base64, ${s.length} chars)`;
+  return s;
+}
+
+/** 格式化视频 POST JSON 请求体，便于日志排查参考图/关键帧策略 */
+function formatVideoPostBodyForLog(body) {
+  if (!body || typeof body !== 'object') return body;
+  const clone = JSON.parse(JSON.stringify(body));
+
+  if (Array.isArray(clone.extra_body?.image)) {
+    clone.extra_body.image = clone.extra_body.image.map((url, i) => `[${i}] ${summarizeMediaValueForLog(url)}`);
+  }
+  if (typeof clone.image === 'string') {
+    clone.image = summarizeMediaValueForLog(clone.image);
+  }
+  if (clone.image && typeof clone.image === 'object' && clone.image.url) {
+    clone.image = { ...clone.image, url: summarizeMediaValueForLog(clone.image.url) };
+  }
+  if (Array.isArray(clone.images)) {
+    clone.images = clone.images.map((u, i) => `[${i}] ${summarizeMediaValueForLog(u)}`);
+  }
+  if (Array.isArray(clone.image_list)) {
+    clone.image_list = clone.image_list.map((item, i) => {
+      const out = { ...item, index: i };
+      if (out.url) out.url = summarizeMediaValueForLog(out.url);
+      if (out.image) out.image = summarizeMediaValueForLog(out.image);
+      if (out.image_url) out.image_url = summarizeMediaValueForLog(out.image_url);
+      return out;
+    });
+  }
+  if (Array.isArray(clone.content)) {
+    clone.content = clone.content.map((part) => {
+      if (part?.type === 'image_url' && part.image_url?.url) {
+        return {
+          ...part,
+          image_url: { ...part.image_url, url: summarizeMediaValueForLog(part.image_url.url) },
+        };
+      }
+      if (part?.image_url && typeof part.image_url === 'string') {
+        return { ...part, image_url: summarizeMediaValueForLog(part.image_url) };
+      }
+      return part;
+    });
+  }
+  return clone;
+}
+
+function logVideoPostRequest(log, provider, url, body, video_gen_id, meta = {}) {
+  const formatted = formatVideoPostBodyForLog(body);
+  log.info(`[${provider}] Video POST 摘要`, { video_gen_id, url, ...meta });
+  log.info(`[${provider}] Video POST 请求体`, {
+    video_gen_id,
+    post_body: JSON.stringify(formatted, null, 2),
+  });
+}
+
+function agnesDimensionsFromAspectRatio(ratio) {
+  const map = {
+    '16:9': { width: 1152, height: 768 },
+    '9:16': { width: 768, height: 1152 },
+    '4:3': { width: 1024, height: 768 },
+    '3:4': { width: 768, height: 1024 },
+    '1:1': { width: 768, height: 768 },
+    '21:9': { width: 1344, height: 576 },
+  };
+  return map[ratio] || map['16:9'];
+}
+
+function agnesSnapNumFrames(durationSec, frameRate = 24) {
+  const target = Math.round((Number(durationSec) || 5) * frameRate);
+  let best = AGNES_ALLOWED_NUM_FRAMES[0];
+  for (const v of AGNES_ALLOWED_NUM_FRAMES) {
+    if (Math.abs(v - target) < Math.abs(best - target)) best = v;
+  }
+  return best;
+}
+
+/**
+ * Agnes 视频入参图片策略（可单测）：
+ * - 顶层 image 仅支持 string（服务端 Go 结构体不接受 array）
+ * - 全能多图参考：extra_body.image 数组，且禁止 mode: keyframes
+ * - 经典首尾帧：extra_body.mode = keyframes + 恰好两张图
+ */
+function buildAgnesVideoImagePayload({ useOmniReference, resolvedRefs, firstResolved, lastResolved }) {
+  const refs = Array.isArray(resolvedRefs) ? resolvedRefs.filter(Boolean) : [];
+  if (useOmniReference && refs.length >= 2) {
+    return {
+      strategy: 'omni_reference_extra_body',
+      extra_body: { image: refs.slice(0, 10) },
+    };
+  }
+  if (useOmniReference && refs.length === 1) {
+    return {
+      strategy: 'omni_reference_single',
+      image: refs[0],
+    };
+  }
+  if (!useOmniReference && firstResolved && lastResolved && firstResolved !== lastResolved) {
+    return {
+      strategy: 'classic_keyframes',
+      extra_body: { mode: 'keyframes', image: [firstResolved, lastResolved] },
+    };
+  }
+  if (firstResolved) {
+    return {
+      strategy: 'classic_i2v',
+      image: firstResolved,
+    };
+  }
+  return { strategy: 'text_only' };
+}
+
+async function callAgnesVideoApi(db, config, log, opts) {
+  const {
+    prompt,
+    model,
+    duration,
+    aspect_ratio,
+    image_url,
+    first_frame_url,
+    last_frame_url,
+    reference_urls,
+    files_base_url,
+    storage_local_path,
+    video_gen_id,
+  } = opts;
+
+  const base = (config.base_url || 'https://apihub.agnes-ai.com/v1').replace(/\/$/, '');
+  let ep = config.endpoint || '/videos';
+  if (!ep.startsWith('/')) ep = '/' + ep;
+  const url = base + ep;
+
+  const frameRate = 24;
+  const dims = agnesDimensionsFromAspectRatio(aspect_ratio || '16:9');
+  const numFrames = agnesSnapNumFrames(duration, frameRate);
+
+  const body = {
+    model: model || 'agnes-video-v2.0',
+    prompt: prompt || '',
+    width: dims.width,
+    height: dims.height,
+    num_frames: numFrames,
+    frame_rate: frameRate,
+  };
+
+  const rawRefList = Array.isArray(reference_urls) ? reference_urls.filter(Boolean) : [];
+  const resolvedRefs = [];
+  const seen = new Set();
+  for (let i = 0; i < rawRefList.length; i++) {
+    const r = await resolveImageInputForAgnesAsync(
+      db,
+      rawRefList[i],
+      files_base_url,
+      storage_local_path,
+      log,
+      video_gen_id,
+      `ref_${i}`
+    );
+    if (r && !seen.has(r)) {
+      seen.add(r);
+      resolvedRefs.push(r);
+    }
+  }
+
+  const rawFirst = (first_frame_url || image_url || '').toString().trim();
+  const rawLast = (last_frame_url || '').toString().trim();
+  const useOmniReference = rawRefList.length > 0;
+
+  let firstResolved = null;
+  let lastResolved = null;
+  if (!useOmniReference) {
+    firstResolved = rawFirst
+      ? await resolveImageInputForAgnesAsync(db, rawFirst, files_base_url, storage_local_path, log, video_gen_id, 'first_frame')
+      : null;
+    lastResolved = rawLast
+      ? await resolveImageInputForAgnesAsync(db, rawLast, files_base_url, storage_local_path, log, video_gen_id, 'last_frame')
+      : null;
+  }
+
+  if (rawRefList.length > 0 && resolvedRefs.length === 0) {
+    return {
+      error: 'Agnes 视频参考图须为公网 URL，本地图上传图床失败（imageproxy.zhongzhuan.chat 可能无法访问）。请检查网络/代理，或将 storage.base_url 配置为 Agnes 可访问的公网地址后重试。',
+    };
+  }
+
+  const imagePayload = buildAgnesVideoImagePayload({
+    useOmniReference,
+    resolvedRefs,
+    firstResolved,
+    lastResolved,
+  });
+  if (imagePayload.image != null) {
+    body.image = imagePayload.image;
+  }
+  if (imagePayload.extra_body) {
+    body.extra_body = imagePayload.extra_body;
+  }
+
+  log.info('[Agnes] 参考图输入（解析前）', {
+    video_gen_id,
+    use_omni_reference: useOmniReference,
+    raw_ref_count: rawRefList.length,
+    raw_refs: rawRefList.map((u, i) => ({ index: i, url: String(u) })),
+    raw_first_frame: rawFirst || null,
+    raw_last_frame: rawLast || null,
+  });
+  log.info('[Agnes] 参考图解析结果', {
+    video_gen_id,
+    resolved_ref_count: resolvedRefs.length,
+    resolved_refs: resolvedRefs.map((u, i) => ({ index: i, url: u })),
+    first_resolved: firstResolved,
+    last_resolved: lastResolved,
+    image_strategy: imagePayload.strategy,
+  });
+
+  logVideoPostRequest(log, 'Agnes', url, body, video_gen_id, {
+    model: body.model,
+    width: body.width,
+    height: body.height,
+    num_frames: body.num_frames,
+    frame_rate: body.frame_rate,
+    duration_sec: duration,
+    aspect_ratio: aspect_ratio || '16:9',
+    image_strategy: imagePayload.strategy,
+    extra_body_mode: body.extra_body?.mode || null,
+    omni_reference: useOmniReference,
+    prompt_len: (body.prompt || '').length,
+  });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + (config.api_key || ''),
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  log.info('[Agnes] raw response', { status: res.status, raw: raw.slice(0, 1000), video_gen_id });
+
+  if (!res.ok) {
+    let errMsg = 'Agnes 视频请求失败: ' + res.status;
+    try {
+      const errJson = JSON.parse(raw);
+      const msg = errJson.error?.message || errJson.message || errJson.error;
+      if (msg) errMsg += ' - ' + (typeof msg === 'string' ? msg : JSON.stringify(msg).slice(0, 200));
+    } catch (_) {
+      if (raw) errMsg += ' - ' + raw.slice(0, 200);
+    }
+    return { error: errMsg };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    return { error: 'Agnes 响应解析失败: ' + e.message + ' | raw: ' + raw.slice(0, 200) };
+  }
+
+  const directUrl = pickProxyVideoUrl(data);
+  if (directUrl) {
+    log.info('[Agnes] 直接返回 video_url', { video_url: directUrl, video_gen_id });
+    return { video_url: directUrl };
+  }
+
+  const taskId = data.id || data.task_id || data.data?.id || data.data?.task_id;
+  if (taskId) {
+    log.info('[Agnes] 返回 task_id', { task_id: taskId, status: data.status, video_gen_id });
+    return { task_id: String(taskId), status: data.status || 'processing' };
+  }
+
+  log.error('[Agnes] 无 task_id 或 video_url', { data: JSON.stringify(data).slice(0, 500), video_gen_id });
+  return { error: 'Agnes 未返回 task_id 或 video_url: ' + JSON.stringify(data).slice(0, 300) };
 }
 
 /**
@@ -2289,9 +2678,17 @@ async function callSoraVideoApi(config, log, opts) {
   log.info('[Sora] Video API request', {
     url, model, size, seconds: dur,
     has_image: !!imageBuffer, image_file: imageBuffer ? imageFilename : null,
-    prompt_len: (prompt || '').length,
-    prompt_head: (prompt || '').slice(0, 200),
     video_gen_id,
+  });
+  log.info('[Sora] Video POST 请求体 (multipart)', {
+    video_gen_id,
+    post_body: JSON.stringify({
+      model,
+      prompt,
+      seconds: dur,
+      size,
+      input_reference: imageBuffer ? { filename: imageFilename, mime: imageMime, bytes: imageBuffer.length } : null,
+    }, null, 2),
   });
 
   const res = await fetch(url, {
@@ -3170,6 +3567,23 @@ async function callVideoApi(db, log, opts) {
     });
   }
 
+  // Agnes Video V2.0 (api_protocol = 'agnes')
+  if (protocol === 'agnes') {
+    return callAgnesVideoApi(db, config, log, {
+      prompt,
+      model,
+      duration: opts.duration,
+      aspect_ratio,
+      image_url: opts.image_url,
+      first_frame_url: opts.first_frame_url,
+      last_frame_url: opts.last_frame_url,
+      reference_urls: opts.reference_urls,
+      files_base_url: opts.files_base_url,
+      storage_local_path: opts.storage_local_path,
+      video_gen_id: opts.video_gen_id,
+    });
+  }
+
   const url = buildVideoUrl(config);
   const dur = duration ? Number(duration) : 5;
   const ratio = aspect_ratio || '16:9';
@@ -3263,15 +3677,12 @@ async function callVideoApi(db, log, opts) {
     }
   }
 
-  log.info('Video API request', {
-    url,
+  logVideoPostRequest(log, 'Video', url, body, video_gen_id, {
     model,
-    video_gen_id,
     task_type: body.task_type,
     has_first_frame: !!firstForApi,
     has_last_frame: !!lastForApi,
     frame_count: (firstForApi ? 1 : 0) + (lastForApi ? 1 : 0),
-    request_body: JSON.stringify({ ...body, content: body.content?.map(c => c.type === 'image_url' ? { ...c, image_url: { url: '(omitted)' } } : c) }),
   });
   const res = await fetch(url, {
     method: 'POST',
@@ -3328,6 +3739,7 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
   const isGemini = protocol === 'gemini';
   const isVidu = protocol === 'vidu';
   const isSora = protocol === 'sora';
+  const isAgnes = protocol === 'agnes';
   const isKling = protocol === 'kling';
   const isKlingOmni = protocol === 'kling_omni' || (typeof taskId === 'string' && taskId.startsWith('omni:'));
   const isVeo3 = protocol === 'veo3';
@@ -3530,6 +3942,26 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
         continue;
       }
 
+      if (isAgnes) {
+        const status = extractPollTaskStatus(data);
+        log.info('[Agnes poll] 状态', { video_gen_id: videoGenId, attempt, status, progress: data.progress, id: data.id });
+        if (isPollTaskFailed(status)) {
+          const msg = extractPollFailureMessage(data) || 'Agnes 视频任务失败';
+          log.warn('[Agnes poll] 任务失败', { video_gen_id: videoGenId, msg, data: JSON.stringify(data).slice(0, 300) });
+          return { error: String(msg).slice(0, 500) };
+        }
+        const videoUrl = pickProxyVideoUrl(data);
+        if (videoUrl && isPlausibleHttpVideoUrl(videoUrl)) {
+          log.info('[Agnes poll] 完成', { video_gen_id: videoGenId, video_url: videoUrl });
+          return { video_url: videoUrl };
+        }
+        if (status === 'succeeded' || status === 'completed' || status === 'done') {
+          log.warn('[Agnes poll] 标记完成但未返回 video_url', { video_gen_id: videoGenId, data: JSON.stringify(data).slice(0, 500) });
+          return { error: 'Agnes 任务完成但未返回视频地址: ' + JSON.stringify(data).slice(0, 300) };
+        }
+        continue;
+      }
+
       if (isVidu) {
         const state = (data?.state || data?.status || data?.data?.status || '').toLowerCase();
         log.info('[Vidu poll] ????', { video_gen_id: videoGenId, attempt, state, id: taskId });
@@ -3628,4 +4060,7 @@ module.exports = {
   pollVideoTask,
   normalizeAspectRatioForApi,
   isPlausibleHttpVideoUrl,
+  pickProxyVideoUrl,
+  buildAgnesVideoImagePayload,
+  formatVideoPostBodyForLog,
 };

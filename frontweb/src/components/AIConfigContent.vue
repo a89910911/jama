@@ -19,13 +19,18 @@
                 导入配置
               </el-button>
               <input ref="importFileRef" type="file" accept=".json" style="display:none" @change="importConfigs" />
-              <el-button type="success" plain @click="openOneKeyTongyi">
-                <el-icon><MagicStick /></el-icon>
-                一键配置通义
-              </el-button>
               <el-button type="success" plain @click="openOneKeyVolc">
                 <el-icon><MagicStick /></el-icon>
                 一键配置火山
+              </el-button>
+              <el-button type="success" plain @click="openOneKeyAgnes">
+                <el-icon><MagicStick /></el-icon>
+                一键配置 Agnes
+              </el-button>
+              <el-button type="info" plain @click="openOneKeyTongyi">
+                <el-icon><MagicStick /></el-icon>
+                一键配置通义
+                <span class="one-key-not-recommended">不推荐</span>
               </el-button>
             </div>
             <div class="actions-right">
@@ -852,7 +857,7 @@ input_reference = (图片文件，可选)</pre>
     <!-- 一键配置通义 -->
     <el-dialog
       v-model="oneKeyTongyiVisible"
-      title="一键配置通义千问 / 万象"
+      title="一键配置通义千问 / 万象（不推荐）"
       width="520px"
       :close-on-click-modal="false"
       @closed="oneKeyTongyiKey = ''"
@@ -942,6 +947,54 @@ input_reference = (图片文件，可选)</pre>
       <template #footer>
         <el-button @click="oneKeyVolcVisible = false">取消</el-button>
         <el-button type="success" :loading="oneKeyVolcSaving" :disabled="!oneKeyVolcKey.trim()" @click="submitOneKeyVolc">
+          确定，一键创建配置
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键配置 Agnes -->
+    <el-dialog
+      v-model="oneKeyAgnesVisible"
+      title="一键配置 Agnes AI"
+      width="520px"
+      :close-on-click-modal="false"
+      @closed="oneKeyAgnesKey = ''"
+    >
+      <div class="one-key-help">
+        <div class="one-key-section">
+          <div class="one-key-section-title">📋 将自动创建以下配置</div>
+          <ul class="one-key-list">
+            <li><b>文本/对话</b>：Agnes 2.0 Flash（agnes-2.0-flash）— 生成故事剧本</li>
+            <li><b>文本生成图片</b>：Agnes Image 2.1 Flash — 角色/场景/道具图</li>
+            <li><b>分镜图片生成</b>：Agnes Image 2.1 Flash — 支持参考图编辑</li>
+            <li><b>视频生成</b>：Agnes Video V2.0（agnes-video-v2.0）— 生成视频片段</li>
+          </ul>
+        </div>
+        <div class="one-key-section">
+          <div class="one-key-section-title">🔑 如何申请 API Key</div>
+          <ol class="one-key-list">
+            <li>前往 Agnes 平台：<a href="https://platform.agnes-ai.com/settings/apiKeys" target="_blank" class="one-key-link">platform.agnes-ai.com/settings/apiKeys</a></li>
+            <li>注册/登录账号，进入 Settings → API Keys</li>
+            <li>点击「Create new secret key」创建密钥</li>
+            <li>复制 Key 填入下方</li>
+          </ol>
+          <p class="one-key-note">💡 一个 Key 同时支持文本、图片、视频；接口文档见 <a href="https://agnes-ai.com/doc/agnes-20-flash" target="_blank" class="one-key-link">agnes-ai.com/doc</a></p>
+        </div>
+      </div>
+      <el-form label-width="0" style="margin-top: 8px">
+        <el-form-item>
+          <el-input
+            v-model="oneKeyAgnesKey"
+            type="password"
+            placeholder="请输入 Agnes API Key"
+            show-password-on="click"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="oneKeyAgnesVisible = false">取消</el-button>
+        <el-button type="success" :loading="oneKeyAgnesSaving" :disabled="!oneKeyAgnesKey.trim()" @click="submitOneKeyAgnes">
           确定，一键创建配置
         </el-button>
       </template>
@@ -1234,6 +1287,9 @@ const oneKeyTongyiSaving = ref(false)
 const oneKeyVolcVisible = ref(false)
 const oneKeyVolcKey = ref('')
 const oneKeyVolcSaving = ref(false)
+const oneKeyAgnesVisible = ref(false)
+const oneKeyAgnesKey = ref('')
+const oneKeyAgnesSaving = ref(false)
 
 /** 预设厂商与模型（与参考前端一致） */
 const providerConfigs = {
@@ -1243,7 +1299,8 @@ const providerConfigs = {
     // { id: 'chatfire', name: 'Chatfire', models: ['gemini-3-flash-preview', 'claude-sonnet-4-5-20250929', 'doubao-seed-1-8-251228'] },
     { id: 'gemini', name: 'Google Gemini', models: ['gemini-2.5-pro', 'gemini-3-flash-preview'] },
     { id: 'deepseek', name: 'DeepSeek', models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
-    { id: 'qwen', name: '通义千问', models: ['qwen3-max', 'qwen-plus', 'qwen-flash'] }
+    { id: 'qwen', name: '通义千问', models: ['qwen3-max', 'qwen-plus', 'qwen-flash'] },
+    { id: 'agnes', name: 'Agnes AI', models: ['agnes-2.0-flash'] }
   ],
   image: [
     { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-4-0-250828'] },
@@ -1253,7 +1310,8 @@ const providerConfigs = {
     { id: 'gemini', name: 'Google Gemini', models: ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
     { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] },
     { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
-    { id: 'qwen_image', name: '通义千问', models: ['qwen-image-max', 'qwen-image-plus', 'qwen-image'] }
+    { id: 'qwen_image', name: '通义千问', models: ['qwen-image-max', 'qwen-image-plus', 'qwen-image'] },
+    { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   storyboard_image: [
     { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
@@ -1262,7 +1320,8 @@ const providerConfigs = {
     { id: 'nano_banana', name: 'NanoBanana', models: ['nano-banana-2', 'nano-banana-pro', 'nano-banana'] },
     // { id: 'chatfire', name: 'Chatfire', models: ['nano-banana-pro', 'doubao-seedream-4-5-251128', 'qwen-image'] },
     { id: 'gemini', name: 'Google Gemini', models: ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
-    { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] }
+    { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] },
+    { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   video: [
     { id: 'klingai', name: '可灵官方 Omni (api-beijing.klingai.com)', models: ['kling-video-o1', 'kling-v3-omni'] },
@@ -1288,6 +1347,7 @@ const providerConfigs = {
     },
     { id: 'openai', name: 'OpenAI', models: ['sora-2', 'sora-2-pro'] },
     { id: 'xai', name: 'xAI Grok Imagine', models: ['grok-imagine-video'] },
+    { id: 'agnes', name: 'Agnes AI', models: ['agnes-video-v2.0'] },
   ],
   tts: [
     { id: 'minimax', name: 'MiniMax T2A', models: ['speech-02-hd', 'speech-02-turbo'] },
@@ -1320,6 +1380,7 @@ const providerProtocolMap = {
   chatfire: 'openai',
   qwen: 'openai',
   deepseek: 'openai',
+  agnes: 'openai',
   jimeng_ai_api: 'jimeng_ai_api',
   jimeng_material_api: '',
 }
@@ -1344,6 +1405,7 @@ function getBaseUrlForProvider(provider) {
   if (p === 'jimeng_ai_api') return 'http://127.0.0.1:8000'
   if (p === 'jimeng_material_api') return 'https://silvamux.tingyutech.com'
   if (p === 'xai' || p === 'grok') return 'https://api.x.ai'
+  if (p === 'agnes') return 'https://apihub.agnes-ai.com/v1'
   return 'https://api.chatfire.site/v1'
 }
 
@@ -1476,6 +1538,8 @@ const endpointPreviewInfo = computed(() => {
       submitPath = '/ent/v2/img2video'
     } else if (proto === 'sora') {
       submitPath = '/v1/videos'
+    } else if (proto === 'agnes' || p === 'agnes') {
+      submitPath = '/videos'
     } else if (proto === 'xai') {
       submitPath = '/v1/videos/generations'
     } else if (proto === 'veo3') {
@@ -1511,6 +1575,8 @@ const endpointPreviewInfo = computed(() => {
       queryPath = '/ent/v2/tasks/{taskId}/creations'
     } else if (proto === 'sora') {
       queryPath = '/v1/videos/{taskId}'
+    } else if (proto === 'agnes' || p === 'agnes') {
+      queryPath = '/videos/{taskId}'
     } else if (proto === 'xai') {
       queryPath = '/v1/videos/{taskId}'
     } else if (proto === 'veo3') {
@@ -1582,6 +1648,11 @@ function onProviderChange(providerId) {
       form.value.query_endpoint = '/v1/videos/omni-video/{taskId}'
     }
   }
+  if (st === 'video' && providerId === 'agnes') {
+    form.value.api_protocol = 'agnes'
+    form.value.endpoint = '/videos'
+    form.value.query_endpoint = '/videos/{taskId}'
+  }
   if (!editingId.value) {
     form.value.name = (p.name || providerId) + ' ' + serviceTypeLabel(st)
   }
@@ -1602,6 +1673,14 @@ const VOLCENGINE_CONFIGS = [
   { service_type: 'image', name: '火山引擎 即梦 文本生图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128'] },
   { service_type: 'storyboard_image', name: '火山引擎 即梦 分镜图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128'] },
   { service_type: 'video', name: '火山引擎 即梦 视频', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volces', model: ['doubao-seedance-1-5-pro-251215'] }
+]
+
+/** Agnes 一键配置用 */
+const AGNES_CONFIGS = [
+  { service_type: 'text', name: 'Agnes 文本', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'openai', model: ['agnes-2.0-flash'] },
+  { service_type: 'image', name: 'Agnes 文本生图', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'openai', model: ['agnes-image-2.1-flash'] },
+  { service_type: 'storyboard_image', name: 'Agnes 分镜图', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'openai', model: ['agnes-image-2.1-flash'] },
+  { service_type: 'video', name: 'Agnes 视频', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'agnes', endpoint: '/videos', query_endpoint: '/videos/{taskId}', model: ['agnes-video-v2.0'] },
 ]
 
 function serviceTypeLabel(t) {
@@ -1993,6 +2072,43 @@ async function submitOneKeyVolc() {
   }
 }
 
+function openOneKeyAgnes() {
+  oneKeyAgnesKey.value = ''
+  oneKeyAgnesVisible.value = true
+}
+
+async function submitOneKeyAgnes() {
+  const apiKey = oneKeyAgnesKey.value.trim()
+  if (!apiKey) return
+  oneKeyAgnesSaving.value = true
+  try {
+    for (const cfg of AGNES_CONFIGS) {
+      const models = cfg.model || []
+      await aiAPI.create({
+        service_type: cfg.service_type,
+        name: cfg.name,
+        provider: cfg.provider,
+        api_protocol: cfg.api_protocol || '',
+        base_url: cfg.base_url,
+        api_key: apiKey,
+        model: models,
+        default_model: models[0] || null,
+        endpoint: cfg.endpoint || '',
+        query_endpoint: cfg.query_endpoint || '',
+        priority: 10,
+        is_default: true
+      })
+    }
+    ElMessage.success('已创建 Agnes 文本、文本生图、分镜图、视频配置')
+    oneKeyAgnesVisible.value = false
+    await loadList()
+  } catch (_) {
+    // 错误已由 request 统一提示
+  } finally {
+    oneKeyAgnesSaving.value = false
+  }
+}
+
 async function exportConfigs() {
   try {
     const configs = await aiAPI.list()
@@ -2196,6 +2312,17 @@ onMounted(() => {
   color: #606266;
   font-size: 13px;
   line-height: 1.5;
+}
+.one-key-not-recommended {
+  margin-left: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 4px;
+  color: var(--el-color-warning, #e6a23c);
+  background: var(--el-color-warning-light-9, #fdf6ec);
+  border: 1px solid var(--el-color-warning-light-7, #f5dab1);
+  vertical-align: middle;
 }
 .one-key-help {
   display: flex;

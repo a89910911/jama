@@ -358,6 +358,7 @@ function ensureAllColumns(database) {
     { name: 'local_path',           type: 'TEXT' },
     { name: 'status',               type: 'TEXT' },
     { name: 'task_id',              type: 'TEXT' },
+    { name: 'provider_task_id',     type: 'TEXT' },
     { name: 'scene_id',             type: 'INTEGER' },
     { name: 'completed_at',         type: 'TEXT' },
     { name: 'error_msg',            type: 'TEXT' },

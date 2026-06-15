@@ -747,7 +747,7 @@ async function ensurePublicRegisterImageUrlForMaterialHub(db, log, cfg, charRow,
     return { ok: true, url: imageUrl, via: 'direct' };
   }
   const cacheKey = materialHubProxyCacheKey(charRow, imageUrl);
-  const cached = imageClient.getProxyCache(db, cacheKey);
+  const cached = await imageClient.getProxyCacheValidated(db, cacheKey, log, `sd2_char_${charRow.id}`);
   if (cached) {
     log.info('[SD2认证] 使用图床缓存 URL', { character_id: charRow.id, cache_key: cacheKey });
     return { ok: true, url: cached, via: 'cache' };

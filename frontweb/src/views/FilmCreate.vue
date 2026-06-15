@@ -6073,22 +6073,27 @@ function isSeedance2VideoModel(modelName) {
   return /2[-_]0/.test(m) || /seedance[-_]?2|seedance2/.test(m)
 }
 
-/** 全能分镜 + 当前视频配置是否可走多图 Omni（火山 volcengine_omni 且 Seedance 2.0，或可灵 kling_omni） */
+/** 全能分镜 + 当前视频配置是否可走多图参考（火山 Seedance 2.0、可灵 Omni、Agnes Video 等） */
 function canUseUniversalOmniVideoApi(cfg) {
   if (!cfg) return false
   const proto = String(cfg.api_protocol || '').toLowerCase()
+  const provider = String(cfg.provider || '').toLowerCase()
+  const model = videoModelNameFromAiConfig(cfg).toLowerCase()
   if (proto === 'kling_omni') return true
   if (proto === 'volcengine_omni') {
-    return isSeedance2VideoModel(videoModelNameFromAiConfig(cfg))
+    return isSeedance2VideoModel(model)
+  }
+  if (proto === 'agnes' || provider === 'agnes' || /agnes-video/.test(model)) {
+    return true
   }
   return false
 }
 
 async function confirmUniversalNonSeedance2Video() {
   await ElMessageBox.confirm(
-    '你当前模型不是 Seedance 2.0，只能用分镜图片生成视频；当前可能只会传入场景作为参考图。是否强制继续？',
+    '你当前视频模型不支持多图参考，全能模式将降级：优先用分镜主图，否则仅传场景参考图。是否继续？',
     '全能模式与模型不匹配',
-    { confirmButtonText: '强制继续', cancelButtonText: '取消', type: 'warning' }
+    { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
   )
 }
 
@@ -6445,9 +6450,9 @@ async function onGenerateSbVideo(sb) {
       drama_id: dramaId.value,
       storyboard_id: sb.id,
       prompt: buildSbVideoPromptForApi(sb, { preferClassicPrompt }),
-      image_url: (vFirst || absoluteUrl) || undefined,
-      first_frame_url: vFirst || absoluteUrl || undefined,
-      last_frame_url: vLast,
+      image_url: universalOmniApi ? undefined : ((vFirst || absoluteUrl) || undefined),
+      first_frame_url: universalOmniApi ? undefined : (vFirst || absoluteUrl || undefined),
+      last_frame_url: universalOmniApi ? undefined : vLast,
       reference_image_urls: referenceUrls,
       style: getSelectedStyle(),
       aspect_ratio: projectAspectRatio.value || '16:9',

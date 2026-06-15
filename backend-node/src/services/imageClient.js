@@ -97,6 +97,7 @@ function inferProtocol(provider, model) {
   if (/seedream|doubao/i.test(model || '')) return 'volcengine';
   if (p === 'kling' || p === 'klingai') return 'kling';
   if (/^kling-/i.test(model || '')) return 'kling';
+  if (p === 'agnes' || /agnes-image|apihub\.agnes-ai\.com/i.test(String(model || ''))) return 'agnes';
   return 'openai';
 }
 
@@ -183,6 +184,50 @@ function fixSeedreamSize(size) {
   }
   
   return `${w}x${h}`;
+}
+
+/** Agnes Image 2.x 官方常用尺寸（过大如 1440x2560 会导致上游 do_request_failed） */
+const AGNES_IMAGE_SIZE_BY_RATIO = {
+  '16:9': '1792x1024',
+  '9:16': '1024x1792',
+  '1:1': '1024x1024',
+  '4:3': '1024x768',
+  '3:4': '768x1024',
+  '21:9': '1792x1024',
+};
+
+function isAgnesImageConfig(config, model) {
+  const p = String(config?.provider || '').toLowerCase();
+  const m = String(model || '').toLowerCase();
+  const base = String(config?.base_url || '').toLowerCase();
+  return p === 'agnes' || /agnes-image/.test(m) || /apihub\.agnes-ai\.com/.test(base);
+}
+
+/** 将项目内高分辨率 size 映射为 Agnes 支持的尺寸，保持宽高比类别 */
+function fixAgnesImageSize(size) {
+  if (!size || typeof size !== 'string') return AGNES_IMAGE_SIZE_BY_RATIO['4:3'];
+  const s = size.trim().toLowerCase().replace(/\*/g, 'x');
+  const match = s.match(/^(\d+)\s*x\s*(\d+)$/);
+  if (!match) return AGNES_IMAGE_SIZE_BY_RATIO['4:3'];
+  const w = parseInt(match[1], 10);
+  const h = parseInt(match[2], 10);
+  if (!w || !h) return AGNES_IMAGE_SIZE_BY_RATIO['4:3'];
+  const mapped = AGNES_IMAGE_SIZE_BY_RATIO['16:9'];
+  const ratio = w / h;
+  const candidates = Object.entries(AGNES_IMAGE_SIZE_BY_RATIO).map(([label, sz]) => {
+    const [rw, rh] = sz.split('x').map(Number);
+    return { label, sz, r: rw / rh };
+  });
+  let best = mapped;
+  let bestDiff = Infinity;
+  for (const c of candidates) {
+    const diff = Math.abs(Math.log(ratio) - Math.log(c.r));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = c.sz;
+    }
+  }
+  return best;
 }
 
 function dashScopeSize(size) {
@@ -1041,12 +1086,49 @@ function getProxyCache(db, cacheKey) {
     const createdAt = new Date(row.created_at).getTime();
     if (isNaN(createdAt) || Date.now() - createdAt > expireMs) {
       // 过期或时间无效：删除旧记录，返回 null 触发重新上传
-      try { db.prepare('DELETE FROM image_proxy_cache WHERE cache_key = ?').run(cacheKey); } catch (_) {}
+      deleteProxyCache(db, cacheKey);
       return null;
     }
 
     return row.proxy_url;
   } catch (_) { return null; }
+}
+
+function deleteProxyCache(db, cacheKey) {
+  try { db.prepare('DELETE FROM image_proxy_cache WHERE cache_key = ?').run(cacheKey); } catch (_) {}
+}
+
+/** 探测图床 URL 是否仍可访问（远端拉取失败时视为失效） */
+async function isProxyUrlAlive(url, timeoutMs = 8000) {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  const opts = { method: 'HEAD', signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' };
+  try {
+    let res = await fetch(url, opts);
+    if (res.ok) return true;
+    if (res.status === 405 || res.status === 501) {
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { Range: 'bytes=0-0' },
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: 'follow',
+      });
+    }
+    return res.ok || res.status === 206;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * 读取图床缓存并在使用前校验 URL 仍有效；404/超时等则删缓存并返回 null 以触发重新上传。
+ */
+async function getProxyCacheValidated(db, cacheKey, log, tag) {
+  const url = getProxyCache(db, cacheKey);
+  if (!url) return null;
+  if (await isProxyUrlAlive(url)) return url;
+  deleteProxyCache(db, cacheKey);
+  log?.warn?.('[图床缓存] URL 已失效，将重新上传', { tag, cache_key: cacheKey, url_head: url.slice(0, 80) });
+  return null;
 }
 
 /** 写入 image_proxy_cache 缓存记录 */
@@ -1191,7 +1273,7 @@ async function callGeminiImageApi(db, config, log, opts) {
     let imagePart;
     if (useImageProxy) {
       const cacheKey = buildCacheKey(ref, imageBuffer);
-      let fileUri = getProxyCache(db, cacheKey);
+      let fileUri = await getProxyCacheValidated(db, cacheKey, log, `gemini_ig${image_gen_id}_ref${i}`);
       if (fileUri) {
         log.info('[Gemini图生] 参考图 缓存命中（图床）', { image_gen_id, ref_index: i });
       } else {
@@ -1420,6 +1502,7 @@ async function callImageApi(db, log, opts) {
 
   const url = buildImageUrl(config);
   const isVolc = protocol === 'volcengine';
+  const isAgnes = isAgnesImageConfig(config, model);
   // doubao-seedream 系列模型（含通过自定义代理使用的场景）：使用 volcengine 图片 API 规范
   const isSeedream = isVolc || /seedream|doubao/i.test(model);
   // 解析参考图：本地路径/localhost URL → base64，公网 URL → 直接传
@@ -1433,8 +1516,10 @@ async function callImageApi(db, log, opts) {
     });
   }
 
-  // doubao-seedream-4-5+ 要求最低 3686400 像素，不足时等比放大
-  const effectiveSize = (isSeedream && size) ? fixSeedreamSize(size) : size;
+  // doubao-seedream-4-5+ 要求最低 3686400 像素，不足时等比放大；Agnes 需映射到官方支持尺寸
+  let effectiveSize = size;
+  if (isSeedream && size) effectiveSize = fixSeedreamSize(size);
+  else if (isAgnes && size) effectiveSize = fixAgnesImageSize(size);
 
   const body = {
     model,
@@ -1449,9 +1534,19 @@ async function callImageApi(db, log, opts) {
     // Doubao/Seedream 原生支持；通用 OpenAI-compat 接口大多也会接受该字段（不支持的会忽略）
     ...(mergedNegativePrompt ? { negative_prompt: mergedNegativePrompt } : {}),
     // 参考图字段：volcengine doubao-seedream API 规范使用 image（数组），见官方文档
-    ...(resolvedRefs.length > 0 ? { image: resolvedRefs } : {}),
+    ...(resolvedRefs.length > 0 && !isAgnes ? { image: resolvedRefs } : {}),
+    // Agnes Image 2.x：参考图放在 extra_body.image
+    ...(isAgnes && resolvedRefs.length > 0 ? { extra_body: { image: resolvedRefs, response_format: 'url' } } : {}),
   };
-  log.info('Image API request', { url: url.slice(0, 60), model, image_gen_id, has_ref_images: resolvedRefs.length > 0, size: effectiveSize, original_size: size !== effectiveSize ? size : undefined });
+  log.info('Image API request', {
+    url: url.slice(0, 60),
+    model,
+    image_gen_id,
+    has_ref_images: resolvedRefs.length > 0,
+    size: effectiveSize,
+    original_size: size !== effectiveSize ? size : undefined,
+    is_agnes: isAgnes,
+  });
   const openaiCompatHeaders = {
     'Content-Type': 'application/json',
     Authorization: 'Bearer ' + (config.api_key || ''),
@@ -1821,7 +1916,12 @@ module.exports = {
   canAddStoryboardCharacterRef,
   canAddStoryboardObjectRef,
   refListHasCanonical,
+  fixAgnesImageSize,
+  isAgnesImageConfig,
   /** 图床 URL 缓存（image_proxy_cache），供 SD2 认证等复用 */
   getProxyCache,
+  getProxyCacheValidated,
+  deleteProxyCache,
+  isProxyUrlAlive,
   setProxyCache,
 };
