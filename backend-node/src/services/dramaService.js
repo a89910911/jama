@@ -377,6 +377,10 @@ function rowToStoryboard(r) {
       segment_title: r.segment_title ?? null,
       creation_mode: r.creation_mode === 'universal' ? 'universal' : 'classic',
       universal_segment_text: r.universal_segment_text ?? null,
+      first_frame_image_id: r.first_frame_image_id ?? null,
+      last_frame_image_id: r.last_frame_image_id ?? null,
+      last_frame_image_url: sanitizeImageUrl(r.last_frame_image_url),
+      last_frame_local_path: r.last_frame_local_path ?? null,
       characters: parseStoryboardCharacters(r.characters),
       composed_image: r.composed_image,
       image_url: sanitizeImageUrl(r.image_url),
@@ -701,6 +705,43 @@ function saveProgress(db, log, dramaId, req) {
   return true;
 }
 
+/** 保存画布布局 / 工作流组到 metadata（合并现有 metadata） */
+function saveCanvasLayout(db, log, dramaId, req) {
+  const drama = getDramaById(db, Number(dramaId));
+  if (!drama) return null;
+  const layout = req?.canvas_layout;
+  const workflowGroups = req?.workflow_groups;
+  if (
+    (layout == null || typeof layout !== 'object' || Array.isArray(layout)) &&
+    workflowGroups === undefined
+  ) {
+    const err = new Error('请提供 canvas_layout 或 workflow_groups');
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  if (layout != null && (typeof layout !== 'object' || Array.isArray(layout))) {
+    const err = new Error('canvas_layout 必须为对象');
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  if (workflowGroups !== undefined && !Array.isArray(workflowGroups)) {
+    const err = new Error('workflow_groups 必须为数组');
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  const meta = storageLayout.parseMetadata(drama.metadata);
+  if (layout) meta.canvas_layout = layout;
+  if (workflowGroups !== undefined) meta.workflow_groups = workflowGroups;
+  const now = new Date().toISOString();
+  db.prepare('UPDATE dramas SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(meta), now, dramaId);
+  log.info('Canvas state saved', {
+    drama_id: dramaId,
+    node_count: layout ? Object.keys(layout.nodes || {}).length : undefined,
+    workflow_group_count: workflowGroups ? workflowGroups.length : undefined,
+  });
+  return getDramaById(db, Number(dramaId));
+}
+
 /**
  * 取某分镜的视频地址：优先使用用户手动选定的 storyboard.video_url，否则取最新完成的 video_generations 记录
  */
@@ -825,6 +866,7 @@ module.exports = {
   saveCharacters,
   saveEpisodes,
   saveProgress,
+  saveCanvasLayout,
   finalizeEpisode,
   downloadEpisodeVideo,
   generateStoryboard,
