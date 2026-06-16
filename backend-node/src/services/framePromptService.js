@@ -276,8 +276,7 @@ function buildStoryboardContext(cfg, sb, scene, characterNames) {
     parts.push(`【画风·最高优先级】${styleEn}`);
   }
 
-  // 【最高优先级空间合同 + 尺度绝对覆盖】layout_description + 强尺度铁律
-  // 即使布局描述本身有问题（例如把手机写成“画面右侧模拟视频连线视角”），也必须用下面的SCALE CORRECTION强制纠正。
+  // 【最高优先级空间合同 + 尺度绝对覆盖】layout_description + 时代自适应尺度铁律
   if (sb.layout_description && String(sb.layout_description).trim()) {
     const ld = String(sb.layout_description).trim();
     if (isEn) {
@@ -286,7 +285,7 @@ ${ld}
 
 【HARD LOCK (must stay 100% consistent)】
 - Main character(s) basic screen placement (left/center/right third, facing direction, spatial relationship to key props).
-- Realistic physical scale and relative proportions of all major props (smartphone must remain true 6.1-6.8 inch size lying flat, furniture at correct real-world height, nothing exaggerated or distorted).
+- Realistic physical scale and relative proportions of all major props (only props actually present in the shot; sizes must match the story's era/setting; nothing exaggerated or distorted).
 - Overall visual weight balance (character remains the clear focal point; all props stay secondary environmental elements).
 
 【ALLOWED + ENCOURAGED CINEMATIC EVOLUTION (5-15s videos — support declared movement with meaningful change)】
@@ -305,7 +304,7 @@ ${ld}
 
 【核心锁定（必须100%一致）】
 - 主要角色在画面中的基本站位（画面左/中/右三分、朝向、与主要道具的相对空间关系）。
-- 所有主要道具的真实物理尺寸与相对比例（智能手机必须是真实6.1-6.8英寸平放、茶几等家具真实高度、所有物件不得夸大或失真）。
+- 所有主要道具的真实物理尺寸与相对比例（仅写本分镜实际出现的道具，尺度须符合剧本时代背景，所有物件不得夸大或失真；古代场景严禁出现智能手机、遥控器等现代物品）。
 - 整体画面重心与基本平衡感（主角仍是视觉焦点，所有道具均为次要环境元素）。
 
 【允许且推荐的电影化演化（5-15秒视频，强烈支持 declared movement）】

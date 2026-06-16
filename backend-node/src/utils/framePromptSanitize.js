@@ -7,6 +7,7 @@ const STEP_KEYS = {
   UNLISTED: 'unlisted_character',
   ORPHAN: 'orphan_position',
   SCENE: 'scene_appearance',
+  MODERN_PROP_BOILERPLATE: 'modern_prop_boilerplate',
   PUNCT: 'cleanup_punctuation',
 };
 
@@ -141,6 +142,32 @@ function stripOrphanPositionClauses(text) {
   return { text: out, hits };
 }
 
+/** 旧版首尾帧模板注入的现代室内道具尺度套话（与时代无关地 copy 进古代分镜，需剔除） */
+const MODERN_PROP_BOILERPLATE_PATTERNS = [
+  /所有道具严格真实物理比例[，,]?智能手机为正常[\d.\-–—]+英寸平放于茶几上[，,]?画面高度占比[\d.%\-–—]+[，,]?绝不可立起或夸大[，,]?茶几高度约[\d]+cm[，,]?书籍和遥控器均为真实家居小尺寸[，,]?所有道具均为次要环境元素/g,
+  /智能手机为正常[\d.\-–—]+英寸平放于茶几上[，,]?画面高度占比[\d.%\-–—]+[，,]?绝不可立起或夸大/g,
+  /智能手机(?:\/平板)?(?:为|是)?(?:真实|正常)[\d.\-–—]+英寸[^，,。]*/g,
+  /书籍和遥控器均为真实家居小尺寸/g,
+  /遥控器均为真实家居小尺寸/g,
+  /A5\/A4(?:真实|家居)?尺寸/g,
+  /画面高度占比(?:严格)?[\d.%\-–—]+(?:以内)?/g,
+  /平放于茶几(?:表面|上)[^，,。]*/g,
+  /茶几高度约[\d]+cm/g,
+];
+
+function stripModernPropBoilerplate(text) {
+  const hits = [];
+  let out = String(text || '');
+  for (const re of MODERN_PROP_BOILERPLATE_PATTERNS) {
+    const reCopy = new RegExp(re.source, re.flags);
+    out = out.replace(reCopy, (match) => {
+      hits.push({ removed: match.slice(0, 120) });
+      return '';
+    });
+  }
+  return { text: out, hits };
+}
+
 function cleanupPunctuation(text) {
   return String(text || '')
     .replace(/[，,]{2,}/g, '，')
@@ -270,6 +297,10 @@ function sanitizeFramePrompt(prompt, allowedNames, allDramaNames, opts = {}) {
   const n4 = stripSceneAppearanceFragments(text);
   recordStep(report, STEP_KEYS.SCENE, text, n4.text, n4.hits);
   text = n4.text;
+
+  const n5 = stripModernPropBoilerplate(text);
+  recordStep(report, STEP_KEYS.MODERN_PROP_BOILERPLATE, text, n5.text, n5.hits);
+  text = n5.text;
 
   const beforePunct = text;
   text = cleanupPunctuation(text);

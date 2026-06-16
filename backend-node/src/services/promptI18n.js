@@ -489,11 +489,11 @@ function getStoryboardUserPromptSuffix(cfg, shotDuration) {
 这是本分镜的**核心空间锚点 + 真实物体尺度 + 运镜呼吸空间**铁律，用于首帧/尾帧图片生成时在保持一致性的同时，为运镜留出必要空间（尤其是 Seedance 1.5 Pro 等依赖首尾帧的模型）：
 
 - 必须明确写出**主要角色在画面中的核心站位**（画面左/中/右三分、朝向、与关键道具的基本空间关系）。这是硬性锁定。
-- **必须同时写出所有主要道具的真实物理尺度与相对比例**（茶几/边桌高度约38-52cm、智能手机为真实6.1-6.8英寸平放于桌面且画面高度占比严格11%-17%以内、书籍为普通A5/A4真实尺寸等，所有道具均为次要环境元素）。严禁任何会导致AI把道具做大、立起或当成主导元素的描述。
+- **必须同时写出所有主要道具的真实物理尺度与相对比例**（仅描述本分镜/剧本中实际出现的道具，尺度须符合其所属时代与场景；例如古代场景写案几高度、书卷尺寸、铜器体量等，现代场景写对应家具与小物件真实尺寸；所有道具均为次要环境元素）。严禁任何会导致AI把道具做大、立起或当成主导元素的描述；**严禁写入与时代背景不符的道具**（古代/古装分镜不得出现智能手机、遥控器、现代茶几等现代物品）。
 - 必须写明**整体构图方式和基本机位距离感**（中景、三分法等）。
 - **必须为 declared movement（运镜方式）预留电影化演化空间**：明确说明首尾帧在核心站位和真实尺度保持一致的前提下，允许根据 movement 进行自然的取景微调（例如：缓推时尾帧可比首帧稍紧；手持时允许轻微取景晃动与不完美平衡；横摇/跟拍时允许画面左右自然的进入/退出变化）。目标是让首尾帧既像“同一场同一空间的连续镜头”，又能真正支持运镜产生动态视频，而不是变成几乎定格的画面。
-- **严禁写入会导致比例失真或完全锁死运镜的表述**（即使剧本里有相关描述也禁止）："手机位于画面右侧模拟视频连线视角"、"大手机/手机作为视觉焦点"、"手持晃动带来纪实感"、"完全相同的构图平衡"等。
-- 好示例（带运镜空间）："李娟坐画面左中沙发，是绝对视觉焦点；右下前景木质茶几高约45cm，智能手机平放于茶几上真实6.5英寸、画面高度占比约13%，所有道具均为次要环境元素；中景，三分法构图，核心平衡稳定。若 movement 为缓推，尾帧允许人物在画面中占比自然增加、背景稍被压缩；若为手持，允许轻微取景不完美偏移。"
+- **严禁写入会导致比例失真或完全锁死运镜的表述**（即使剧本里有相关描述也禁止）："道具作为视觉焦点/占画面主导"、"手持晃动带来纪实感"、"完全相同的构图平衡"等。
+- 好示例（古代场景，带运镜空间）："主角坐画面左中榻上，是绝对视觉焦点；右下前景木质案几高约75cm，书卷平放于案面为正常尺寸，铜灯与茶具均为次要环境小物件，绝不可夸大；中景，三分法构图，核心平衡稳定。若 movement 为缓推，尾帧允许人物在画面中占比自然增加、背景稍被压缩；若为手持，允许轻微取景不完美偏移。"
 - **执行原则**：首帧按此锚点生成初始画面；尾帧必须保持核心站位、角色与道具的真实尺度与基本空间关系，仅根据 movement 和 result 进行自然的取景演化。违背核心锁定 = 失败；完全没有运镜演化空间也属于不合格结果。
 
 **dialogue字段说明**：角色名："台词内容"。无对话时填空字符串""。
@@ -505,34 +505,29 @@ function getStoryboardUserPromptSuffix(cfg, shotDuration) {
 }
 
 /**
- * 真实物理尺度铁律（极致强化版 v2 — 专治布局描述冲突）
- * 即使布局锚点（蓝色框）写得不好（例如“手机位于画面右侧，模拟视频连线视角”），
- * 这个铁律也必须以绝对优先级覆盖任何会导致比例失真的暗示。
+ * 真实物理尺度铁律 — 时代/场景自适应，专治布局描述冲突与跨时代道具幻觉
  */
 function getRealisticPhysicalScaleContract(isEn) {
   if (isEn) {
-    return `【HIGHEST PRIORITY REALISTIC PHYSICAL SCALE & PROPORTION CONTRACT — ABSOLUTE OVERRIDE, MUST OBEY 100%, HIGHER THAN ANY LAYOUT DESCRIPTION】
-Every visible object in the scene (sofa, coffee table, chair, smartphone, books, remote controls, pillows, lamps, decor, etc.) MUST be rendered at 100% correct real-world physical dimensions, correct relative proportions, and accurate indoor photographic perspective. This rule has HIGHER PRIORITY than any conflicting instruction in the layout_description / spatial anchor above.
-CRITICAL ANTI-HALLUCINATION RULES (apply even if layout_description says otherwise):
-- Smartphones/tablets: ALWAYS true 6.1–6.8 inch physical size. When lying flat on a table, screen facing up, they MUST occupy NO MORE than 11%–17% of the TOTAL FRAME HEIGHT in 9:16 portrait. NEVER make the phone large, upright like a monitor/TV, standing on the right side as a major visual element, or "simulating a video call view" by enlarging it. Phone is always a small secondary environmental prop.
-- Coffee tables / side tables: realistic height 38–52 cm, width appropriate to medium shot, never exaggerated or dominating the lower right.
-- Books, remotes, small objects: true A5/A4 household scale, natural spacing, never oversized.
-- The human character (Li Juan / main person) is the ONLY primary visual subject and focal point. All props are strictly secondary, small, and must never compete for visual weight or break perspective.
-- If the provided layout_description contains any phrase that would cause unrealistic scale (examples: "phone on the right side simulating video call perspective", "phone as main element", "large phone in foreground", "handheld shake", "video link view"), COMPLETELY IGNORE those implications for object sizing and perspective. Follow only the realistic scale numbers and "secondary prop" rule above.
+    return `【HIGHEST PRIORITY REALISTIC PHYSICAL SCALE & PROPORTION CONTRACT — ERA-AWARE, ABSOLUTE OVERRIDE】
+Every visible object in the scene MUST be rendered at 100% correct real-world physical dimensions for its era/setting, with correct relative proportions and accurate photographic perspective. This rule has HIGHER PRIORITY than any conflicting instruction in the layout_description / spatial anchor above.
+CRITICAL RULES:
+- **Era fidelity (MANDATORY)**: Props MUST match the story's time period and location. In ancient/historical/costume drama scenes, NEVER include smartphones, remote controls, modern coffee tables, A4 books, or any anachronistic modern items. Only describe props that actually belong in this shot according to the script and scene context.
+- **Scale only for props actually present**: For each major prop visible in the frame, state realistic size relative to the human figure and environment (e.g. ancient: writing desk ~70–85 cm, scroll ~25–35 cm; modern: side table ~38–52 cm, small handheld device lying flat at true size). Never invent props not in the shot.
+- **Secondary props**: The human character is the ONLY primary visual subject. All props are strictly secondary environmental elements — never oversized, never upright as dominant elements, never breaking perspective.
+- If layout_description contains scale-distorting phrases, IGNORE those implications and follow era-appropriate realistic scale and "secondary prop" rules above.
 This contract applies to BOTH first frame and last frame with zero exception.
-Violation (oversized phone, giant furniture, broken perspective, phone as dominant element) = critical generation failure.`;
+Violation (anachronistic props, oversized objects, broken perspective, props as dominant elements) = critical generation failure.`;
   }
-  // 中文极致强化版（用户当前场景专用）
-  return `【最高优先级真实物理尺度与道具比例铁律 — 绝对覆盖，优先级高于任何布局描述，违反即严重失败】
-本分镜内所有可见物体（沙发、木质茶几、智能手机、书籍、遥控器、抱枕、灯具、装饰品等）必须100%遵循真实世界物理尺寸、正确相对比例和室内摄影透视法则。本铁律的优先级绝对高于上方布局描述（蓝色框）中任何可能导致比例失真的表述。
-【关键反幻觉规则（即使布局描述写得有问题也必须遵守）】
-- 智能手机/平板：永远是真实6.1–6.8英寸物理尺寸。平放于茶几表面（屏幕朝上），在9:16竖屏画面中的高度占比严格控制在11%–17%以内。严禁将手机放大、立起像显示器或电视一样、放在画面右侧成为主要视觉元素、或通过“模拟视频连线视角”来夸大手机尺寸。手机永远是小的、次要的环境道具。
-- 茶几/边桌：真实高度38–52cm，宽度与中景匹配，绝不夸大或占据画面下方大量空间。
-- 书籍、遥控器、小物件：真实A5/A4家居尺寸，间距自然，绝不放大。
-- 角色（李娟/主角）是画面中唯一的首要视觉主体和焦点，所有道具均为严格次要的小型环境元素，不得抢视觉权重或破坏透视。
-- 如果上方提供的“空间布局锚点/布局描述”中包含任何会导致不真实尺度的表述（例如“手机位于画面右侧模拟视频连线视角”、“手机作为主要元素”、“前景大手机”、“手持晃动”、“视频连线视角”等），必须完全忽略这些表述对物体尺寸和透视的影响，只严格执行本铁律中的真实尺寸数字和“次要道具”要求。
+  return `【最高优先级真实物理尺度与道具比例铁律 — 时代自适应，绝对覆盖，违反即严重失败】
+本分镜内所有可见物体必须100%遵循其所属时代/场景的真实世界物理尺寸、正确相对比例和电影摄影透视法则。本铁律的优先级绝对高于上方布局描述中任何可能导致比例失真的表述。
+【关键规则（即使布局描述写得有问题也必须遵守）】
+- **时代一致性（强制）**：道具必须严格符合剧本设定的时代背景。古代/古装/架空历史场景中**严禁**出现智能手机、遥控器、现代茶几、A4书籍、平板等任何现代物品；只描述本分镜中实际存在且符合时代的道具。
+- **仅描述画面内实际道具的尺度**：对每个主要道具写出相对人体与环境的合理真实尺寸（例如古代：案几高约70-85cm、书卷长约25-35cm、铜镜直径约15-20cm；现代：边桌高约38-52cm等），不得凭空添加剧本未出现的道具。
+- **次要环境元素**：角色是画面中唯一的首要视觉主体和焦点；所有道具均为严格次要的小型环境元素，不得夸大、立起成为主导视觉、或破坏透视。
+- 若布局描述中有会导致不真实尺度的表述，必须忽略其对物体尺寸和透视的影响，只严格执行本铁律中符合时代的真实尺度与「次要道具」要求。
 本铁律同时适用于首帧和尾帧生成，零例外。
-任何生成结果出现手机过大、家具失真、透视错误、手机成为主导元素，均视为严重失败。`;
+任何生成结果出现时代错乱道具、物体过大失真、透视错误、道具成为主导元素，均视为严重失败。`;
 }
 
 function getFirstFramePrompt(cfg) {
@@ -604,7 +599,7 @@ ${ffScaleContract}
 - **图片比例**：${imageRatio}
 
 【5层结构输出格式 + 尺度强制要求】
-返回JSON对象，prompt 字段按以下5层顺序拼接成**中文**，各层间用中文逗号「，」分隔（不加「第1层」等层标签文字）。**在第3层“内容焦点”中必须包含一段明确的真实物体尺度描述**（例如“所有道具严格真实物理比例，智能手机为正常6.5-6.7英寸平放于茶几上，画面高度占比11%-17%，绝不可立起或夸大，茶几高度约45cm，书籍和遥控器均为真实家居小尺寸，所有道具均为次要环境元素”）。
+返回JSON对象，prompt 字段按以下5层顺序拼接成**中文**，各层间用中文逗号「，」分隔（不加「第1层」等层标签文字）。**在第3层“内容焦点”中必须包含一段符合时代背景的真实物体尺度描述**（仅写本分镜实际出现的道具；古代场景示例：“所有道具严格符合古代真实物理比例，案几高约75cm，书卷为正常尺寸平放于案面，铜灯与茶具均为次要环境小物件，绝不可夸大，主角为绝对视觉焦点”）。
 第1层-镜头设计：景别 + 机位角度 + 构图方式（如「中景，平视角度，三分法构图」）
 第2层-光线：光源方向 + 光线质感 + 色温（如「左侧柔暖光，黄金时刻暖调」）
 第3层-内容焦点：角色（仅「名字（参考图中的人物形象）」+初始姿态+表情，不写外貌）+ 场景环境关键细节（不含人物外貌） + **必须包含真实物体尺度描述（见上方强制要求）**
@@ -612,7 +607,7 @@ ${ffScaleContract}
 第5层-视觉风格：${style ? style + '，' : ''}电影分镜质感，${imageRatio} 画幅，高清细节，所有物体严格真实尺度
 
 JSON字段：
-- prompt：**必须全文中文**的图片生成提示词（直接给图片AI使用；禁止整句英文，仅允许必要风格专有名如 realistic 等单个词；必须自然融入真实尺度描述，禁止任何手机过大、立起、成为主导元素的表述）
+- prompt：**必须全文中文**的图片生成提示词（直接给图片AI使用；禁止整句英文，仅允许必要风格专有名如 realistic 等单个词；必须自然融入符合时代的真实尺度描述，严禁时代错乱道具或物体过大失真）
 - description：一句话中文描述（供人类参考）`;
 }
 
@@ -681,7 +676,7 @@ Return a JSON object containing:
 - **图片比例**：${imageRatio}
 
 【5层结构输出格式 + 尺度强制要求】
-返回JSON对象，prompt 字段按以下5层顺序拼接成**中文**，各层间用中文逗号「，」分隔（不加层标签文字）。**在第3层“内容焦点”中必须包含一段明确的真实物体尺度描述**（例如“所有道具严格真实物理比例，智能手机为正常6.5-6.7英寸平放于茶几上，画面高度占比11%-17%，绝不可立起或夸大...”）。
+返回JSON对象，prompt 字段按以下5层顺序拼接成**中文**，各层间用中文逗号「，」分隔（不加层标签文字）。**在第3层“内容焦点”中必须包含一段符合时代背景的真实物体尺度描述**（仅写本分镜实际出现的道具，严禁写入与时代不符的现代物品）。
 第1层-镜头设计：景别 + 机位角度 + 构图方式（如「特写，低角度，对角线构图」）
 第2层-光线：光源方向 + 光线质感 + 色温（如「轮廓光，强明暗对比，暖色饱和」）
 第3层-内容焦点：角色（仅「名字（参考图中的人物形象）」+高潮姿态+情绪表情）+ 场景关键细节（不含外貌） + **必须包含真实物体尺度描述**
@@ -740,7 +735,7 @@ Return a JSON object containing:
 重要：这是镜头的尾帧 - 一个静态画面，展示动作结束后的最终状态和结果。
 
 【最高优先级真实物理尺度与道具比例铁律 + 运镜演化（5-15秒视频）】（详见本分镜“空间布局锚点”中的完整铁律）
-本分镜内所有可见物体必须100%遵循真实世界物理尺寸、正确相对比例和室内摄影透视法则（智能手机真实6.1-6.8英寸平放、茶几38-52cm真实高度等）。所有道具均为次要环境元素。
+本分镜内所有可见物体必须100%遵循其所属时代/场景的真实世界物理尺寸、正确相对比例和电影摄影透视法则；仅描述实际出现的道具，严禁时代错乱物品。所有道具均为次要环境元素。
 尾帧允许根据 movement 进行取景演化（例如缓推后人物占比明显增加、手持后自然漂移），但严禁改变任何物体的真实物理尺寸、相对比例或破坏透视。尺度失真 = 失败；完全没有运镜演化 = 同样不理想。
 
 核心规则：
@@ -788,7 +783,7 @@ Return a JSON object containing:
 第5层-视觉风格：${style ? style + '，' : ''}电影分镜质感，${imageRatio} 画幅，所有物体严格真实尺度，运镜自然演化
 
 JSON字段：
-- prompt：**必须全文中文**的图片生成提示词（直接给图片AI使用；禁止整句英文；必须自然融入真实尺度 + 根据 movement 的取景演化描述，5-15秒视频尾帧需体现运镜累积效果，禁止任何手机过大、立起、成为主导元素的表述）
+- prompt：**必须全文中文**的图片生成提示词（直接给图片AI使用；禁止整句英文；必须自然融入符合时代的真实尺度 + 根据 movement 的取景演化描述，5-15秒视频尾帧需体现运镜累积效果，严禁时代错乱道具或物体过大失真）
 - description：一句话中文描述（供人类参考）`;
 }
 
@@ -835,11 +830,11 @@ Each object containing:
 1. 只提取对剧情发展有重要作用、或有特殊视觉特征的关键道具。
 2. 普通的生活用品（如普通的杯子、笔）如果无特殊剧情意义不需要提取。
 3. 若道具有明确归属者，**仅**写在 "description" 中（可用中文人名）；**禁止**在 "image_prompt" 中出现任何角色名、昵称、称谓或人际关系用语。
-4. **description 字段强制纯中文**：必须输出**纯中文、80-150字**的详细视觉外观描述 + 该道具在剧中的核心作用/归属/剧情功能。必须严格遵循本项目一贯的中文影视提示词「语音」：融入真实世界物理尺度意识（智能手机6.1-6.8英寸平放、茶几38-52cm等）、所有道具均为画面严格次要环境元素（不抢视觉焦点）、材质工艺细节、磨损痕迹、柔和棚拍光质感、电影化构图暗示。严禁任何英文单词/句子，严禁只写剧情不写可用于画图的外观细节，严禁空泛或翻译腔。
+4. **description 字段强制纯中文**：必须输出**纯中文、80-150字**的详细视觉外观描述 + 该道具在剧中的核心作用/归属/剧情功能。必须严格遵循本项目一贯的中文影视提示词「语音」：融入符合道具所属时代的真实物理尺度意识、材质工艺细节、磨损痕迹、柔和棚拍光质感、电影化构图暗示。严禁任何英文单词/句子，严禁只写剧情不写可用于画图的外观细节，严禁空泛或翻译腔。
 5. "image_prompt" 按项目语言撰写（**中文项目必须输出纯中文提示词**、英文项目用英文），按**影视资产库 / 电商主图级**单道具产品照标准：写清轮廓、材质、颜色、磨损与工艺细节、体量感。必须完整匹配项目中文影视提示词「语音」（融入真实尺度铁律、次要道具原则、电影化细节、纯色无缝背景、柔和均匀棚光）。
 6. "image_prompt" 中**必须**写明：**单一无缝纯色棚拍背景**（哑光、无渐变）、**画面中仅有该道具一个主体**、**柔和均匀的棚拍光**（便于看清细节，避免电影化强反差光），并**明确禁止**：人物、手、家具、地面/台面、室内外环境、散落杂物、其他道具、文字商标、包装（除非该道具本身就是包装）、烟尘粒子等任何多余元素。
 7. **image_prompt 禁止泄漏剧本特征**：不得出现剧本人名、地名、组织名、台词、情节梗专有称呼等；一律改写为**泛化视觉描述**（如用 "刻有细小铭文" 而非具体人名）。**唯一例外**：文字**实体印/刻在道具表面**且剧本明确要求还原该字样时，可保留该可见字样；否则用泛化描述。
-8. **image_prompt 严格不扩展**：只写剧本与你在本对象 "description" 中已交代、且**肉眼可见**的外观信息；禁止凭空增加配饰、品牌故事、时代煽情形容词、叙事性铺垫；宁可**短而准**，不要为凑字数扩写。必须自然融入「所有道具严格真实物理比例、为次要环境元素」等项目最高优先级铁律。
+8. **image_prompt 严格不扩展**：只写剧本与你在本对象 "description" 中已交代、且**肉眼可见**的外观信息；禁止凭空增加配饰、品牌故事、时代煽情形容词、叙事性铺垫；宁可**短而准**，不要为凑字数扩写。必须自然融入「符合时代的真实物理比例」等项目铁律。
 - **风格要求**：${style}
 - **图片比例**：${imageRatio}
 
@@ -1468,7 +1463,7 @@ Your task: Regenerate or optimize a precise, concise "layout_description" (spati
 Core Requirements (HIGHEST PRIORITY):
 1. Output ONLY the new layout_description text (1-2 short sentences, max ~120 characters). No explanations, no JSON, no labels.
 2. Be extremely specific about screen positions: left/center/right third of frame, relative distances between characters, facing directions, relation to props/environment, overall composition (rule of thirds / center / frame etc.), and camera distance feel.
-3. **Realistic physical scale awareness (MANDATORY)**: Explicitly state realistic sizes and proportions of major props (e.g. "wooden coffee table in lower-right foreground, height ~45cm, all small objects true A5 household scale, smartphone lying flat on the table occupying ~12-15% of frame height, never exaggerated"). Never write phrases that would cause scale errors.
+3. **Realistic physical scale awareness (MANDATORY)**: Explicitly state realistic sizes and proportions of major props that actually appear in the shot, matching the story's era/setting (e.g. ancient: writing desk ~75cm, scroll at normal size; modern: side table ~45cm). Never write phrases that would cause scale errors or anachronistic modern props in period settings.
 4. **Cinematic breathing room for movement (MANDATORY)**: Reserve natural evolution space for the shot's declared camera_movement (push/pull/pan/handheld etc.). State that first/last frames must keep core character placement and realistic prop scales, but allow natural framing adjustments that result from the movement (e.g. slight tighter framing on push-in, slight handheld drift, natural entry/exit on pan). Goal: enable real dynamic video instead of near-static locked shots.
 5. **Cross-shot continuity (CRITICAL)**: The new layout MUST form a natural, believable spatial continuation from PREV_LAYOUT (if provided) and must logically lead into NEXT_LAYOUT (if provided). Avoid sudden unexplained left-right flips or major repositioning of characters between adjacent shots unless the ACTION/RESULT of the current shot explicitly requires it.
 6. The description must be directly usable as the highest-priority contract for first-frame and last-frame image generation (for models like Seedance 1.5 Pro), and must embed both realistic scale anchors AND movement breathing room to prevent prop drift and motion suppression in AI image/video generation.
@@ -1482,7 +1477,7 @@ Style: Professional, film-precise, actionable for AI image generators. Use Chine
 核心要求（最高优先级）：
 1. **只输出新的 layout_description 文本**（1-2 句短句，总字数建议控制在 120 字以内）。不要任何解释、不要 JSON、不要前缀后缀。
 2. 必须极度具体描述画面站位：画面左/中/右三分、人物间相对距离、朝向、与道具/环境的关系、整体构图方式（三分法/中心/框架等）、机位距离感。
-3. **真实物体尺度意识（强制）**：必须明确写出主要道具的真实物理尺度与相对比例（例如“木质茶几位于右下前景，高度约45cm，所有小物件为真实A5家居尺寸，智能手机平放于茶几上，画面高度占比约12%-15%，绝不夸大”）。严禁写出任何会导致比例失真的表述。
+3. **真实物体尺度意识（强制）**：必须明确写出主要道具的真实物理尺度与相对比例，且**必须符合剧本时代背景**（仅写本分镜实际出现的道具；古代场景示例：“木质案几位于右下前景，高度约75cm，书卷平放为正常尺寸，铜灯与茶具均为次要环境小物件，绝不夸大”）。严禁写出任何会导致比例失真的表述，**严禁写入与时代不符的现代道具**。
 4. **运镜呼吸空间（强制）**：必须为本分镜的 movement（推/拉/摇/跟/手持等）预留自然演化空间。说明首尾帧在核心站位和真实尺度一致的前提下，允许根据 movement 进行取景微调（缓推可稍紧、手持可轻微晃动偏移、横摇可有自然进入/退出）。目标是让首尾帧支持真正动态的视频，而不是几乎定格。
 5. **跨镜连贯性（铁律）**：新布局必须与「上一分镜的布局描述」形成自然延续，同时能引向下一分镜。除非 action/result 明确要求，否则严禁突然左右互换或大幅跳跃。
 6. 该描述将作为首帧/尾帧生成的最高优先级合同（尤其适配 Seedance 等模型），必须同时包含真实尺度锚点 + 运镜演化空间，防止AI生图时道具比例漂移或运镜被锁死。
@@ -1572,7 +1567,7 @@ function getPropPolishPrompt(cfg) {
 - **唯一主体 + 纯色零背景铁律（CRITICAL）**：画面中**只能有这一件道具**，**100% 纯色无缝无限影棚背景（单一哑光纯色 seamless cyclorama / infinite solid color backdrop）**，**绝对禁止任何环境、地面、台面、墙壁、地板、阴影投射、渐变、纹理、室内外元素**。背景必须是与道具形成高对比的中性纯色（浅灰或深灰最佳，便于抠像），**不得出现任何除道具本体以外的像素**。
 - **严禁模型常见错误**：严禁生成“漂亮的室内场景”“木质桌面”“大理石台面”“柔焦背景”“环境光影”“地面反射”“轻微景深”“工作室一角”“放在架子上”“放在地板上”等任何背景或支撑面描述。任何导致背景不是纯色的输出都属于失败。
 - **零杂物**：禁止桌面散落物、书本、植物、器皿、布料堆叠、包装箱、工具、第二件道具、灰尘烟雾粒子、景深虚化里的「远处物体」等；除非描述明确该物为道具不可分割的一部分，否则一律不出现。
-- **真实物理尺度与次要元素铁律（最高优先级）**：所有道具必须严格遵循真实世界物理尺寸与相对比例（智能手机为正常6.1-6.8英寸平放、茶几高度约38-52cm等）；道具在画面中为**严格次要环境元素**，严禁夸大、立起、成为主导视觉或破坏透视。
+- **真实物理尺度铁律（最高优先级）**：道具必须严格遵循其所属时代的真实世界物理尺寸与相对比例；道具在画面中为**严格次要环境元素**，严禁夸大、立起、成为主导视觉或破坏透视。
 
 ### 质感与光
 - 材质、镀层、磨损、刻字（若有）、比例暗示要写具体（可量化词汇：拉丝/哑光/抛光/微细划痕）；**句子宁少勿多**。
