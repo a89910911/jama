@@ -192,8 +192,26 @@ API Key：your-api-key
 在「AI 配置」页面，点击顶部的：
 - **「一键配置通义」** — 自动创建阿里云 DashScope 的文本/图片/视频三套配置模板
 - **「一键配置火山」** — 自动创建火山引擎的文本/图片/视频三套配置模板
+- **「一键配置 Agnes」**（v1.2.8+）— 自动创建 Agnes AI 的文本/图片/视频三套配置模板（`agnes-2.0-flash` / `agnes-image-2.1-flash` / `agnes-video-v2.0`）
 
 一键配置后，只需填入你的 API Key，其他参数已预填好，点击「保存」即可使用。
+
+---
+
+## 图床配置（v1.2.8+）
+
+部分 AI 接口（如 Gemini 图生、Seedance 2.0 角色认证）需要将本地图片上传到公网图床。可在 `backend-node/configs/config.yaml` 的 `image_proxy` 段配置：
+
+```yaml
+image_proxy:
+  expire_hours: 2              # 缓存有效期（小时）
+  use_for_video: true
+  upload_timeout_seconds: 180  # 上传超时（秒），默认 180
+  upload_max_attempts: 2       # 失败重试次数
+  # upload_url: https://your-proxy.example.com/api/upload
+```
+
+未配置 `upload_url` 时使用内置默认中转地址。缓存 URL 在使用前会探测是否仍有效，失效则自动重新上传。
 
 ---
 

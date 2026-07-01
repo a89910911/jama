@@ -4,7 +4,7 @@
 
 **A locally-running AI short drama & comic generator — download and run, no cloud required, fully open source**
 
-[![version](https://img.shields.io/badge/version-1.2.7-blue?style=flat-square)](../../releases)
+[![version](https://img.shields.io/badge/version-1.2.8-blue?style=flat-square)](../../releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](../LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat-square)](#)
 [![stack](https://img.shields.io/badge/Vue3%20%2B%20Node.js%20%2B%20Electron-informational?style=flat-square)](#)
@@ -78,7 +78,7 @@ This project is built entirely in JavaScript from scratch. Connect your own AI A
 - Three independent model slots: **image generation**, **video generation**, **text generation**
 - Compatible with **Alibaba DashScope**, **Volcengine (Doubao)**, **locally-deployed models** and any OpenAI-compatible API
 - Visual config panel; changes take effect immediately; **connection test** supported
-- Built-in quick-setup wizards for DashScope and Volcengine, with step-by-step API key instructions
+- Built-in quick-setup wizards for DashScope, Volcengine, and Agnes AI, with step-by-step API key instructions
 
 ### 🌓 UI / Theme
 
@@ -137,6 +137,7 @@ You can also double-click `run_dev.bat` at the project root to **start both serv
 |----------|:----:|:-----:|:-----:|
 | Alibaba DashScope (Qwen) | ✅ | ✅ | ✅ |
 | Volcengine / Doubao | ✅ | ✅ | ✅ |
+| Agnes AI | ✅ | ✅ | ✅ |
 | Local (Ollama, OpenAI-compat.) | ✅ | — | — |
 | Other OpenAI-compatible APIs | ✅ | ✅ | — |
 
@@ -184,7 +185,14 @@ LocalMiniDrama/
 
 Full version history → **[CHANGELOG](changelog.md)**
 
-**Latest v1.2.7 highlights:**
+**Latest v1.2.8 highlights:**
+- 🆕 **Agnes AI** — one-click setup for text (`agnes-2.0-flash`), image (`agnes-image-2.1-flash`), and video (`agnes-video-v2.0`) with a single API key
+- 🆕 **Canvas mode enhancements** — script node on canvas, context menu, floating toolbar, in-canvas create/delete, batch episode generation
+- 🆕 **ModelArk private asset library** — configure BytePlus / Volcengine Ark asset groups for Seedance 2.0 character certification (AK/SK or Bearer auth)
+- 🔧 **Configurable image proxy** — `upload_url`, timeout (default 180s), and retry count in `config.yaml`; stale cache URLs auto-reupload
+- 🔧 **Prompt improvements** · **Storyboard image count limit fix**
+
+**v1.2.7 highlights:**
 - 🆕 **Tail-frame link** — one-click extract the last frame of the current shot’s video (server-side ffmpeg) and set it as the **next shot’s first frame**
 - 🆕 **Export storyboard sheet** — export the current episode’s shots to an **HTML table** (dialogue, narration, universal segment, prompts, etc.)
 - 🆕 **Unified generation task progress** — shared Pinia store for character/scene/prop/storyboard image & video async jobs, with recovery after page refresh

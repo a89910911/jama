@@ -1,6 +1,6 @@
 {
   "name": "localminidrama-desktop",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "LocalMiniDrama 本地桌面客户端",
   "main": "main.js",
   "author": "LocalMiniDrama",
@@ -19,6 +19,7 @@
     "prepare-backend": "node scripts/copy-backend.js"
   },
   "dependencies": {
+    "@volcengine/openapi": "^1.36.1",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",

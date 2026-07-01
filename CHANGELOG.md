@@ -8,6 +8,39 @@
 
 ---
 
+## [1.2.8] - 2026-07-01
+
+### 新增
+
+- **Agnes AI 接入**：新增 `agnes` 接口协议与厂商预设，支持文本（`agnes-2.0-flash`）、图片（`agnes-image-2.1-flash`）、视频（`agnes-video-v2.0`）；AI 配置页提供「一键配置 Agnes」，一个 Key 覆盖文本 / 图片 / 视频三类服务
+- **画布模式大幅增强**：
+  - **剧本节点**：画布内直接预览、编辑剧本，支持 AI 生成故事与角色/场景/道具提取
+  - **右键菜单 / 浮动工具栏 / 新建对话框**：可在画布上新建分镜、集、角色、场景、道具
+  - **节点内操作面板**：资源节点、分镜节点、媒体节点面板完善；节点状态遮罩实时显示生成进度
+  - **整集生成 composable**：`useCanvasEpisodeGenerate` 支持在画布内批量触发角色/场景/道具/分镜图/视频生成
+  - **画布 CRUD**：`useCanvasCrud` 支持在画布内创建、删除实体，无需切回列表页
+- **ModelArk 私有资产库配置**：新增 `model_ark_asset` 服务类型与 `modelArkAssetConfigService`，AI 配置页可管理 BytePlus ModelArk / 火山方舟私有资产库（AK/SK 签名 / Bearer 多种鉴权、资产组创建与管理）；角色 SD2 认证优先使用即梦2角色认证，未配置时回退到此处
+- **图床配置项化**：`config.yaml` 的 `image_proxy` 支持自定义 `upload_url`、`upload_timeout_seconds`（默认 **180 秒**）、`upload_max_attempts`；不再硬编码上传地址与超时
+- **风格缩略图扩充**：新增国风、仙侠、韩漫、都市言情等 8 种风格预览图（`public/style-thumbs/`）
+
+### 优化
+
+- **Seedance 2.0 认证加强**：角色 SD2 认证流程重构，支持 ModelArk 资产库对接、图床 URL 缓存复用与失效重传；`Sd2AssetManagement` 配置面板补充鉴权方式、路径模式、工程名等说明
+- **图床缓存校验**：`getProxyCacheValidated` 在使用缓存 URL 前探测远端是否仍可访问，404 / 超时则删缓存并触发重新上传
+- **提示词优化**：`promptI18n.js`、`framePromptService.js`、`storyGenerationService.js` 等多处提示词改进，提升剧本/分镜生成质量
+- **任务服务**：新增 `taskService` 与 `/api/task` 路由，统一异步任务状态查询
+
+### 修复
+
+- **分镜图片数量上限**：修复分镜图片生成时数量限制未正确生效的 bug
+
+### 文档
+
+- 根目录 `README.md`、`docs/en.md`、`index.html`、各子包 README 同步 **v1.2.8**
+- `frontweb` / `backend-node` / `desktop` 的 `package.json` 与 lock 文件顶层 **version** 统一为 **1.2.8**
+
+---
+
 ## [1.2.7] - 2026-06-02
 
 ### 新增

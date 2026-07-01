@@ -6,7 +6,7 @@
 
 *LocalMiniDrama · AI-powered short drama creator*
 
-[![version](https://img.shields.io/badge/version-1.2.7-blue?style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama/releases)
+[![version](https://img.shields.io/badge/version-1.2.8-blue?style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama/releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat-square)](#-快速开始)
 [![stack](https://img.shields.io/badge/Vue3%20%2B%20Node.js%20%2B%20Electron-informational?style=flat-square)](#-项目架构)
@@ -39,11 +39,13 @@
 
 ---
 
-## 📌 最新动态（v1.2.7）
+## 📌 最新动态（v1.2.8）
 
-- 🆕 **画布工作流**：无限画布总览分镜流水线，节点内编辑/生成，工作流整组重跑 → [文档](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
-- 🆕 **Seedance 2.0 全能模式**：`@图片N` 多图参考 + `universal_segment_text` 片段描述
-- 🆕 **尾帧衔接** · **导出分镜表** · **统一任务进度**（刷新可恢复）
+- 🆕 **Agnes AI 接入**：文本 / 图片 / 视频一键配置，一个 Key 覆盖全流程
+- 🆕 **画布模式增强**：剧本节点、右键菜单、浮动工具栏、画布内新建/删除/整集生成
+- 🆕 **ModelArk 私有资产库**：SD2 角色认证对接火山方舟资产组，AK/SK 与 Bearer 双鉴权
+- 🔧 **图床可配置**：`upload_url` / 超时（默认 180s）/ 重试次数写入 `config.yaml`；缓存 URL 失效自动重传
+- 🔧 **提示词优化** · **分镜图片数量上限修复**
 
 完整记录 → **[CHANGELOG.md](CHANGELOG.md)**
 
@@ -155,7 +157,9 @@
 | 能力 | 说明 |
 |------|------|
 | 竖排流水线 | 每镜一行：经典「文本→首帧/尾帧→视频」；全能「全能分镜词→视频」 |
+| 剧本节点 | 画布起点直接编辑剧本、AI 生成故事、提取角色/场景/道具 |
 | 节点操作面板 | 单击节点下方编辑/生成，无需频繁切列表 |
+| 右键 / 工具栏 | 新建分镜、集、角色、场景、道具；框选创建工作流 |
 | 工作流组 | 框选分镜 → 创建工作流 → **整组重跑**（生图/视频/配音可勾选） |
 | 布局持久化 | 拖动保存坐标；曲线连线；左键框选、中键/右键平移 |
 
@@ -212,6 +216,7 @@ cd frontweb && npm install && npm run dev
 | 阿里云 DashScope（通义） | ✅ | ✅ | ✅ |
 | 火山引擎 Volcengine（豆包 / Seedance 2.0） | ✅ | ✅ | ✅ |
 | 可灵 Kling AI（含 Omni） | — | ✅ | ✅ |
+| Agnes AI | ✅ | ✅ | ✅ |
 | Google Gemini（Imagen / Veo） | — | ✅ | ✅ |
 | Vidu 生数科技 | — | — | ✅ |
 | NanoBanana（含代理） | — | ✅ | — |
