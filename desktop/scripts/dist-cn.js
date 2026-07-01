@@ -20,6 +20,15 @@ if (full.status !== 0) {
 
 // 第二步：纯净版构建（不含示例资源），前端/后端已准备好，直接调 electron-builder
 console.log('\n========== [2/2] 构建纯净版（不含示例资源）==========\n');
+const clean = spawnSync(isWin ? 'npm.cmd' : 'npm', ['run', 'clean:unpacked'], {
+  stdio: 'inherit',
+  shell: isWin,
+  cwd,
+});
+if (clean.status !== 0) {
+  console.error('清理 win-unpacked 失败，请关闭正在运行的 exe 后重试。');
+  process.exit(clean.status || 1);
+}
 const lite = spawnSync(
   isWin ? 'npx.cmd' : 'npx',
   ['electron-builder', '--win', '--config', 'electron-builder-lite.json'],
