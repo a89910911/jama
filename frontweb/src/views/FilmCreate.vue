@@ -212,14 +212,17 @@
                     <el-option label="喜剧" value="comedy" />
                     <el-option label="冒险" value="adventure" />
                   </el-select>
-                  <el-select v-model="storyEpisodeCount" placeholder="生成集数" style="width: 120px">
-                    <el-option label="生成 1 集" :value="1" />
-                    <el-option label="生成 2 集" :value="2" />
-                    <el-option label="生成 3 集" :value="3" />
-                    <el-option label="生成 4 集" :value="4" />
-                    <el-option label="生成 5 集" :value="5" />
-                    <el-option label="生成 6 集" :value="6" />
-                  </el-select>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:13px">
+                    <span>集数</span>
+                    <el-input-number
+                      v-model="storyEpisodeCount"
+                      :min="1"
+                      :step="1"
+                      :precision="0"
+                      controls-position="right"
+                      style="width: 100px"
+                    />
+                  </div>
                   <el-button type="primary" :loading="isStoryGenRunning" @click="onGenerateStory">
                     生成剧本
                   </el-button>

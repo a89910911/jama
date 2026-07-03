@@ -14,7 +14,7 @@ async function generateStory(db, log, body) {
   const cfg = loadConfig();
   const style = body.style || body.genre || null;
   const type = body.type || null;
-  const episodeCount = Math.max(1, Math.min(20, Number(body.episode_count) || 1));
+  const episodeCount = Math.max(1, Math.floor(Number(body.episode_count) || 1));
 
   const systemPrompt = promptI18n.getStoryExpansionSystemPrompt(cfg, episodeCount);
   const userPrompt = promptI18n.buildStoryExpansionUserPrompt(cfg, premise, style, type, episodeCount);
