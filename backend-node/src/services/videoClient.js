@@ -471,6 +471,20 @@ async function resolveImageInputForAgnesAsync(db, rawUrl, files_base_url, storag
 }
 
 /**
+ * Seedance 2.x 家族：官方 doubao/jimeng 名称 + 中转别名（如 mingiz-sd2）。
+ * 用于时长归一、音色参考注入、content 是否带 reference_audio。
+ */
+function isSeedance2FamilyModel(modelName) {
+  const m = String(modelName || '').toLowerCase().trim();
+  if (!m) return false;
+  if (/seedance[-_]?2|seedance2/.test(m)) return true;
+  if (/2[-_]0[-_]/.test(m)) return true;
+  // 网关别名：mingiz-sd2、foo_sd2、sd2-bar
+  if (/(^|[-_./])sd2($|[-_./])/.test(m)) return true;
+  return false;
+}
+
+/**
  * 火山 Seedance 系列：按模型版本归一化时长（秒）。
  * - 2.x：4–15
  * - 1.5 Pro/Lite：5–12（官方文档）
@@ -481,7 +495,7 @@ function normalizeVolcengineDuration(modelName, durationNum) {
   const d = Number(durationNum);
   const safe = Number.isFinite(d) && d > 0 ? Math.round(d) : 5;
 
-  if (/seedance[-_]?2|seedance2|2[-_]0[-_]/.test(m)) {
+  if (isSeedance2FamilyModel(m)) {
     return Math.min(15, Math.max(4, safe));
   }
 
@@ -587,9 +601,8 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     if (body.content.length > 1) body.task_type = 'i2v';
   }
 
-  // Seedance 2.0 音色参考音频支持（仅 Seedance 2.x 模型有效）
-  const isSeedance2 = /seedance[-_]?2|seedance2|2[-_]0[-_]/.test(finalModel);
-  if (isSeedance2 && opts.voice_reference_url) {
+  // Seedance 2.0 音色参考：本路径仅 volcengine_omni 调用；有 URL 即注入（网关别名如 mingiz-sd2 也要生效）
+  if (opts.voice_reference_url) {
     let voiceUrl = String(opts.voice_reference_url).trim();
     if (voiceUrl) {
       // 复用图片的本地文件转 base64 逻辑
@@ -3373,8 +3386,9 @@ async function callVideoApi(db, log, opts) {
     opts = applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts);
   }
 
-  // Seedance 2.0 自动注入角色音色参考（仅当模型为 SD2 且未显式指定 voice_reference_url 时）
-  const isSeedance2 = /seedance[-_]?2|seedance2|2[-_]0[-_]/.test(String(model || ''));
+  // Seedance 2.0 自动注入角色音色参考（模型为 SD2 家族，或协议为 volcengine_omni；未显式指定 voice_reference_url 时）
+  const isSeedance2 =
+    isSeedance2FamilyModel(model) || protocol === 'volcengine_omni';
   if (isSeedance2 && db && opts.drama_id && !opts.voice_reference_url) {
     const voiceMap = collectActiveCharacterVoiceRefs(db, opts.drama_id);
     if (voiceMap.size > 0) {
@@ -4063,4 +4077,6 @@ module.exports = {
   pickProxyVideoUrl,
   buildAgnesVideoImagePayload,
   formatVideoPostBodyForLog,
+  isSeedance2FamilyModel,
+  normalizeVolcengineDuration,
 };

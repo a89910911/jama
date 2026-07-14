@@ -6165,11 +6165,18 @@ function videoModelNameFromAiConfig(cfg) {
   return String(m || '').trim()
 }
 
-/** 模型名含 seedance 且含 2-0（与后端 videoClient 判定 Seedance 2.x 对齐） */
+/**
+ * Seedance 2.x 家族模型名判定（与后端 videoClient.isSeedance2FamilyModel 对齐）。
+ * 含官方 doubao-seedance-2-0-* / jimeng-video-seedance-2.0，以及中转别名 mingiz-sd2、*-sd2 等。
+ */
 function isSeedance2VideoModel(modelName) {
-  const m = String(modelName || '').toLowerCase()
-  if (!m.includes('seedance')) return false
-  return /2[-_]0/.test(m) || /seedance[-_]?2|seedance2/.test(m)
+  const m = String(modelName || '').toLowerCase().trim()
+  if (!m) return false
+  if (/seedance[-_]?2|seedance2/.test(m)) return true
+  if (/2[-_]0[-_]/.test(m)) return true
+  // 网关别名：mingiz-sd2、foo_sd2、sd2-bar
+  if (/(^|[-_./])sd2($|[-_./])/.test(m)) return true
+  return false
 }
 
 /** 全能分镜 + 当前视频配置是否可走多图参考（火山 Seedance 2.0、可灵 Omni、Agnes Video 等） */
@@ -6179,9 +6186,8 @@ function canUseUniversalOmniVideoApi(cfg) {
   const provider = String(cfg.provider || '').toLowerCase()
   const model = videoModelNameFromAiConfig(cfg).toLowerCase()
   if (proto === 'kling_omni') return true
-  if (proto === 'volcengine_omni') {
-    return isSeedance2VideoModel(model)
-  }
+  // 选了 volcengine_omni 即表示走多图参考；模型名可能是 996 等网关别名（如 mingiz-sd2），勿再按 seedance 字样拦截
+  if (proto === 'volcengine_omni') return true
   if (proto === 'agnes' || provider === 'agnes' || /agnes-video/.test(model)) {
     return true
   }
