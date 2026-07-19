@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 const request = axios.create({
   baseURL: '/api/v1',
   timeout: 600000,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -23,6 +24,17 @@ request.interceptors.response.use(
     // 提取后端实际错误信息（优先 API 返回的 message，而非 axios 通用 "status code 500"）
     const backendMsg = error.response?.data?.error?.message
     const msg = backendMsg || error.message || '网络错误'
+    if (error.response?.status === 401) {
+      window.dispatchEvent(new Event('auth:unauthorized'))
+      if (error.config?.suppressAuthFeedback) {
+        return Promise.reject(error)
+      }
+      if (window.location.pathname !== '/login') {
+        const redirect = `${window.location.pathname}${window.location.search}${window.location.hash}`
+        window.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
+        return Promise.reject(error)
+      }
+    }
     ElMessage.error(msg)
     // 将真实错误信息写回 message，使组件 catch 块可直接用 e.message 获取可读内容
     if (backendMsg) error.message = backendMsg

@@ -450,20 +450,14 @@ function detectGenderFromDescription(text) {
  * @param {string} [styleZh] default_style_zh（可与 en 相同；相同时不重复输出英文行）
  */
 function buildFourViewImagePrompt(db, characterId, fourViewDescription, styleEn, styleZh) {
-  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'character.image_layout', {
-    characterId,
-    locale: 'universal',
-  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
   const gender = detectGenderFromDescription(fourViewDescription);
   return promptTemplates.resolvePromptContent(db, 'character.image_compose', {
     characterId,
-    locale: 'universal',
     variables: {
       style_zh: zh,
       style_en: en,
-      layout_instruction: imageLayoutInstruction,
       generated_description: fourViewDescription,
       gender: gender === 'MALE' ? 'male' : gender === 'FEMALE' ? 'female' : '',
     },
@@ -498,7 +492,6 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
   const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
     ...promptContext,
-    locale: 'universal',
     variables: { entity_name: charRow.name || '', entity_description: appearanceText },
   });
 
@@ -560,7 +553,6 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
     const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
     const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
       ...promptContext,
-      locale: 'universal',
       variables: { entity_name: charRow.name || '', entity_description: appearanceText },
     });
 
@@ -625,11 +617,9 @@ async function extractAppearanceFromImage(db, log, cfg, characterId) {
 
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.system', {
     characterId,
-    locale: 'universal',
   });
   const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.user', {
     characterId,
-    locale: 'universal',
     variables: { entity_name: charRow.name || '' },
   });
 

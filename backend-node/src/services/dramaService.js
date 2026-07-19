@@ -24,6 +24,78 @@ function parseJsonColumn(value) {
   }
 }
 
+const CHARACTER_RESULT_COLUMNS = [
+  'id',
+  'drama_id',
+  'name',
+  'role',
+  'description',
+  'appearance',
+  'personality',
+  'voice_style',
+  'image_url',
+  'local_path',
+  'extra_images',
+  'ref_image',
+  'sort_order',
+  'error_msg',
+  'polished_prompt',
+  'negative_prompt',
+  'four_view_image_url',
+  'seedance2_asset',
+  'seedance2_voice_asset',
+  'created_at',
+  'updated_at',
+];
+
+const SCENE_RESULT_COLUMNS = [
+  'id',
+  'drama_id',
+  'episode_id',
+  'location',
+  'time',
+  'prompt',
+  'polished_prompt',
+  'negative_prompt',
+  'storyboard_count',
+  'image_url',
+  'local_path',
+  'extra_images',
+  'ref_image',
+  'status',
+  'error_msg',
+  'created_at',
+  'updated_at',
+];
+
+const PROP_RESULT_COLUMNS = [
+  'id',
+  'drama_id',
+  'episode_id',
+  'name',
+  'type',
+  'description',
+  'prompt',
+  'image_url',
+  'local_path',
+  'extra_images',
+  'ref_image',
+  'negative_prompt',
+  'error_msg',
+  'created_at',
+  'updated_at',
+];
+
+function selectEntityColumns(alias, columns) {
+  const prefix = alias ? `${alias}.` : '';
+  return columns.map((column) => {
+    if (column === 'image_url') {
+      return `CASE WHEN substr(${prefix}image_url, 1, 5) = 'data:' THEN NULL ELSE ${prefix}image_url END AS image_url`;
+    }
+    return `${prefix}${column}`;
+  }).join(', ');
+}
+
 function createDrama(db, log, req) {
   const now = new Date().toISOString();
   let meta = {};
@@ -72,6 +144,18 @@ function getDrama(db, dramaId, baseUrl) {
     'SELECT * FROM episodes WHERE drama_id = ? AND deleted_at IS NULL ORDER BY episode_number ASC'
   ).all(drama.id);
   drama.episodes = episodes.map((e) => rowToEpisode(e));
+  const characterRows = db.prepare(
+    `SELECT ${selectEntityColumns('', CHARACTER_RESULT_COLUMNS)}
+     FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC`
+  ).all(drama.id);
+  const sceneRows = db.prepare(
+    `SELECT ${selectEntityColumns('', SCENE_RESULT_COLUMNS)}
+     FROM scenes WHERE drama_id = ? AND deleted_at IS NULL ORDER BY id ASC`
+  ).all(drama.id);
+  const propRows = db.prepare(
+    `SELECT ${selectEntityColumns('', PROP_RESULT_COLUMNS)}
+     FROM props WHERE drama_id = ? AND deleted_at IS NULL ORDER BY id ASC`
+  ).all(drama.id);
   const { dedupeStoryboardRowsByNumber } = require('./episodeStoryboardService');
   for (const ep of drama.episodes) {
     const storyboards = dedupeStoryboardRowsByNumber(
@@ -81,6 +165,7 @@ function getDrama(db, dramaId, baseUrl) {
     );
     ep.storyboards = storyboards.map((s) => rowToStoryboard(s));
     // 批量加载 storyboard_props，附加到对应分镜
+    const linkedPropIds = new Set();
     try {
       const sbIds = ep.storyboards.map((s) => s.id);
       if (sbIds.length > 0) {
@@ -90,6 +175,7 @@ function getDrama(db, dramaId, baseUrl) {
         for (const row of spRows) {
           if (!spMap[row.storyboard_id]) spMap[row.storyboard_id] = [];
           spMap[row.storyboard_id].push(row.prop_id);
+          linkedPropIds.add(Number(row.prop_id));
         }
         for (const sb of ep.storyboards) {
           sb.prop_ids = spMap[sb.id] || [];
@@ -100,36 +186,33 @@ function getDrama(db, dramaId, baseUrl) {
     if (ep.duration > 0) ep.duration = Math.ceil(ep.duration / 60); // 转为分钟
     // 本集关联的角色（与 Go Preload("Episodes.Characters") 一致）
     try {
-      const epChars = db.prepare(
-        `SELECT c.* FROM characters c
-         INNER JOIN episode_characters ec ON c.id = ec.character_id
-         WHERE ec.episode_id = ? AND c.deleted_at IS NULL
-         ORDER BY c.sort_order ASC, c.name ASC`
+      const charLinks = db.prepare(
+        'SELECT character_id FROM episode_characters WHERE episode_id = ?'
       ).all(ep.id);
-      ep.characters = epChars.map((c) => rowToCharacter(c));
+      const characterIds = new Set(charLinks.map((row) => Number(row.character_id)));
+      ep.characters = characterRows
+        .filter((character) => characterIds.has(Number(character.id)))
+        .map((character) => rowToCharacter(character));
     } catch (_) {
       ep.characters = [];
     }
     // 本集关联的场景（与 Go Preload("Episodes.Scenes") 一致，用于提取完成后展示）
     try {
-      const epScenes = db.prepare(
-        'SELECT * FROM scenes WHERE episode_id = ? AND deleted_at IS NULL ORDER BY id ASC'
-      ).all(ep.id);
+      const epScenes = sceneRows.filter(
+        (scene) => Number(scene.episode_id) === Number(ep.id)
+      );
       ep.scenes = epScenes.map((s) => rowToScene(s));
     } catch (_) {
       ep.scenes = [];
     }
     // 本集关联的道具：本集提取的（episode_id=本集）+ 本集分镜中出现的（storyboard_props），合并去重
     try {
-      const byEpisode = db.prepare(
-        'SELECT * FROM props WHERE episode_id = ? AND deleted_at IS NULL ORDER BY id ASC'
-      ).all(ep.id);
-      const byStoryboard = db.prepare(
-        `SELECT DISTINCT p.* FROM props p
-         INNER JOIN storyboard_props sp ON p.id = sp.prop_id
-         INNER JOIN storyboards sb ON sb.id = sp.storyboard_id AND sb.episode_id = ? AND sb.deleted_at IS NULL
-         WHERE p.deleted_at IS NULL ORDER BY p.id ASC`
-      ).all(ep.id);
+      const byEpisode = propRows.filter(
+        (prop) => Number(prop.episode_id) === Number(ep.id)
+      );
+      const byStoryboard = propRows.filter(
+        (prop) => linkedPropIds.has(Number(prop.id))
+      );
       const seen = new Set();
       ep.props = [];
       for (const p of byEpisode) {
@@ -149,18 +232,9 @@ function getDrama(db, dramaId, baseUrl) {
       ep.props = [];
     }
   }
-  const characters = db.prepare(
-    'SELECT * FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC'
-  ).all(drama.id);
-  drama.characters = characters.map((c) => rowToCharacter(c));
-  const scenes = db.prepare(
-    'SELECT * FROM scenes WHERE drama_id = ? AND deleted_at IS NULL ORDER BY id ASC'
-  ).all(drama.id);
-  drama.scenes = scenes.map((s) => rowToScene(s));
-  const props = db.prepare(
-    'SELECT * FROM props WHERE drama_id = ? AND deleted_at IS NULL ORDER BY id ASC'
-  ).all(drama.id);
-  drama.props = props.map((p) => rowToProp(p));
+  drama.characters = characterRows.map((c) => rowToCharacter(c));
+  drama.scenes = sceneRows.map((s) => rowToScene(s));
+  drama.props = propRows.map((p) => rowToProp(p));
   return drama;
 }
 
@@ -533,13 +607,14 @@ function getCharacters(db, dramaId, episodeId) {
     const exists = db.prepare('SELECT 1 FROM episodes WHERE id = ? AND drama_id = ?').get(episodeId, did);
     if (!exists) return null;
     rows = db.prepare(
-      `SELECT c.* FROM characters c
+      `SELECT ${selectEntityColumns('c', CHARACTER_RESULT_COLUMNS)} FROM characters c
        INNER JOIN episode_characters ec ON ec.character_id = c.id
        WHERE ec.episode_id = ? AND c.deleted_at IS NULL ORDER BY c.sort_order ASC, c.name ASC`
     ).all(episodeId);
   } else {
     rows = db.prepare(
-      'SELECT * FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC'
+      `SELECT ${selectEntityColumns('', CHARACTER_RESULT_COLUMNS)}
+       FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC`
     ).all(did);
   }
   const characters = rows.map((r) => rowToCharacter(r));

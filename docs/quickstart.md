@@ -162,8 +162,6 @@ database:
 storage:
   local_path: ./data/storage        # 生成图片/视频的本地存储目录
 
-language: zh          # 界面及提示词语言（zh / en）
-
 style:
   default_style: realistic           # 默认画风
   default_image_ratio: "16:9"        # 默认图片比例

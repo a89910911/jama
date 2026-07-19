@@ -27,6 +27,18 @@
                 <el-icon><MagicStick /></el-icon>
                 一键配置 Agnes
               </el-button>
+              <el-button type="primary" plain @click="openOneKeyFal">
+                <el-icon><MagicStick /></el-icon>
+                一键配置 fal.ai
+              </el-button>
+              <el-button type="warning" plain @click="openOneKeyVenice">
+                <el-icon><MagicStick /></el-icon>
+                一键配置 Venice
+              </el-button>
+              <el-button type="danger" plain @click="openOneKeyHolyCrab">
+                <el-icon><MagicStick /></el-icon>
+                一键配置 HolyCrab
+              </el-button>
               <el-button type="info" plain @click="openOneKeyTongyi">
                 <el-icon><MagicStick /></el-icon>
                 一键配置通义
@@ -324,6 +336,9 @@
           </template>
           <el-select v-model="form.api_protocol" style="width: 100%" placeholder="选择接口规范（自定义厂商必选）" clearable>
             <el-option label="OpenAI 兼容（大多数中转站默认）" value="openai" />
+            <el-option label="fal.ai 原生协议（Key 认证 + 队列）" value="fal" />
+            <el-option label="Venice.ai 原生协议（Bearer + 媒体队列）" value="venice" />
+            <el-option label="HolyCrab 原生协议（X-User-Token + BytePlus Seedance）" value="holycrab" />
             <el-option label="火山引擎（豆包 Seedream / Seedance）" value="volcengine" />
             <el-option label="火山即梦 Seedance 全能（方舟多图参考，Seedance 2.0 等）" value="volcengine_omni" />
             <el-option label="通义万象 DashScope" value="dashscope" />
@@ -342,6 +357,23 @@
           <div class="protocol-help">
             <div class="ph-section-title">🖼 图片 / 分镜图 协议</div>
             <el-collapse accordion>
+              <el-collapse-item name="fal-img">
+                <template #title><span class="ph-tag ph-tag-img">图片</span> fal.ai 原生协议</template>
+                <div class="ph-body">
+                  <b>认证：</b><code>Authorization: Key FAL_KEY</code><br>
+                  <b>GPT Image 2：</b><code>POST https://fal.run/openai/gpt-image-2</code><br>
+                  有参考图时自动改用 <code>/openai/gpt-image-2/edit</code>，并解析 <code>images[0].url</code>。
+                </div>
+              </el-collapse-item>
+              <el-collapse-item name="venice-img">
+                <template #title><span class="ph-tag ph-tag-img">图片</span> Venice.ai 原生协议</template>
+                <div class="ph-body">
+                  <b>认证：</b><code>Authorization: Bearer VENICE_API_KEY</code><br>
+                  <b>GPT Image 2：</b><code>POST /api/v1/image/generate</code><br>
+                  一张参考图使用 <code>/image/edit</code>，多张参考图使用
+                  <code>/image/multi-edit</code>，编辑模型自动切换为 <code>gpt-image-2-edit</code>。
+                </div>
+              </el-collapse-item>
               <el-collapse-item name="openai-img">
                 <template #title><span class="ph-tag ph-tag-img">图片</span> OpenAI 兼容 — 绝大多数中转站默认</template>
                 <div class="ph-body">
@@ -376,6 +408,23 @@
 
             <div class="ph-section-title" style="margin-top:16px">🎬 视频 协议</div>
             <el-collapse accordion>
+              <el-collapse-item name="fal-vid">
+                <template #title><span class="ph-tag ph-tag-vid">视频</span> fal.ai Seedance 2.0 队列</template>
+                <div class="ph-body">
+                  自动按素材选择 <code>text-to-video</code>、<code>image-to-video</code> 或
+                  <code>reference-to-video</code>；提交到 <code>queue.fal.run</code> 后轮询
+                  <code>request_id</code>，完成时读取 <code>video.url</code>。
+                </div>
+              </el-collapse-item>
+              <el-collapse-item name="venice-vid">
+                <template #title><span class="ph-tag ph-tag-vid">视频</span> Venice.ai Seedance 2.0 队列</template>
+                <div class="ph-body">
+                  自动选择 <code>seedance-2-0-text-to-video</code>、
+                  <code>image-to-video</code> 或 <code>reference-to-video</code>；
+                  提交到 <code>POST /api/v1/video/queue</code>，再通过
+                  <code>POST /api/v1/video/retrieve</code> 获取视频。
+                </div>
+              </el-collapse-item>
               <el-collapse-item name="openai-vid">
                 <template #title><span class="ph-tag ph-tag-vid">视频</span> OpenAI 兼容 — content 数组格式</template>
                 <div class="ph-body">
@@ -648,6 +697,13 @@ input_reference = (图片文件，可选)</pre>
               placeholder="选择或输入声音 ID"
               style="width: 100%"
             >
+              <el-option-group v-if="form.provider === 'fal'" label="fal.ai · Qwen 3 TTS">
+                <el-option label="Vivian（中文女声）" value="Vivian" />
+                <el-option label="Serena（女声）" value="Serena" />
+                <el-option label="Uncle_Fu（中文男声）" value="Uncle_Fu" />
+                <el-option label="Dylan（男声）" value="Dylan" />
+                <el-option label="Eric（男声）" value="Eric" />
+              </el-option-group>
               <el-option-group label="MiniMax 女声">
                 <el-option label="female-shaonv（少女）" value="female-shaonv" />
                 <el-option label="female-chengshu（成熟）" value="female-chengshu" />
@@ -660,9 +716,10 @@ input_reference = (图片文件，可选)</pre>
                 <el-option label="audiobook_male_1（有声书）" value="audiobook_male_1" />
               </el-option-group>
             </el-select>
-            <p class="field-tip">MiniMax 必填；不填默认 female-shaonv。</p>
+            <p v-if="form.provider === 'fal'" class="field-tip">fal.ai Qwen 3 TTS 不填时默认使用 Vivian 中文音色。</p>
+            <p v-else class="field-tip">MiniMax 必填；不填默认 female-shaonv。</p>
           </el-form-item>
-          <el-form-item>
+          <el-form-item v-if="form.provider === 'minimax'">
             <template #label>
               <span class="form-label-tip">Group ID
                 <el-tooltip placement="top" popper-class="cfg-tip-popper">
@@ -852,6 +909,159 @@ input_reference = (图片文件，可选)</pre>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="submit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键配置 fal.ai -->
+    <el-dialog
+      v-model="oneKeyFalVisible"
+      title="一键配置 fal.ai"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="oneKeyFalKey = ''"
+    >
+      <div class="one-key-help">
+        <div class="one-key-section">
+          <div class="one-key-section-title">📋 将自动创建以下配置</div>
+          <ul class="one-key-list">
+            <li><b>文本/对话</b>：GPT 5.5（<code>openai/gpt-5.5</code>）</li>
+            <li><b>文本生成图片</b>：GPT Image 2（<code>openai/gpt-image-2</code>）</li>
+            <li><b>分镜图片生成</b>：GPT Image 2 Edit，自动使用参考图</li>
+            <li><b>视频生成</b>：Seedance 2.0，自动选择文生视频、首尾帧或多参考图接口</li>
+            <li><b>语音合成 TTS</b>：Qwen 3 TTS 1.7B，默认中文 Vivian 音色</li>
+          </ul>
+        </div>
+        <div class="one-key-section">
+          <div class="one-key-section-title">🔑 fal.ai API Key</div>
+          <p class="one-key-note">
+            在
+            <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer" class="one-key-link">fal.ai/dashboard/keys</a>
+            创建 API scope Key；同一个 Key 用于以上五项服务。
+          </p>
+        </div>
+      </div>
+      <el-form label-width="0" style="margin-top: 8px">
+        <el-form-item>
+          <el-input
+            v-model="oneKeyFalKey"
+            type="password"
+            placeholder="请输入 fal.ai API Key"
+            show-password-on="click"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="oneKeyFalVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="oneKeyFalSaving"
+          :disabled="!oneKeyFalKey.trim()"
+          @click="submitOneKeyFal"
+        >
+          确定，一键创建配置
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键配置 Venice.ai -->
+    <el-dialog
+      v-model="oneKeyVeniceVisible"
+      title="一键配置 Venice.ai"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="oneKeyVeniceKey = ''"
+    >
+      <div class="one-key-help">
+        <div class="one-key-section">
+          <div class="one-key-section-title">📋 将自动创建以下配置</div>
+          <ul class="one-key-list">
+            <li><b>文本/对话</b>：GPT 5.5（<code>openai-gpt-55</code>）</li>
+            <li><b>文本生成图片</b>：GPT Image 2（<code>gpt-image-2</code>）</li>
+            <li><b>分镜图片生成</b>：自动使用 <code>gpt-image-2-edit</code> 处理参考图</li>
+            <li><b>视频生成</b>：Seedance 2.0，自动选择文生、图生或多参考图模型</li>
+          </ul>
+        </div>
+        <div class="one-key-section">
+          <div class="one-key-section-title">🔑 Venice.ai API Key</div>
+          <p class="one-key-note">
+            在
+            <a href="https://venice.ai/settings/api" target="_blank" rel="noopener noreferrer" class="one-key-link">venice.ai/settings/api</a>
+            创建 Key；同一把 Key 用于以上四项服务。
+          </p>
+        </div>
+      </div>
+      <el-form label-width="0" style="margin-top: 8px">
+        <el-form-item>
+          <el-input
+            v-model="oneKeyVeniceKey"
+            type="password"
+            placeholder="请输入 Venice.ai API Key"
+            show-password-on="click"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="oneKeyVeniceVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="oneKeyVeniceSaving"
+          :disabled="!oneKeyVeniceKey.trim()"
+          @click="submitOneKeyVenice"
+        >
+          确定，一键创建配置
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键配置 HolyCrab -->
+    <el-dialog
+      v-model="oneKeyHolyCrabVisible"
+      title="一键配置 HolyCrab BytePlus Seedance"
+      width="580px"
+      :close-on-click-modal="false"
+      @closed="oneKeyHolyCrabKey = ''"
+    >
+      <div class="one-key-help">
+        <div class="one-key-section">
+          <div class="one-key-section-title">📋 将自动创建以下视频配置</div>
+          <ul class="one-key-list">
+            <li><b>Seedance 2.0</b>：<code>seedance-2-0</code>，支持最高 4K</li>
+            <li><b>Seedance 2.0 Fast</b>：<code>seedance-2-0-fast</code>，支持 480p / 720p</li>
+            <li><b>Seedance 2.0 Mini</b>：<code>seedance-2-0-mini</code>，支持 480p / 720p</li>
+            <li>角色图、首尾帧和多参考图会自动注册为 HolyCrab 用户素材。</li>
+          </ul>
+        </div>
+        <div class="one-key-section">
+          <div class="one-key-section-title">🔑 HolyCrab API Key</div>
+          <p class="one-key-note">
+            请填写 HolyCrab API Key 页面创建并启用的 32 位 Key；系统使用
+            <code>X-User-Token</code> 认证。
+          </p>
+        </div>
+      </div>
+      <el-form label-width="0" style="margin-top: 8px">
+        <el-form-item>
+          <el-input
+            v-model="oneKeyHolyCrabKey"
+            type="password"
+            placeholder="请输入 HolyCrab API Key"
+            show-password-on="click"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="oneKeyHolyCrabVisible = false">取消</el-button>
+        <el-button
+          type="danger"
+          :loading="oneKeyHolyCrabSaving"
+          :disabled="!oneKeyHolyCrabKey.trim()"
+          @click="submitOneKeyHolyCrab"
+        >
+          确定，创建视频配置
+        </el-button>
       </template>
     </el-dialog>
 
@@ -1095,6 +1305,7 @@ input_reference = (图片文件，可选)</pre>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key, Microphone, Folder } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
@@ -1103,8 +1314,20 @@ import PromptEditor from '@/components/PromptEditor.vue'
 import SceneModelMap from '@/components/SceneModelMap.vue'
 import Sd2AssetManagement from '@/components/Sd2AssetManagement.vue'
 
-const activeTab = ref('configs')
+const route = useRoute()
+const router = useRouter()
+const tabNames = new Set(['configs', 'prompts', 'sceneModelMap', 'generation', 'sd2_assets'])
+const activeTab = ref(tabNames.has(String(route.query.tab || '')) ? String(route.query.tab) : 'configs')
 const importFileRef = ref(null)
+
+watch(() => route.query.tab, (value) => {
+  const next = String(value || '')
+  if (tabNames.has(next) && activeTab.value !== next) activeTab.value = next
+})
+watch(activeTab, (value) => {
+  if (String(route.query.tab || '') === value) return
+  router.replace({ query: { ...route.query, tab: value } })
+})
 
 // ---- 生成设置 ----
 const genConcurrencyInput = ref(3)
@@ -1235,6 +1458,27 @@ function onServiceTypeChange() {
   }
   const listByType = providerConfigs[st] || []
   const current = form.value.provider
+  if (current === 'fal') {
+    const preset = listByType.find((p) => p.id === 'fal')
+    form.value.base_url = getBaseUrlForProvider('fal')
+    form.value.modelText = (preset?.models || []).join('\n')
+    form.value.default_model = preset?.models?.[0] || ''
+    form.value.api_protocol = 'fal'
+    form.value.endpoint = st === 'text' ? '/chat/completions' : ''
+    form.value.query_endpoint = ''
+    if (st === 'tts') form.value.voice_id = 'Vivian'
+    return
+  }
+  if (current === 'venice') {
+    const preset = listByType.find((p) => p.id === 'venice')
+    form.value.base_url = getBaseUrlForProvider('venice')
+    form.value.modelText = (preset?.models || []).join('\n')
+    form.value.default_model = preset?.models?.[0] || ''
+    form.value.api_protocol = 'venice'
+    form.value.endpoint = st === 'text' ? '/chat/completions' : ''
+    form.value.query_endpoint = ''
+    return
+  }
   if (!current || !listByType.some((p) => p.id === current)) {
     form.value.provider = ''
     form.value.base_url = ''
@@ -1291,10 +1535,21 @@ const oneKeyVolcSaving = ref(false)
 const oneKeyAgnesVisible = ref(false)
 const oneKeyAgnesKey = ref('')
 const oneKeyAgnesSaving = ref(false)
+const oneKeyFalVisible = ref(false)
+const oneKeyFalKey = ref('')
+const oneKeyFalSaving = ref(false)
+const oneKeyVeniceVisible = ref(false)
+const oneKeyVeniceKey = ref('')
+const oneKeyVeniceSaving = ref(false)
+const oneKeyHolyCrabVisible = ref(false)
+const oneKeyHolyCrabKey = ref('')
+const oneKeyHolyCrabSaving = ref(false)
 
 /** 预设厂商与模型（与参考前端一致） */
 const providerConfigs = {
   text: [
+    { id: 'fal', name: 'fal.ai', models: ['openai/gpt-5.5'] },
+    { id: 'venice', name: 'Venice.ai', models: ['openai-gpt-55'] },
     { id: 'openai', name: 'OpenAI', models: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'] },
     { id: 'volcengine', name: '火山引擎', models: ['deepseek-v3-2-251201', 'doubao-1-5-pro-32k-250115', 'kimi-k2-thinking-251104'] },
     // { id: 'chatfire', name: 'Chatfire', models: ['gemini-3-flash-preview', 'claude-sonnet-4-5-20250929', 'doubao-seed-1-8-251228'] },
@@ -1304,6 +1559,8 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-2.0-flash'] }
   ],
   image: [
+    { id: 'fal', name: 'fal.ai', models: ['openai/gpt-image-2'] },
+    { id: 'venice', name: 'Venice.ai', models: ['gpt-image-2'] },
     { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-4-0-250828'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-image', 'kling-omni-image'] },
     { id: 'nano_banana', name: 'NanoBanana', models: ['nano-banana-2', 'nano-banana-pro', 'nano-banana'] },
@@ -1315,6 +1572,8 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   storyboard_image: [
+    { id: 'fal', name: 'fal.ai', models: ['openai/gpt-image-2'] },
+    { id: 'venice', name: 'Venice.ai', models: ['gpt-image-2'] },
     { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
     { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-4-0-250828'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-image', 'kling-omni-image'] },
@@ -1325,6 +1584,9 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   video: [
+    { id: 'fal', name: 'fal.ai', models: ['bytedance/seedance-2.0'] },
+    { id: 'venice', name: 'Venice.ai', models: ['seedance-2-0'] },
+    { id: 'holycrab', name: 'HolyCrab BytePlus', models: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'] },
     { id: 'klingai', name: '可灵官方 Omni (api-beijing.klingai.com)', models: ['kling-video-o1', 'kling-v3-omni'] },
     { id: 'ffir', name: '飞儿API / 可灵 Omni-Video (ffir.cn)', models: ['kling-video-o1', 'kling-v3-omni'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-omni-video', 'kling-video', 'kling-motion-control'] },
@@ -1351,6 +1613,7 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-video-v2.0'] },
   ],
   tts: [
+    { id: 'fal', name: 'fal.ai', models: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/gemini-3.1-flash-tts'] },
     { id: 'minimax', name: 'MiniMax T2A', models: ['speech-02-hd', 'speech-02-turbo'] },
   ],
   jimeng2_character_auth: [
@@ -1360,6 +1623,9 @@ const providerConfigs = {
 
 /** 厂商 id → 默认接口规范（api_protocol） */
 const providerProtocolMap = {
+  fal: 'fal',
+  venice: 'venice',
+  holycrab: 'holycrab',
   // image / storyboard_image
   volcengine: 'volcengine',
   volces: 'volcengine',
@@ -1390,6 +1656,14 @@ const providerProtocolMap = {
 function getBaseUrlForProvider(provider) {
   if (!provider) return ''
   const p = String(provider).toLowerCase()
+  if (p === 'fal' || p === 'fal.ai') {
+    const serviceType = form.value.service_type || 'text'
+    if (serviceType === 'text') return 'https://fal.run/openrouter/router/openai/v1'
+    if (serviceType === 'video') return 'https://queue.fal.run'
+    return 'https://fal.run'
+  }
+  if (p === 'venice' || p === 'venice.ai') return 'https://api.venice.ai/api/v1'
+  if (p === 'holycrab' || p === 'holycrab.ai') return 'https://abgzfc.holycrab.ai'
   if (p === 'gemini' || p === 'google') return 'https://generativelanguage.googleapis.com'
   if (p === 'minimax') return 'https://api.minimaxi.com/v1'
   if (p === 'volces' || p === 'volcengine') return 'https://ark.cn-beijing.volces.com/api/v3'
@@ -1489,6 +1763,65 @@ const endpointPreviewInfo = computed(() => {
   }
 
   if (!base && !proto && !p) return null
+
+  if (proto === 'fal' || p === 'fal' || p === 'fal.ai') {
+    const model = form.value.default_model || parseModelText(form.value.modelText)[0] || '{模型 endpoint}'
+    if (service_type === 'text') {
+      return {
+        submit: `${base || 'https://fal.run/openrouter/router/openai/v1'}/chat/completions`,
+        query: null,
+        isAuto: true,
+      }
+    }
+    if (service_type === 'image' || service_type === 'storyboard_image') {
+      const root = base || 'https://fal.run'
+      return {
+        submit: `${root}/${model}（有参考图时自动使用 /edit）`,
+        query: null,
+        isAuto: true,
+      }
+    }
+    if (service_type === 'video') {
+      const root = base || 'https://queue.fal.run'
+      return {
+        submit: `${root}/${model}/{text-to-video | image-to-video | reference-to-video}`,
+        query: `${root}/${model}/{模式}/requests/{requestId}/status`,
+        isAuto: true,
+      }
+    }
+    if (service_type === 'tts') {
+      return {
+        submit: `${base || 'https://fal.run'}/${model}`,
+        query: null,
+        isAuto: true,
+      }
+    }
+  }
+
+  if (proto === 'venice' || p === 'venice' || p === 'venice.ai') {
+    const root = base || 'https://api.venice.ai/api/v1'
+    if (service_type === 'text') {
+      return {
+        submit: `${root}/chat/completions`,
+        query: null,
+        isAuto: true,
+      }
+    }
+    if (service_type === 'image' || service_type === 'storyboard_image') {
+      return {
+        submit: `${root}/image/generate（参考图自动切换 edit / multi-edit）`,
+        query: null,
+        isAuto: true,
+      }
+    }
+    if (service_type === 'video') {
+      return {
+        submit: `${root}/video/queue`,
+        query: `${root}/video/retrieve`,
+        isAuto: true,
+      }
+    }
+  }
 
   let submitPath = '', queryPath = ''
 
@@ -1636,6 +1969,25 @@ function onProviderChange(providerId) {
   }
   // 自动填充接口规范
   form.value.api_protocol = providerProtocolMap[providerId] || (st === 'text' ? '' : 'openai')
+  if (providerId === 'fal') {
+    form.value.api_protocol = 'fal'
+    form.value.endpoint = st === 'text' ? '/chat/completions' : ''
+    form.value.query_endpoint = ''
+    if (st === 'tts') {
+      form.value.voice_id = 'Vivian'
+      form.value.group_id = ''
+    }
+  }
+  if (providerId === 'venice') {
+    form.value.api_protocol = 'venice'
+    form.value.endpoint = st === 'text' ? '/chat/completions' : ''
+    form.value.query_endpoint = ''
+  }
+  if (providerId === 'holycrab') {
+    form.value.api_protocol = 'holycrab'
+    form.value.endpoint = '/api/tasks/generation'
+    form.value.query_endpoint = '/api/tasks/{taskId}'
+  }
   if (st === 'video' && providerId === 'jimeng_ai_api') {
     form.value.endpoint = ''
     form.value.query_endpoint = ''
@@ -1683,6 +2035,101 @@ const AGNES_CONFIGS = [
   { service_type: 'storyboard_image', name: 'Agnes 分镜图', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'openai', model: ['agnes-image-2.1-flash'] },
   { service_type: 'video', name: 'Agnes 视频', base_url: 'https://apihub.agnes-ai.com/v1', provider: 'agnes', api_protocol: 'agnes', endpoint: '/videos', query_endpoint: '/videos/{taskId}', model: ['agnes-video-v2.0'] },
 ]
+
+const FAL_CONFIGS = [
+  {
+    service_type: 'text',
+    name: 'fal.ai GPT 5.5 文本',
+    base_url: 'https://fal.run/openrouter/router/openai/v1',
+    provider: 'fal',
+    api_protocol: 'fal',
+    endpoint: '/chat/completions',
+    model: ['openai/gpt-5.5'],
+  },
+  {
+    service_type: 'image',
+    name: 'fal.ai GPT Image 2 图片',
+    base_url: 'https://fal.run',
+    provider: 'fal',
+    api_protocol: 'fal',
+    model: ['openai/gpt-image-2'],
+  },
+  {
+    service_type: 'storyboard_image',
+    name: 'fal.ai GPT Image 2 分镜图',
+    base_url: 'https://fal.run',
+    provider: 'fal',
+    api_protocol: 'fal',
+    model: ['openai/gpt-image-2'],
+  },
+  {
+    service_type: 'video',
+    name: 'fal.ai Seedance 2.0 视频',
+    base_url: 'https://queue.fal.run',
+    provider: 'fal',
+    api_protocol: 'fal',
+    model: ['bytedance/seedance-2.0'],
+    settings: JSON.stringify({ generate_audio: true, bitrate_mode: 'standard' }),
+  },
+  {
+    service_type: 'tts',
+    name: 'fal.ai Qwen 3 TTS',
+    base_url: 'https://fal.run',
+    provider: 'fal',
+    api_protocol: 'fal',
+    model: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/gemini-3.1-flash-tts'],
+    settings: JSON.stringify({ voice_id: 'Vivian', language: 'Chinese' }),
+  },
+]
+
+const VENICE_CONFIGS = [
+  {
+    service_type: 'text',
+    name: 'Venice.ai GPT 5.5 文本',
+    base_url: 'https://api.venice.ai/api/v1',
+    provider: 'venice',
+    api_protocol: 'venice',
+    endpoint: '/chat/completions',
+    model: ['openai-gpt-55'],
+  },
+  {
+    service_type: 'image',
+    name: 'Venice.ai GPT Image 2 图片',
+    base_url: 'https://api.venice.ai/api/v1',
+    provider: 'venice',
+    api_protocol: 'venice',
+    model: ['gpt-image-2'],
+  },
+  {
+    service_type: 'storyboard_image',
+    name: 'Venice.ai GPT Image 2 分镜图',
+    base_url: 'https://api.venice.ai/api/v1',
+    provider: 'venice',
+    api_protocol: 'venice',
+    model: ['gpt-image-2'],
+  },
+  {
+    service_type: 'video',
+    name: 'Venice.ai Seedance 2.0 视频',
+    base_url: 'https://api.venice.ai/api/v1',
+    provider: 'venice',
+    api_protocol: 'venice',
+    model: ['seedance-2-0'],
+    settings: JSON.stringify({ generate_audio: true }),
+  },
+]
+
+const HOLYCRAB_VIDEO_CONFIG = {
+  service_type: 'video',
+  name: 'HolyCrab BytePlus Seedance 视频',
+  base_url: 'https://abgzfc.holycrab.ai',
+  provider: 'holycrab',
+  api_protocol: 'holycrab',
+  endpoint: '/api/tasks/generation',
+  query_endpoint: '/api/tasks/{taskId}',
+  model: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'],
+  settings: JSON.stringify({ generate_audio: false }),
+}
 
 function serviceTypeLabel(t) {
   const map = {
@@ -1821,9 +2268,17 @@ async function submit() {
     // TTS / 可灵 Omni 官方 AKSK / DeepSeek V4 参数打包进 settings
     let settings = undefined
     if (form.value.service_type === 'tts') {
-      const s = {}
+      const prev = editingId.value ? list.value.find((r) => r.id === editingId.value) : null
+      const s = form.value.provider === 'fal' ? parseSettings(prev?.settings) : {}
       if (form.value.voice_id) s.voice_id = form.value.voice_id
       if (form.value.group_id) s.group_id = form.value.group_id
+      if (form.value.provider === 'fal') {
+        const selectedModel = defaultModel || modelList[0] || ''
+        if (selectedModel.includes('qwen-3-tts') && !s.language) s.language = 'Chinese'
+        if (selectedModel.includes('gemini') && !s.language_code) {
+          s.language_code = 'Chinese Mandarin (China)'
+        }
+      }
       settings = Object.keys(s).length ? JSON.stringify(s) : null
     } else if (form.value.service_type === 'video' && form.value.api_protocol === 'kling_omni') {
       let baseS = {}
@@ -1972,6 +2427,7 @@ async function openTest(row) {
       api_key: row.api_key,
       model: Array.isArray(row.model) ? row.model[0] : row.model,
       provider: row.provider,
+      api_protocol: row.api_protocol,
       endpoint: row.endpoint,
       service_type: row.service_type,
       settings: row.settings
@@ -2124,6 +2580,149 @@ async function submitOneKeyAgnes() {
   }
 }
 
+function openOneKeyFal() {
+  oneKeyFalKey.value = ''
+  oneKeyFalVisible.value = true
+}
+
+async function submitOneKeyFal() {
+  const apiKey = oneKeyFalKey.value.trim()
+  if (!apiKey) return
+  oneKeyFalSaving.value = true
+  try {
+    const existing = await aiAPI.list()
+    for (const cfg of FAL_CONFIGS) {
+      const models = cfg.model || []
+      const payload = {
+        service_type: cfg.service_type,
+        name: cfg.name,
+        provider: 'fal',
+        api_protocol: 'fal',
+        base_url: cfg.base_url,
+        api_key: apiKey,
+        model: models,
+        default_model: models[0] || null,
+        endpoint: cfg.endpoint || '',
+        query_endpoint: cfg.query_endpoint || '',
+        priority: 20,
+        is_default: true,
+        is_active: true,
+        settings: cfg.settings || null,
+      }
+      const current = existing.find(
+        (item) =>
+          item.provider === 'fal' &&
+          item.service_type === cfg.service_type &&
+          !item.deleted_at
+      )
+      if (current?.id) await aiAPI.update(current.id, payload)
+      else await aiAPI.create(payload)
+    }
+    ElMessage.success('已创建或更新 fal.ai 文本、图片、分镜图、视频和 TTS 配置')
+    oneKeyFalVisible.value = false
+    await loadList()
+  } catch (_) {
+    // 错误已由 request 统一提示
+  } finally {
+    oneKeyFalSaving.value = false
+  }
+}
+
+function openOneKeyVenice() {
+  oneKeyVeniceKey.value = ''
+  oneKeyVeniceVisible.value = true
+}
+
+async function submitOneKeyVenice() {
+  const apiKey = oneKeyVeniceKey.value.trim()
+  if (!apiKey) return
+  oneKeyVeniceSaving.value = true
+  try {
+    const existing = await aiAPI.list()
+    for (const cfg of VENICE_CONFIGS) {
+      const models = cfg.model || []
+      const payload = {
+        service_type: cfg.service_type,
+        name: cfg.name,
+        provider: 'venice',
+        api_protocol: 'venice',
+        base_url: cfg.base_url,
+        api_key: apiKey,
+        model: models,
+        default_model: models[0] || null,
+        endpoint: cfg.endpoint || '',
+        query_endpoint: cfg.query_endpoint || '',
+        priority: 20,
+        is_default: true,
+        is_active: true,
+        settings: cfg.settings || null,
+      }
+      const current = existing.find(
+        (item) =>
+          item.provider === 'venice' &&
+          item.service_type === cfg.service_type &&
+          !item.deleted_at
+      )
+      if (current?.id) await aiAPI.update(current.id, payload)
+      else await aiAPI.create(payload)
+    }
+    ElMessage.success('已创建或更新 Venice.ai 文本、图片、分镜图和视频配置')
+    oneKeyVeniceVisible.value = false
+    await loadList()
+  } catch (_) {
+    // 错误已由 request 统一提示
+  } finally {
+    oneKeyVeniceSaving.value = false
+  }
+}
+
+function openOneKeyHolyCrab() {
+  oneKeyHolyCrabKey.value = ''
+  oneKeyHolyCrabVisible.value = true
+}
+
+async function submitOneKeyHolyCrab() {
+  const apiKey = oneKeyHolyCrabKey.value.trim()
+  if (!apiKey) return
+  oneKeyHolyCrabSaving.value = true
+  try {
+    const existing = await aiAPI.list()
+    const cfg = HOLYCRAB_VIDEO_CONFIG
+    const models = cfg.model || []
+    const payload = {
+      service_type: cfg.service_type,
+      name: cfg.name,
+      provider: cfg.provider,
+      api_protocol: cfg.api_protocol,
+      base_url: cfg.base_url,
+      api_key: apiKey,
+      model: models,
+      default_model: models[0] || null,
+      endpoint: cfg.endpoint,
+      query_endpoint: cfg.query_endpoint,
+      priority: 20,
+      is_default: true,
+      is_active: true,
+      settings: cfg.settings,
+    }
+    const current = existing.find(
+      (item) =>
+        item.provider === 'holycrab' &&
+        item.service_type === 'video' &&
+        !item.deleted_at
+    )
+    if (current?.id) await aiAPI.update(current.id, payload)
+    else await aiAPI.create(payload)
+    ElMessage.success('已创建或更新 HolyCrab BytePlus Seedance 视频配置')
+    oneKeyHolyCrabVisible.value = false
+    await loadList()
+  } catch (_) {
+    // 错误已由 request 统一提示
+  } finally {
+    oneKeyHolyCrabSaving.value = false
+  }
+}
+
 async function exportConfigs() {
   try {
     const configs = await aiAPI.list()
@@ -2223,8 +2822,6 @@ onMounted(() => {
 }
 .tab-content {
   padding-top: 16px;
-  max-height: calc(100vh - 320px);
-  overflow-y: auto;
 }
 .content-actions {
   display: flex;

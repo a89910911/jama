@@ -14,7 +14,6 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
   const resolveFragment = (promptKey, variables = {}) =>
     promptTemplates.resolvePromptContent(db, promptKey, {
       storyboardId: sbId,
-      locale: 'universal',
       variables,
     });
 

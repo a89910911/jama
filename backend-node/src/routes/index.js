@@ -16,14 +16,20 @@ const storyboardRoutes = require('./storyboards');
 const tailFrameLinkRoutes = require('./storyboards_tail_link');
 const imageRoutes = require('./images');
 const videoRoutes = require('./videos');
+const episodeMediaRoutes = require('./episodeMedia');
 const videoMergeRoutes = require('./videoMerges');
 const assetRoutes = require('./assets');
 const audioRoutes = require('./audio');
 const promptRoutes = require('./prompts');
 const sceneModelMapRoutes = require('./sceneModelMap');
+const authRoutes = require('./auth');
+const authService = require('../services/authService');
+const aiRequestRoutes = require('./aiRequests');
+const aiRequestLogService = require('../services/aiRequestLogService');
 
 function setupRouter(cfg, db, log) {
   const r = express.Router();
+  const auth = authRoutes(db, log);
   const drama = dramaRoutes(db, cfg, log);
   const task = taskRoutes(db, log);
   const settings = settingsRoutes(db, cfg, log);
@@ -43,10 +49,28 @@ function setupRouter(cfg, db, log) {
   const tailFrameLink = tailFrameLinkRoutes(db, cfg, log);
   const images = imageRoutes(db, cfg, log);
   const videos = videoRoutes(db, log);
+  const episodeMedia = episodeMediaRoutes(db, log);
   const videoMerges = videoMergeRoutes(db, log);
   const assets = assetRoutes(db, log);
   const audio = audioRoutes(db, log, cfg);
   const prompts = promptRoutes.routes(db, log);
+  const aiRequests = aiRequestRoutes(db, log);
+
+  // ---------- authentication ----------
+  // 登录是唯一公开 API；其余业务接口都必须具有有效登录会话。
+  r.post('/auth/login', auth.login);
+  r.use(authService.authenticate(db));
+  r.use(aiRequestLogService.requestContextMiddleware);
+  r.post('/auth/logout', auth.logout);
+  r.get('/auth/me', auth.me);
+  r.put('/auth/password', auth.changePassword);
+
+  // ---------- account management (zhangzexing only) ----------
+  r.get('/accounts', authService.requireSuperAdmin, auth.listAccounts);
+  r.post('/accounts', authService.requireSuperAdmin, auth.createAccount);
+  r.put('/accounts/:id', authService.requireSuperAdmin, auth.updateAccount);
+  r.put('/accounts/:id/password', authService.requireSuperAdmin, auth.resetPassword);
+  r.delete('/accounts/:id', authService.requireSuperAdmin, auth.deleteAccount);
 
   // ---------- dramas ----------
   r.get('/dramas', drama.listDramas);
@@ -54,6 +78,7 @@ function setupRouter(cfg, db, log) {
   r.get('/dramas/stats', drama.getDramaStats);
   // 导出/导入（放在 :id 路由前，避免被 :id 捕获）
   r.get('/dramas/:id/export', drama.exportDrama);
+  r.get('/dramas/:id/assets/export', drama.exportAssets);
   const multer = require('multer');
   const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
   r.post('/dramas/import', importUpload.single('file'), drama.importDrama);
@@ -86,26 +111,54 @@ function setupRouter(cfg, db, log) {
   r.put('/dramas/:id/progress', drama.saveProgress);
   r.put('/dramas/:id/canvas-layout', drama.saveCanvasLayout);
   r.get('/dramas/:id/props', drama.listProps);
+  r.get('/dramas/:id/scenes', scenes.listByDrama);
   r.get('/dramas/:drama_id/prompts', prompts.listProject);
   r.get('/dramas/:drama_id/prompts/:key', prompts.getProject);
   r.put('/dramas/:drama_id/prompts/:key', prompts.updateProject);
   r.delete('/dramas/:drama_id/prompts/:key', prompts.deleteProject);
   r.post('/dramas/:drama_id/prompts/:key/preview', prompts.previewProject);
+  r.get('/dramas/:drama_id/ai-requests/stats', aiRequests.stats);
+  r.get('/dramas/:drama_id/ai-requests', aiRequests.list);
+  r.delete('/dramas/:drama_id/ai-requests', aiRequests.clear);
+  r.get('/dramas/:drama_id/ai-requests/:request_id', aiRequests.get);
+  r.delete('/dramas/:drama_id/ai-requests/:request_id', aiRequests.remove);
   r.get('/dramas/:id', drama.getDrama);
   r.put('/dramas/:id', drama.updateDrama);
   r.delete('/dramas/:id', drama.deleteDrama);
 
   // ---------- ai-configs ----------
-  r.get('/ai-configs', aiConfig.list);
-  r.post('/ai-configs', aiConfig.create);
-  r.post('/ai-configs/test', aiConfig.testConnection);
-  r.post('/ai-configs/jimeng2-list-assets', aiConfig.listJimeng2MaterialAssets);
-  r.post('/ai-configs/model-ark-asset', aiConfig.modelArkAsset);
+  // 普通账号仅可读取运行时所需的非敏感模型能力，不能查看 AI 配置本身。
   r.get('/ai-configs/vendor-lock', aiConfig.vendorLock);  // 必须在 /:id 之前
-  r.put('/ai-configs/bulk-update-key', aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
-  r.get('/ai-configs/:id', aiConfig.get);
-  r.put('/ai-configs/:id', aiConfig.update);
-  r.delete('/ai-configs/:id', aiConfig.delete);
+  r.get('/runtime/ai-configs', (req, res) => {
+    const serviceType = String(req.query.service_type || '').trim();
+    const allowedTypes = new Set(['text', 'image', 'storyboard_image', 'video', 'tts']);
+    if (!allowedTypes.has(serviceType)) {
+      return response.badRequest(res, 'service_type 不支持');
+    }
+    const aiConfigService = require('../services/aiConfigService');
+    const items = aiConfigService.listConfigs(db, serviceType).map((item) => ({
+      id: item.id,
+      service_type: item.service_type,
+      provider: item.provider,
+      name: item.name,
+      api_protocol: item.api_protocol,
+      model: item.model,
+      default_model: item.default_model,
+      priority: item.priority,
+      is_default: item.is_default,
+      is_active: item.is_active,
+    }));
+    return response.success(res, items);
+  });
+  r.get('/ai-configs', authService.requireSuperAdmin, aiConfig.list);
+  r.post('/ai-configs', authService.requireSuperAdmin, aiConfig.create);
+  r.post('/ai-configs/test', authService.requireSuperAdmin, aiConfig.testConnection);
+  r.post('/ai-configs/jimeng2-list-assets', authService.requireSuperAdmin, aiConfig.listJimeng2MaterialAssets);
+  r.post('/ai-configs/model-ark-asset', authService.requireSuperAdmin, aiConfig.modelArkAsset);
+  r.put('/ai-configs/bulk-update-key', authService.requireSuperAdmin, aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
+  r.get('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.get);
+  r.put('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.update);
+  r.delete('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.delete);
 
   // ---------- generation (角色生成：AI + 入库 + 任务结果) ----------
   r.post('/generation/characters', (req, res) => {
@@ -221,6 +274,7 @@ function setupRouter(cfg, db, log) {
   r.post('/episodes/:episode_id/props/extract', prop.extractProps);
   r.post('/episodes/:episode_id/characters/extract', stub.episodeCharactersExtract);
   r.get('/episodes/:episode_id/storyboards', storyboards.episodeStoryboardsGet);
+  r.get('/episodes/:episode_id/media', episodeMedia.get);
   r.post('/episodes/:episode_id/finalize', drama.finalizeEpisode);
   r.get('/episodes/:episode_id/download', drama.downloadEpisodeVideo);
 
@@ -304,27 +358,26 @@ function setupRouter(cfg, db, log) {
   r.post('/audio/extract/batch', audio.extractBatch);
 
   // ---------- settings ----------
-  r.get('/settings/language', settings.getLanguage);
-  r.put('/settings/language', settings.updateLanguage);
   r.get('/settings/generation', settings.getGenerationSettings);
-  r.put('/settings/generation', settings.updateGenerationSettings);
+  r.put('/settings/generation', authService.requireSuperAdmin, settings.updateGenerationSettings);
 
   // ---------- prompt templates ----------
-  r.get('/settings/prompts', prompts.listSystem);
-  r.get('/settings/prompts/:key', prompts.getSystem);
-  r.put('/settings/prompts/:key', prompts.updateSystem);
-  r.post('/settings/prompts/:key/reset-seed', prompts.resetSystem);
-  r.post('/settings/prompts/:key/preview', prompts.previewSystem);
+  r.get('/settings/prompts', authService.requireSuperAdmin, prompts.listSystem);
+  r.get('/settings/prompts/:key', authService.requireSuperAdmin, prompts.getSystem);
+  r.put('/settings/prompts/:key', authService.requireSuperAdmin, prompts.updateSystem);
+  r.post('/settings/prompts/:key/reset-seed', authService.requireSuperAdmin, prompts.resetSystem);
+  r.post('/settings/prompts/:key/preview', authService.requireSuperAdmin, prompts.previewSystem);
   // 兼容旧前端：DELETE 等价于恢复系统出厂默认
-  r.delete('/settings/prompts/:key', prompts.resetSystem);
+  r.delete('/settings/prompts/:key', authService.requireSuperAdmin, prompts.resetSystem);
 
   // ---------- scene model map ----------
-  r.get('/scene-model-map', sceneModelMap.list);
-  r.get('/scene-model-map-definitions', sceneModelMap.definitions);
-  r.post('/scene-model-map', sceneModelMap.create);
-  r.get('/scene-model-map/:key', sceneModelMap.get);
-  r.put('/scene-model-map/:key', sceneModelMap.update);
-  r.delete('/scene-model-map/:key', sceneModelMap.delete);
+  r.get('/scene-model-map', authService.requireSuperAdmin, sceneModelMap.list);
+  r.get('/scene-model-map-definitions', authService.requireSuperAdmin, sceneModelMap.definitions);
+  r.get('/business-scenes/overview', authService.requireSuperAdmin, sceneModelMap.overview);
+  r.post('/scene-model-map', authService.requireSuperAdmin, sceneModelMap.create);
+  r.get('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.get);
+  r.put('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.update);
+  r.delete('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.delete);
 
   return r;
 }

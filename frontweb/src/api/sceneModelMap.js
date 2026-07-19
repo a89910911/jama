@@ -4,6 +4,9 @@ export const sceneModelMapAPI = {
   definitions() {
     return request.get('/scene-model-map-definitions')
   },
+  overview() {
+    return request.get('/business-scenes/overview')
+  },
   list() {
     return request.get('/scene-model-map')
   },

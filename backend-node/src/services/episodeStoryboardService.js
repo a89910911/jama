@@ -1,7 +1,6 @@
 // 与 Go StoryboardService.GenerateStoryboard + processStoryboardGeneration 对齐
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
 const promptTemplates = require('./promptTemplateService');
 const { syncStoryboardCharacters } = require('./imageService');
 const safeJson = require('../utils/safeJson');
@@ -366,7 +365,6 @@ function composeStoryboardVideoPrompt(db, sb, style, videoRatio) {
   return promptTemplates.resolvePromptContent(db, 'storyboard.video_prompt.compose', {
     storyboardId: sb?.id,
     episodeId: sb?.episode_id,
-    locale: 'universal',
     variables: storyboardVideoPromptVariables(sb || {}, style, videoRatio),
   });
 }
@@ -462,19 +460,16 @@ function applyStoryboardPromptTemplates(db, episodeId, derived, opts = {}) {
   const imageTemplate = opts.composeTemplates?.image
     || promptTemplates.resolvePrompt(db, 'storyboard.image_prompt.compose', {
       episodeId,
-      locale: 'universal',
       render: false,
     }).content;
   const videoTemplate = opts.composeTemplates?.video
     || promptTemplates.resolvePrompt(db, 'storyboard.video_prompt.compose', {
       episodeId,
-      locale: 'universal',
       render: false,
     }).content;
   const omniFallbackTemplate = opts.composeTemplates?.omniFallback
     || promptTemplates.resolvePrompt(db, 'omni.segment.fallback', {
       episodeId,
-      locale: 'universal',
       render: false,
     }).content;
   derived.imagePrompt = renderCapturedPrompt(imageTemplate, derived.imagePromptVariables);
@@ -1304,12 +1299,6 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
     effective_shot_duration: effectiveShotDuration,
   });
 
-  const suffix = promptTemplates.resolvePromptContent(db, 'storyboard.generation.requirements', {
-    cfg,
-    episodeId,
-    variables: { shot_duration: effectiveShotDuration || '' },
-  });
-
   const baseUserPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.generation.user', {
     cfg,
     episodeId,
@@ -1321,17 +1310,13 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
       extra_constraints: extraConstraint.trim(),
     },
   });
-  const outputContract = promptTemplates.resolvePromptContent(db, 'storyboard.generation.output_contract', {
-    cfg,
-    episodeId,
-    locale: 'universal',
-  });
-  let userPrompt = `${baseUserPrompt}\n\n${suffix}\n\n${outputContract}`;
+  let userPrompt = baseUserPrompt;
 
   const wantNarration = includeNarration === true || includeNarration === 1 || String(includeNarration).toLowerCase() === 'true';
   let systemPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.generation.system', {
     cfg,
     episodeId,
+    variables: { shot_duration: effectiveShotDuration || '' },
   });
 
   // 当用户指定了分镜数量时，在系统提示词后追加最高优先级覆盖指令，
@@ -1375,19 +1360,16 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
   const composeTemplates = {
     image: promptTemplates.resolvePrompt(db, 'storyboard.image_prompt.compose', {
       episodeId,
-      locale: 'universal',
       render: false,
       taskId: task.id,
     }).content,
     video: promptTemplates.resolvePrompt(db, 'storyboard.video_prompt.compose', {
       episodeId,
-      locale: 'universal',
       render: false,
       taskId: task.id,
     }).content,
     omniFallback: promptTemplates.resolvePrompt(db, 'omni.segment.fallback', {
       episodeId,
-      locale: 'universal',
       render: false,
       taskId: task.id,
     }).content,
@@ -1423,7 +1405,6 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
   promptTemplates.attachTaskPromptSnapshot(db, task.id, {
     prompt_key: 'storyboard.generation.composed.system',
     scope: 'effective',
-    locale: promptI18n.getLanguage(cfg),
     version: 1,
     content: systemPrompt,
     captured_at: new Date().toISOString(),
@@ -1431,7 +1412,6 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
   promptTemplates.attachTaskPromptSnapshot(db, task.id, {
     prompt_key: 'storyboard.generation.composed.user',
     scope: 'effective',
-    locale: promptI18n.getLanguage(cfg),
     version: 1,
     content: userPrompt,
     captured_at: new Date().toISOString(),

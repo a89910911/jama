@@ -1,7 +1,10 @@
 // ? Go pkg/video + VideoGenerationService ????????? API??????(????)
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const aiConfigService = require('./aiConfigService');
+const aiRequestLogService = require('./aiRequestLogService');
+const { resolveSceneModelSelection } = require('./sceneModelMapService');
 let sharp; try { sharp = require('sharp'); } catch (_) { sharp = null; }
 const { uploadLocalImageToProxy, uploadToImageProxy } = require('./uploadService');
 const imageClient = require('./imageClient');
@@ -17,12 +20,47 @@ const {
   unsafeDecodeKlingJwtPayload,
   jwtPartLengths,
 } = require('./klingJwt');
+const {
+  isFalConfig,
+  falQueueBase,
+  falHeaders,
+  joinFalUrl,
+  normalizeFalEndpoint,
+  encodeFalQueueHandle,
+  decodeFalQueueHandle,
+  falQueueStatusUrl,
+  falQueueResultUrl,
+  falQueueRequestRoot,
+  getFalErrorMessage,
+} = require('./falClient');
+const {
+  isVeniceConfig,
+  veniceHeaders,
+  joinVeniceUrl,
+  encodeVeniceVideoHandle,
+  decodeVeniceVideoHandle,
+  getVeniceErrorMessage,
+  veniceRequest,
+} = require('./veniceClient');
+const {
+  isHolyCrabConfig,
+  holyCrabApiBase,
+  holyCrabHeaders,
+  joinHolyCrabUrl,
+  encodeHolyCrabVideoHandle,
+  decodeHolyCrabVideoHandle,
+  holyCrabRequest,
+  parseHolyCrabEnvelope,
+} = require('./holyCrabClient');
 
 /**
  * ?? provider ??????????api_protocol ??????????
  */
 function inferVideoProtocol(provider) {
   const p = String(provider || '').toLowerCase();
+  if (p === 'fal' || p === 'fal.ai') return 'fal';
+  if (p === 'venice' || p === 'venice.ai') return 'venice';
+  if (p === 'holycrab' || p === 'holycrab.ai') return 'holycrab';
   if (p === 'dashscope') return 'dashscope';
   if (p === 'gemini' || p === 'google') return 'gemini';
   if (p === 'volces' || p === 'volcengine' || p === 'volc') return 'volcengine';
@@ -48,7 +86,7 @@ function resolveVideoProtocol(config, modelHint) {
   if (!explicit && protocol === 'openai') {
     if (/api\.x\.ai(\/|$)/.test(baseLower)) protocol = 'xai';
     else if (/grok-imagine|grok.*video/.test(modelLower)) protocol = 'xai';
-    else if (p === 'agnes' || /agnes-video|apihub\.agnes-ai\.com/i.test(baseLower)) protocol = 'agnes';
+    else if (provider === 'agnes' || /agnes-video|apihub\.agnes-ai\.com/i.test(baseLower)) protocol = 'agnes';
   }
   return protocol;
 }
@@ -468,6 +506,184 @@ async function resolveImageInputForAgnesAsync(db, rawUrl, files_base_url, storag
 
   log.warn('[Agnes] 参考图无法转为公网 URL', { video_gen_id, index, raw_head: raw.slice(0, 80) });
   return null;
+}
+
+/**
+ * HolyCrab 的素材接口只接受可公开访问的 HTTP(S) URL。本地文件和 data URL
+ * 先复用系统图床上传能力，随后再向 HolyCrab 注册为用户素材。
+ */
+async function resolveImageInputForHolyCrabAsync(
+  db,
+  rawUrl,
+  files_base_url,
+  storage_local_path,
+  log,
+  video_gen_id,
+  index
+) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return null;
+  if (isPublicHttpUrl(raw)) return raw;
+
+  const publicFromBase = publicUrlFromLocalRef(raw, files_base_url);
+  if (publicFromBase) {
+    log.info('[HolyCrab] 使用公网 static URL', {
+      video_gen_id,
+      index,
+      url_head: publicFromBase.slice(0, 80),
+    });
+    return publicFromBase;
+  }
+
+  const cacheKey = localRefKeyFromRaw(raw);
+  if (db && cacheKey) {
+    const cached = await imageClient.getProxyCacheValidated(
+      db,
+      cacheKey,
+      log,
+      `holycrab_vg${video_gen_id}_${index}`
+    );
+    if (cached) {
+      log.info('[HolyCrab] 使用图床缓存 URL', {
+        video_gen_id,
+        index,
+        cache_key: cacheKey,
+      });
+      return cached;
+    }
+  }
+
+  if (raw.startsWith('data:')) {
+    const match = /^data:([^;]+);base64,([\s\S]+)$/i.exec(raw);
+    if (match) {
+      try {
+        const buffer = Buffer.from(String(match[2] || '').replace(/\s/g, ''), 'base64');
+        if (buffer.length > 0) {
+          const proxyUrl = await uploadToImageProxy(
+            buffer,
+            String(match[1] || 'image/jpeg').trim(),
+            log,
+            `holycrab_vg${video_gen_id}_${index}`
+          );
+          if (proxyUrl) {
+            log.info('[HolyCrab] base64 参考图已上传图床', {
+              video_gen_id,
+              index,
+              url_head: proxyUrl.slice(0, 80),
+            });
+            if (db && cacheKey) imageClient.setProxyCache(db, cacheKey, proxyUrl);
+            return proxyUrl;
+          }
+        }
+      } catch (error) {
+        log.warn('[HolyCrab] base64 参考图上传失败', {
+          video_gen_id,
+          index,
+          error: error.message,
+        });
+      }
+    }
+    return null;
+  }
+
+  if (storage_local_path) {
+    const proxyUrl = await uploadLocalImageToProxy(
+      storage_local_path,
+      raw,
+      log,
+      `holycrab_vg${video_gen_id}_${index}`
+    );
+    if (proxyUrl) {
+      log.info('[HolyCrab] 本地参考图已上传图床', {
+        video_gen_id,
+        index,
+        url_head: proxyUrl.slice(0, 80),
+      });
+      if (db && cacheKey) imageClient.setProxyCache(db, cacheKey, proxyUrl);
+      return proxyUrl;
+    }
+  }
+
+  log.warn('[HolyCrab] 参考图无法转为公网 URL', {
+    video_gen_id,
+    index,
+    raw_head: raw.slice(0, 100),
+  });
+  return null;
+}
+
+function holyCrabMimeFromExtension(extension) {
+  const ext = String(extension || '').replace(/^\./, '').toLowerCase();
+  return {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    bmp: 'image/bmp',
+    tif: 'image/tiff',
+    tiff: 'image/tiff',
+    heic: 'image/heic',
+    heif: 'image/heif',
+  }[ext] || '';
+}
+
+function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return null;
+
+  if (raw.startsWith('data:')) {
+    const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(raw);
+    if (!match) return null;
+    const buffer = Buffer.from(String(match[2] || '').replace(/\s/g, ''), 'base64');
+    if (!buffer.length) return null;
+    const mimeType = String(match[1]).toLowerCase();
+    const extension = mimeType === 'image/jpeg'
+      ? 'jpg'
+      : mimeType.split('/')[1].replace(/[^a-z0-9]/gi, '') || 'png';
+    return { buffer, mimeType, extension };
+  }
+
+  if (!storageLocalPath || (isPublicHttpUrl(raw) && !/\/static\//i.test(raw))) {
+    return null;
+  }
+  const storageRoot = path.resolve(storageLocalPath);
+  let candidate = '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      const marker = '/static/';
+      const markerIndex = parsed.pathname.toLowerCase().indexOf(marker);
+      if (markerIndex < 0) return null;
+      const relative = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+      candidate = path.resolve(storageRoot, relative.replace(/^[/\\]+/, ''));
+    } catch (_) {
+      return null;
+    }
+  } else {
+    candidate = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(storageRoot, raw.replace(/^[/\\]+/, '').split(/[?#]/)[0]);
+  }
+
+  const rootLower = storageRoot.toLowerCase();
+  const candidateLower = candidate.toLowerCase();
+  if (
+    candidateLower !== rootLower &&
+    !candidateLower.startsWith(`${rootLower}${path.sep.toLowerCase()}`)
+  ) {
+    return null;
+  }
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) return null;
+  const extension = path.extname(candidate).replace(/^\./, '').toLowerCase();
+  const mimeType = holyCrabMimeFromExtension(extension);
+  if (!mimeType) return null;
+  return {
+    buffer: fs.readFileSync(candidate),
+    mimeType,
+    extension,
+    localPath: candidate,
+  };
 }
 
 /**
@@ -904,7 +1120,14 @@ function parseKlingOmniPollVideoUrl(data) {
 }
 
 // ??????????????????listConfigs ?? is_default DESC, priority DESC ??
-function getDefaultVideoConfig(db, preferredModel) {
+function getDefaultVideoConfig(db, preferredModel, sceneKey) {
+  if (sceneKey) {
+    const routed = resolveSceneModelSelection(db, sceneKey, {
+      serviceType: 'video',
+      preferredModel,
+    });
+    if (routed.row && routed.config) return routed.config;
+  }
   const configs = aiConfigService.listConfigs(db, 'video');
   const active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
@@ -1863,7 +2086,6 @@ function viduMismatchAspectPromptSuffix(db, context, targetRatioLabel) {
       dramaId: context.drama_id,
       storyboardId: context.storyboard_id,
       taskId: context.task_id,
-      locale: 'universal',
       variables: { target_ratio: r },
     }
   );
@@ -3359,11 +3581,709 @@ function resolveVolcClassicImage(rawUrl, files_base_url, storage_local_path, log
   return u;
 }
 
+function normalizeFalSeedanceDuration(duration) {
+  const raw = String(duration ?? '').trim().toLowerCase();
+  if (!raw || raw === 'auto') return 'auto';
+  const value = Math.round(Number(raw));
+  if (!Number.isFinite(value)) return 'auto';
+  return String(Math.min(15, Math.max(4, value)));
+}
+
+function normalizeFalSeedanceResolution(resolution) {
+  const raw = String(resolution || '').trim().toLowerCase();
+  const matched = raw.match(/(480|720|1080|4k)/);
+  if (!matched) return '720p';
+  return matched[1] === '4k' ? '4k' : `${matched[1]}p`;
+}
+
+function normalizeFalSeedanceAspectRatio(aspectRatio) {
+  const raw = String(aspectRatio || '').trim().toLowerCase();
+  return ['auto', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].includes(raw)
+    ? raw
+    : 'auto';
+}
+
+function normalizeFalReferencePrompt(prompt) {
+  return String(prompt || '')
+    .replace(/@(?:图片|图像|参考图)\s*(\d+)/gi, '@Image$1')
+    .replace(/@image\s*(\d+)/gi, '@Image$1');
+}
+
+function resolveFalSeedanceEndpoint(modelOrEndpoint, mode) {
+  let endpoint = normalizeFalEndpoint(
+    modelOrEndpoint || 'bytedance/seedance-2.0'
+  );
+  endpoint = endpoint.replace(
+    /\/(?:text-to-video|image-to-video|reference-to-video)$/i,
+    ''
+  );
+  if (!endpoint.includes('/')) endpoint = `bytedance/${endpoint}`;
+  return `${endpoint}/${mode}`;
+}
+
+async function resolveFalVideoImage(raw, storageLocalPath, log, videoGenId) {
+  const resolved = await resolveVeo3ImageForApi(
+    String(raw || ''),
+    storageLocalPath,
+    log,
+    videoGenId
+  );
+  return resolved?.value || '';
+}
+
+async function callFalVideoApi(config, log, opts) {
+  const referenceInputs = Array.isArray(opts.reference_urls)
+    ? opts.reference_urls.filter(Boolean)
+    : [];
+  const referenceUrls = [];
+  for (const item of referenceInputs.slice(0, 9)) {
+    const resolved = await resolveFalVideoImage(
+      item,
+      opts.storage_local_path,
+      log,
+      opts.video_gen_id
+    );
+    if (resolved && !referenceUrls.includes(resolved)) referenceUrls.push(resolved);
+  }
+
+  const firstInput =
+    opts.first_frame_url ||
+    opts.first_frame_local_path ||
+    opts.image_url ||
+    '';
+  const lastInput = opts.last_frame_url || opts.last_frame_local_path || '';
+  const firstUrl = referenceUrls.length
+    ? ''
+    : await resolveFalVideoImage(
+        firstInput,
+        opts.storage_local_path,
+        log,
+        opts.video_gen_id
+      );
+  const lastUrl = referenceUrls.length || !lastInput
+    ? ''
+    : await resolveFalVideoImage(
+        lastInput,
+        opts.storage_local_path,
+        log,
+        opts.video_gen_id
+      );
+  const mode = referenceUrls.length
+    ? 'reference-to-video'
+    : firstUrl
+      ? 'image-to-video'
+      : 'text-to-video';
+  const endpoint = resolveFalSeedanceEndpoint(
+    config.endpoint || opts.model || 'bytedance/seedance-2.0',
+    mode
+  );
+  const url = joinFalUrl(falQueueBase(config.base_url), endpoint);
+  const settings = parseConfigSettingsJson(config);
+  const generateAudio =
+    settings.generate_audio == null ? true : Boolean(settings.generate_audio);
+  const bitrateMode =
+    String(settings.bitrate_mode || '').toLowerCase() === 'high'
+      ? 'high'
+      : 'standard';
+  const body = {
+    prompt: referenceUrls.length
+      ? normalizeFalReferencePrompt(opts.prompt)
+      : String(opts.prompt || ''),
+    resolution: normalizeFalSeedanceResolution(opts.resolution),
+    duration: normalizeFalSeedanceDuration(opts.duration),
+    aspect_ratio: normalizeFalSeedanceAspectRatio(opts.aspect_ratio),
+    generate_audio: generateAudio,
+    bitrate_mode: bitrateMode,
+    ...(referenceUrls.length ? { image_urls: referenceUrls } : {}),
+    ...(firstUrl ? { image_url: firstUrl } : {}),
+    ...(lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
+  };
+
+  log.info('[fal.ai 视频] 提交 Seedance 2.0 任务', {
+    video_gen_id: opts.video_gen_id,
+    endpoint,
+    mode,
+    resolution: body.resolution,
+    duration: body.duration,
+    aspect_ratio: body.aspect_ratio,
+    reference_count: referenceUrls.length,
+    has_first_frame: !!firstUrl,
+    has_last_frame: !!body.end_image_url,
+  });
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: falHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    return { error: `fal.ai 视频提交失败: ${error.message}` };
+  }
+  const raw = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (!res.ok) {
+    return {
+      error: `fal.ai 视频提交失败 (${res.status}): ${getFalErrorMessage(data, raw.slice(0, 500))}`,
+    };
+  }
+  if (!data) return { error: 'fal.ai 视频提交响应不是有效 JSON' };
+  const directUrl = pickProxyVideoUrl(data);
+  if (directUrl) return { video_url: directUrl };
+  if (!data.request_id) {
+    return { error: `fal.ai 视频提交响应缺少 request_id: ${raw.slice(0, 500)}` };
+  }
+  return {
+    task_id: encodeFalQueueHandle({
+      request_id: data.request_id,
+      endpoint,
+      status_url: data.status_url,
+      response_url: data.response_url,
+    }),
+    status: 'submitted',
+  };
+}
+
+function normalizeVeniceSeedanceDuration(duration) {
+  const raw = String(duration ?? '').trim().toLowerCase();
+  if (!raw || raw === 'auto') return 'Auto';
+  const value = Math.round(Number(raw.replace(/s$/, '')));
+  if (!Number.isFinite(value)) return 'Auto';
+  return `${Math.min(15, Math.max(4, value))}s`;
+}
+
+function normalizeVeniceSeedanceResolution(resolution) {
+  const raw = String(resolution || '').trim().toLowerCase();
+  const matched = raw.match(/(480|720|1080)/);
+  return matched ? `${matched[1]}p` : '720p';
+}
+
+function normalizeVeniceSeedanceAspectRatio(aspectRatio) {
+  const raw = String(aspectRatio || '').trim().toLowerCase();
+  return ['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16'].includes(raw)
+    ? raw
+    : '16:9';
+}
+
+function resolveVeniceSeedanceModel(model, mode) {
+  let base = String(model || 'seedance-2-0').trim().toLowerCase();
+  base = base.replace(
+    /-(?:text-to-video|image-to-video|reference-to-video)$/i,
+    ''
+  );
+  if (!/^seedance-2-0(?:-fast)?$/.test(base)) base = 'seedance-2-0';
+  return `${base}-${mode}`;
+}
+
+function parseBooleanSetting(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value === 'boolean') return value;
+  return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
+}
+
+async function callVeniceVideoApi(config, log, opts) {
+  const referenceInputs = Array.isArray(opts.reference_urls)
+    ? opts.reference_urls.filter(Boolean)
+    : [];
+  const referenceUrls = [];
+  for (const item of referenceInputs.slice(0, 9)) {
+    const resolved = await resolveFalVideoImage(
+      item,
+      opts.storage_local_path,
+      log,
+      opts.video_gen_id
+    );
+    if (resolved && !referenceUrls.includes(resolved)) referenceUrls.push(resolved);
+  }
+
+  const firstInput =
+    opts.first_frame_url ||
+    opts.first_frame_local_path ||
+    opts.image_url ||
+    '';
+  const lastInput = opts.last_frame_url || opts.last_frame_local_path || '';
+  const firstUrl = referenceUrls.length
+    ? ''
+    : await resolveFalVideoImage(
+        firstInput,
+        opts.storage_local_path,
+        log,
+        opts.video_gen_id
+      );
+  const lastUrl = referenceUrls.length || !lastInput
+    ? ''
+    : await resolveFalVideoImage(
+        lastInput,
+        opts.storage_local_path,
+        log,
+        opts.video_gen_id
+      );
+  const mode = referenceUrls.length
+    ? 'reference-to-video'
+    : firstUrl
+      ? 'image-to-video'
+      : 'text-to-video';
+  const model = resolveVeniceSeedanceModel(opts.model, mode);
+  const settings = parseConfigSettingsJson(config);
+  const body = {
+    model,
+    prompt: referenceUrls.length
+      ? normalizeFalReferencePrompt(opts.prompt)
+      : String(opts.prompt || ''),
+    duration: normalizeVeniceSeedanceDuration(opts.duration),
+    resolution: normalizeVeniceSeedanceResolution(opts.resolution),
+    aspect_ratio: normalizeVeniceSeedanceAspectRatio(opts.aspect_ratio),
+    audio: parseBooleanSetting(settings.generate_audio ?? settings.audio, true),
+    ...(referenceUrls.length ? { reference_image_urls: referenceUrls } : {}),
+    ...(firstUrl ? { image_url: firstUrl } : {}),
+    ...(lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
+    ...(settings.seedance_consent && typeof settings.seedance_consent === 'object'
+      ? { consents: { seedance: settings.seedance_consent } }
+      : {}),
+  };
+  if (opts.negative_prompt && String(opts.negative_prompt).trim()) {
+    body.negative_prompt = String(opts.negative_prompt).trim().slice(0, 10000);
+  }
+
+  const url = joinVeniceUrl(config.base_url, '/video/queue');
+  log.info('[Venice.ai 视频] 提交 Seedance 2.0 任务', {
+    video_gen_id: opts.video_gen_id,
+    model,
+    mode,
+    duration: body.duration,
+    resolution: body.resolution,
+    aspect_ratio: body.aspect_ratio,
+    reference_count: referenceUrls.length,
+    has_first_frame: !!firstUrl,
+    has_last_frame: !!body.end_image_url,
+  });
+
+  const requestImpl = typeof opts.request_impl === 'function'
+    ? opts.request_impl
+    : veniceRequest;
+  let res;
+  try {
+    res = await requestImpl(url, {
+      method: 'POST',
+      headers: veniceHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body,
+      timeoutMs: 120000,
+    });
+  } catch (error) {
+    return { error: `Venice.ai 视频提交失败: ${error.message}` };
+  }
+  const raw = String(res?.raw || '');
+  const statusCode = Number(res?.statusCode || res?.status || 0);
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (statusCode < 200 || statusCode >= 300) {
+    const consentRequired =
+      statusCode === 409 &&
+      (data?.error?.code === 'needs_consent' || data?.consent_flow === 'seedance');
+    const message = getVeniceErrorMessage(data, raw.slice(0, 500));
+    return {
+      error: consentRequired
+        ? `Venice.ai Seedance 检测到含人脸媒体，需要先完成授权确认: ${message}`
+        : `Venice.ai 视频提交失败 (${statusCode}): ${message}`,
+    };
+  }
+  if (!data?.queue_id) {
+    return { error: `Venice.ai 视频提交响应缺少 queue_id: ${raw.slice(0, 500)}` };
+  }
+  return {
+    task_id: encodeVeniceVideoHandle({
+      queue_id: data.queue_id,
+      model: data.model || model,
+      download_url: data.download_url,
+    }),
+    status: 'submitted',
+  };
+}
+
+function resolveHolyCrabSeedanceModel(model) {
+  const raw = String(model || '').trim().toLowerCase();
+  const aliases = {
+    'seedance-2.0': 'seedance-2-0',
+    'seedance-2.0-fast': 'seedance-2-0-fast',
+    'seedance-2.0-mini': 'seedance-2-0-mini',
+  };
+  const normalized = aliases[raw] || raw;
+  return ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'].includes(normalized)
+    ? normalized
+    : 'seedance-2-0';
+}
+
+function normalizeHolyCrabDuration(duration) {
+  const raw = Math.round(Number(String(duration ?? '').replace(/s$/i, '')));
+  return Math.min(15, Math.max(4, Number.isFinite(raw) ? raw : 5));
+}
+
+function normalizeHolyCrabAspectRatio(aspectRatio) {
+  const raw = String(aspectRatio || '').trim();
+  return ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].includes(raw)
+    ? raw
+    : '16:9';
+}
+
+function normalizeHolyCrabResolution(resolution, model) {
+  const raw = String(resolution || '').trim().toLowerCase();
+  const match = raw.match(/(480|720|1080|4k)/);
+  let normalized = !match
+    ? '720p'
+    : match[1] === '4k'
+      ? '4k'
+      : `${match[1]}p`;
+  if (
+    ['seedance-2-0-fast', 'seedance-2-0-mini'].includes(model) &&
+    !['480p', '720p'].includes(normalized)
+  ) {
+    normalized = '720p';
+  }
+  return normalized;
+}
+
+function normalizeHolyCrabAssetStatus(status) {
+  return String(status || '').trim().toLowerCase();
+}
+
+function pickHolyCrabAssetId(asset) {
+  return String(asset?.uniqId || asset?.uniq_id || asset?.id || '').trim();
+}
+
+async function waitForHolyCrabAsset(config, asset, requestImpl, opts = {}) {
+  const assetId = pickHolyCrabAssetId(asset);
+  if (!assetId) throw new Error('HolyCrab 素材响应缺少 uniqId');
+  const initialStatus = normalizeHolyCrabAssetStatus(asset?.status);
+  if (initialStatus === 'success') return assetId;
+  if (['failed', 'error'].includes(initialStatus)) {
+    throw new Error(`HolyCrab 素材处理失败: ${asset?.error || asset?.message || assetId}`);
+  }
+
+  const attempts = Math.max(1, Number(opts.asset_poll_attempts) || 90);
+  const intervalMs = Math.max(0, Number(opts.asset_poll_interval_ms ?? 2000));
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0 && intervalMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    const response = await requestImpl(
+      joinHolyCrabUrl(config.base_url, `/api/user-assets/${encodeURIComponent(assetId)}`),
+      {
+        method: 'GET',
+        headers: holyCrabHeaders(config.api_key),
+        timeoutMs: 30000,
+      }
+    );
+    let current;
+    try {
+      current = parseHolyCrabEnvelope(response, 'HolyCrab 素材状态查询失败');
+    } catch (error) {
+      // 对象存储 PUT 后，素材记录可能有极短的最终一致性窗口。
+      if (attempt + 1 < attempts && /\b404\b|不存在|not found/i.test(error.message)) {
+        continue;
+      }
+      throw error;
+    }
+    const status = normalizeHolyCrabAssetStatus(current?.status);
+    if (status === 'success') return pickHolyCrabAssetId(current) || assetId;
+    if (['failed', 'error'].includes(status)) {
+      throw new Error(
+        `HolyCrab 素材处理失败: ${current?.error || current?.message || assetId}`
+      );
+    }
+  }
+  throw new Error(`HolyCrab 素材处理超时: ${assetId}`);
+}
+
+function buildHolyCrabMultipart(fields) {
+  const boundary = `----jama-holycrab-${crypto.randomBytes(12).toString('hex')}`;
+  const parts = [];
+  for (const [name, value] of Object.entries(fields || {})) {
+    if (value == null) continue;
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="${String(name).replace(/"/g, '')}"\r\n\r\n` +
+          `${String(value)}\r\n`,
+        'utf8'
+      )
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+  return { boundary, body: Buffer.concat(parts) };
+}
+
+async function findReusableHolyCrabAsset(config, name, requestImpl) {
+  const response = await requestImpl(
+    joinHolyCrabUrl(
+      config.base_url,
+      `/api/user-assets?page=1&pageSize=20&name=${encodeURIComponent(name)}`
+    ),
+    {
+      method: 'GET',
+      headers: holyCrabHeaders(config.api_key),
+      timeoutMs: 30000,
+    }
+  );
+  const data = parseHolyCrabEnvelope(response, 'HolyCrab 素材列表查询失败');
+  const records = Array.isArray(data?.records)
+    ? data.records
+    : Array.isArray(data)
+      ? data
+      : [];
+  return records.find(
+    (item) =>
+      String(item?.name || '').trim() === name &&
+      pickHolyCrabAssetId(item) &&
+      !['failed', 'error'].includes(normalizeHolyCrabAssetStatus(item.status))
+  ) || null;
+}
+
+async function uploadHolyCrabLocalImage(config, source, requestImpl, opts = {}) {
+  if (!Buffer.isBuffer(source?.buffer) || source.buffer.length === 0) {
+    throw new Error('HolyCrab 本地素材内容为空');
+  }
+  const extension = String(source.extension || '').replace(/^\./, '').toLowerCase();
+  const mimeType = String(source.mimeType || holyCrabMimeFromExtension(extension));
+  if (!extension || !mimeType) throw new Error('HolyCrab 无法识别本地素材格式');
+
+  const name = `jama-${crypto
+    .createHash('sha256')
+    .update(source.buffer)
+    .digest('hex')
+    .slice(0, 20)}.${extension}`;
+  const existing = await findReusableHolyCrabAsset(config, name, requestImpl);
+  if (existing) return waitForHolyCrabAsset(config, existing, requestImpl, opts);
+
+  const preSignUrl = joinHolyCrabUrl(
+    config.base_url,
+    `/api/user-assets/pre-signed-download-url?file_extension=${encodeURIComponent(extension)}` +
+      `&content_type=${encodeURIComponent(mimeType)}`
+  );
+  const preSignResponse = await requestImpl(preSignUrl, {
+    method: 'GET',
+    headers: holyCrabHeaders(config.api_key),
+    timeoutMs: 30000,
+  });
+  const uploadTicket = parseHolyCrabEnvelope(
+    preSignResponse,
+    'HolyCrab 获取素材上传地址失败'
+  );
+  const preSignedUrl = String(uploadTicket?.preSignedUrl || '').trim();
+  const objectKey = String(uploadTicket?.objectKey || '').trim();
+  const uniqId = String(uploadTicket?.uniqId || '').trim();
+  if (!preSignedUrl || !objectKey || !uniqId) {
+    throw new Error('HolyCrab 素材上传地址响应缺少 preSignedUrl、objectKey 或 uniqId');
+  }
+
+  const putResponse = await requestImpl(preSignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: source.buffer,
+    timeoutMs: 120000,
+  });
+  const putStatus = Number(putResponse?.statusCode || putResponse?.status || 0);
+  if (putStatus < 200 || putStatus >= 300) {
+    throw new Error(
+      `HolyCrab 素材文件上传失败 (${putStatus}): ${String(putResponse?.raw || '').slice(0, 300)}`
+    );
+  }
+
+  const multipart = buildHolyCrabMultipart({
+    name,
+    object_key: objectKey,
+    content_type: mimeType,
+  });
+  const recordResponse = await requestImpl(
+    joinHolyCrabUrl(config.base_url, '/api/user-assets/upload'),
+    {
+      method: 'POST',
+      headers: holyCrabHeaders(config.api_key, {
+        'Content-Type': `multipart/form-data; boundary=${multipart.boundary}`,
+      }),
+      body: multipart.body,
+      timeoutMs: 60000,
+    }
+  );
+  parseHolyCrabEnvelope(recordResponse, 'HolyCrab 素材登记失败');
+  return waitForHolyCrabAsset(
+    config,
+    { uniqId, status: 'Processing' },
+    requestImpl,
+    opts
+  );
+}
+
+async function registerHolyCrabAssetFromUrl(config, publicUrl, requestImpl, opts = {}) {
+  const name = `jama-${crypto
+    .createHash('sha256')
+    .update(String(publicUrl))
+    .digest('hex')
+    .slice(0, 20)}`;
+  const listUrl = joinHolyCrabUrl(
+    config.base_url,
+    `/api/user-assets?page=1&pageSize=20&name=${encodeURIComponent(name)}`
+  );
+  const listResponse = await requestImpl(listUrl, {
+    method: 'GET',
+    headers: holyCrabHeaders(config.api_key),
+    timeoutMs: 30000,
+  });
+  const listData = parseHolyCrabEnvelope(listResponse, 'HolyCrab 素材列表查询失败');
+  const records = Array.isArray(listData?.records)
+    ? listData.records
+    : Array.isArray(listData)
+      ? listData
+      : [];
+  const existing = records.find(
+    (item) => String(item?.name || '').trim() === name && pickHolyCrabAssetId(item)
+  );
+  if (existing && !['failed', 'error'].includes(normalizeHolyCrabAssetStatus(existing.status))) {
+    return waitForHolyCrabAsset(config, existing, requestImpl, opts);
+  }
+
+  const form = new URLSearchParams();
+  form.set('url', String(publicUrl));
+  form.set('name', name);
+  const createResponse = await requestImpl(
+    joinHolyCrabUrl(config.base_url, '/api/user-assets/create-asset-from-url'),
+    {
+      method: 'POST',
+      headers: holyCrabHeaders(config.api_key, {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }),
+      body: form.toString(),
+      timeoutMs: 60000,
+    }
+  );
+  const created = parseHolyCrabEnvelope(createResponse, 'HolyCrab 素材注册失败');
+  return waitForHolyCrabAsset(config, created, requestImpl, opts);
+}
+
+async function callHolyCrabVideoApi(db, config, log, opts) {
+  const requestImpl = typeof opts.request_impl === 'function'
+    ? opts.request_impl
+    : holyCrabRequest;
+  const rawInputs = [];
+  const appendRaw = (value) => {
+    const raw = String(value || '').trim();
+    if (raw && !rawInputs.includes(raw) && rawInputs.length < 9) rawInputs.push(raw);
+  };
+  if (Array.isArray(opts.reference_urls)) {
+    opts.reference_urls.forEach(appendRaw);
+  }
+  appendRaw(opts.first_frame_url || opts.first_frame_local_path || opts.image_url);
+  appendRaw(opts.last_frame_url || opts.last_frame_local_path);
+
+  const imageAssetIds = [];
+  try {
+    for (let index = 0; index < rawInputs.length; index++) {
+      const localSource = resolveHolyCrabLocalImageSource(
+        rawInputs[index],
+        opts.storage_local_path
+      );
+      let assetId = '';
+      if (localSource) {
+        log.info('[HolyCrab] 本地参考图使用预签名地址直传', {
+          video_gen_id: opts.video_gen_id,
+          index,
+          bytes: localSource.buffer.length,
+          content_type: localSource.mimeType,
+        });
+        assetId = await uploadHolyCrabLocalImage(
+          config,
+          localSource,
+          requestImpl,
+          opts
+        );
+      } else {
+        const publicUrl = await resolveImageInputForHolyCrabAsync(
+          db,
+          rawInputs[index],
+          opts.files_base_url,
+          opts.storage_local_path,
+          log,
+          opts.video_gen_id,
+          index
+        );
+        if (!publicUrl) {
+          throw new Error(
+            `HolyCrab 第 ${index + 1} 张参考图无法读取或转换为公网 URL`
+          );
+        }
+        assetId = await registerHolyCrabAssetFromUrl(
+          config,
+          publicUrl,
+          requestImpl,
+          opts
+        );
+      }
+      if (assetId && !imageAssetIds.includes(assetId)) imageAssetIds.push(assetId);
+    }
+  } catch (error) {
+    return { error: error.message };
+  }
+
+  const model = resolveHolyCrabSeedanceModel(opts.model);
+  const settings = parseConfigSettingsJson(config);
+  const body = {
+    prompt: imageAssetIds.length
+      ? normalizeFalReferencePrompt(opts.prompt)
+      : String(opts.prompt || ''),
+    duration: normalizeHolyCrabDuration(opts.duration),
+    ratio: normalizeHolyCrabAspectRatio(opts.aspect_ratio),
+    resolution: normalizeHolyCrabResolution(opts.resolution, model),
+    model,
+    generate_audio: parseBooleanSetting(
+      settings.generate_audio ?? settings.generateAudio,
+      false
+    ),
+    ...(imageAssetIds.length ? { imageAssetIds } : {}),
+  };
+  const url = joinHolyCrabUrl(config.base_url, '/api/tasks/generation');
+  log.info('[HolyCrab 视频] 提交 BytePlus Seedance 任务', {
+    video_gen_id: opts.video_gen_id,
+    model,
+    duration: body.duration,
+    ratio: body.ratio,
+    resolution: body.resolution,
+    generate_audio: body.generate_audio,
+    image_asset_count: imageAssetIds.length,
+  });
+
+  try {
+    const response = await requestImpl(url, {
+      method: 'POST',
+      headers: holyCrabHeaders(config.api_key, {
+        'Content-Type': 'application/json',
+      }),
+      body,
+      timeoutMs: 120000,
+    });
+    const task = parseHolyCrabEnvelope(response, 'HolyCrab 视频提交失败');
+    const uniqId = String(task?.uniqId || task?.uniq_id || '').trim();
+    if (!uniqId) {
+      return { error: 'HolyCrab 视频提交响应缺少 uniqId' };
+    }
+    return {
+      task_id: encodeHolyCrabVideoHandle({ uniq_id: uniqId }),
+      status: 'submitted',
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 /**
  * ?????? API?ChatFire/?? ? ?????
  * @returns {Promise<{ task_id?: string, video_url?: string, error?: string }>}
  */
-async function callVideoApi(db, log, opts) {
+async function callVideoApiInternal(db, log, opts) {
   const {
     prompt,
     model: preferredModel,
@@ -3380,15 +4300,28 @@ async function callVideoApi(db, log, opts) {
     last_frame_local_path,
     files_base_url,
     storage_local_path,
-    video_gen_id
+    video_gen_id,
+    scene_key,
   } = opts;
-  const config = getDefaultVideoConfig(db, preferredModel);
+  const routedSelection = scene_key
+    ? resolveSceneModelSelection(db, scene_key, {
+        serviceType: 'video',
+        preferredModel,
+      })
+    : null;
+  const hasSceneOverride = !!(routedSelection?.row && routedSelection?.config);
+  const config = hasSceneOverride
+    ? routedSelection.config
+    : getDefaultVideoConfig(db, preferredModel);
   if (!config) {
     throw new Error('???????????AI ?????? video ?????????');
   }
-  const model = getModelFromConfig(config, preferredModel);
+  const model = getModelFromConfig(
+    config,
+    hasSceneOverride ? (routedSelection.model_override || preferredModel) : preferredModel
+  );
   const provider = (config.provider || '').toLowerCase();
-  const protocol = resolveVideoProtocol(config, preferredModel);
+  const protocol = resolveVideoProtocol(config, model);
   if (db && opts.drama_id && VIDEO_PROTOCOLS_SUPPORT_SD2_ASSET_SCHEME.has(protocol)) {
     opts = applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts);
   }
@@ -3441,8 +4374,67 @@ async function callVideoApi(db, log, opts) {
     api_protocol_raw: config.api_protocol || '(empty→auto)',
     protocol_used: protocol,
     model,
+    scene_key: scene_key || null,
+    scene_mapping_source: hasSceneOverride ? 'scene' : 'default',
     endpoint: config.endpoint || '(auto)',
   });
+
+  if (protocol === 'holycrab' || isHolyCrabConfig(config)) {
+    return callHolyCrabVideoApi(db, config, log, {
+      ...opts,
+      prompt,
+      model,
+      duration,
+      aspect_ratio,
+      resolution,
+      image_url,
+      first_frame_url,
+      last_frame_url,
+      first_frame_local_path,
+      last_frame_local_path,
+      files_base_url,
+      storage_local_path,
+      video_gen_id,
+    });
+  }
+
+  if (protocol === 'venice' || isVeniceConfig(config)) {
+    return callVeniceVideoApi(config, log, {
+      ...opts,
+      prompt,
+      model,
+      duration,
+      aspect_ratio,
+      resolution,
+      image_url,
+      first_frame_url,
+      last_frame_url,
+      first_frame_local_path,
+      last_frame_local_path,
+      files_base_url,
+      storage_local_path,
+      video_gen_id,
+    });
+  }
+
+  if (protocol === 'fal' || isFalConfig(config)) {
+    return callFalVideoApi(config, log, {
+      ...opts,
+      prompt,
+      model,
+      duration,
+      aspect_ratio,
+      resolution,
+      image_url,
+      first_frame_url,
+      last_frame_url,
+      first_frame_local_path,
+      last_frame_local_path,
+      files_base_url,
+      storage_local_path,
+      video_gen_id,
+    });
+  }
 
   if (protocol === 'jimeng_ai_api') {
     return callJimengAiApiVideo(config, log, {
@@ -3754,12 +4746,194 @@ async function callVideoApi(db, log, opts) {
   return { error: '??? task_id ? video_url?????: ' + JSON.stringify(data).slice(0, 300) };
 }
 
+function resolveVideoLogMeta(db, opts = {}) {
+  try {
+    const routedSelection = opts.scene_key
+      ? resolveSceneModelSelection(db, opts.scene_key, {
+          serviceType: 'video',
+          preferredModel: opts.model,
+        })
+      : null;
+    const config = routedSelection?.row && routedSelection?.config
+      ? routedSelection.config
+      : getDefaultVideoConfig(db, opts.model);
+    return {
+      config_id: config?.id || null,
+      provider: config?.provider || opts.provider || null,
+      model: config
+        ? getModelFromConfig(config, routedSelection?.model_override || opts.model)
+        : (opts.model || null),
+    };
+  } catch (_) {
+    return {
+      config_id: null,
+      provider: opts.provider || null,
+      model: opts.model || null,
+    };
+  }
+}
+
+async function callVideoApi(db, log, opts) {
+  const meta = resolveVideoLogMeta(db, opts);
+  const record = aiRequestLogService.start(db, {
+    service_type: 'video',
+    operation: opts.scene_key || 'video_generation',
+    scene_key: opts.scene_key || null,
+    ...meta,
+    options: opts,
+    related_type: opts.video_gen_id ? 'video_generation' : undefined,
+    related_id: opts.video_gen_id,
+    request: {
+      prompt: opts.prompt || '',
+      duration: opts.duration || null,
+      aspect_ratio: opts.aspect_ratio || null,
+      resolution: opts.resolution || null,
+      image_url: opts.image_url || null,
+      first_frame_url: opts.first_frame_url || null,
+      last_frame_url: opts.last_frame_url || null,
+      reference_urls: opts.reference_urls || [],
+      options: opts,
+    },
+  });
+  try {
+    const result = await callVideoApiInternal(db, log, opts);
+    if (result?.error) {
+      aiRequestLogService.fail(db, record, result.error, result, meta);
+    } else if (result?.task_id) {
+      aiRequestLogService.processing(db, record, result, meta);
+    } else {
+      aiRequestLogService.succeed(db, record, result, meta);
+    }
+    return result;
+  } catch (error) {
+    aiRequestLogService.fail(db, record, error, null, meta);
+    throw error;
+  }
+}
+
+async function pollVeniceVideoOnce(config, handle, requestImpl = veniceRequest) {
+  const url = joinVeniceUrl(config.base_url, '/video/retrieve');
+  let res;
+  try {
+    res = await requestImpl(url, {
+      method: 'POST',
+      headers: veniceHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body: {
+        model: handle.model,
+        queue_id: handle.queue_id,
+        delete_media_on_completion: false,
+      },
+      timeoutMs: 120000,
+    });
+  } catch (error) {
+    return { error: `Venice.ai 视频轮询失败: ${error.message}` };
+  }
+
+  const statusCode = Number(res?.statusCode || res?.status || 0);
+  const responseHeaders = res?.headers || {};
+  const contentType = String(
+    typeof responseHeaders.get === 'function'
+      ? responseHeaders.get('content-type')
+      : responseHeaders['content-type']
+  ).toLowerCase();
+  if (statusCode >= 200 && statusCode < 300 && contentType.startsWith('video/')) {
+    return {
+      video_buffer: Buffer.isBuffer(res?.rawBuffer)
+        ? res.rawBuffer
+        : Buffer.from(res?.raw || '', 'utf8'),
+      content_type: contentType.split(';')[0] || 'video/mp4',
+      status: 'COMPLETED',
+    };
+  }
+
+  const raw = String(res?.raw || '');
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (statusCode < 200 || statusCode >= 300) {
+    return {
+      error: `Venice.ai 视频轮询失败 (${statusCode}): ${getVeniceErrorMessage(data, raw.slice(0, 500))}`,
+    };
+  }
+  if (!data) return { error: 'Venice.ai 视频轮询响应不是有效 JSON' };
+
+  const status = String(data.status || '').trim().toUpperCase();
+  if (['FAILED', 'ERROR', 'CANCELLED', 'CANCELED'].includes(status)) {
+    return {
+      error: `Venice.ai 视频生成失败: ${getVeniceErrorMessage(data, status || '任务失败')}`,
+    };
+  }
+  const downloadUrl =
+    data.download_url ||
+    data.video_url ||
+    data.url ||
+    (status === 'COMPLETED' ? handle.download_url : '');
+  if (downloadUrl && /^https?:\/\//i.test(String(downloadUrl))) {
+    return { video_url: String(downloadUrl), status: status || 'COMPLETED' };
+  }
+  if (status === 'COMPLETED') {
+    return { error: 'Venice.ai 视频任务已完成，但响应中没有视频文件或下载地址' };
+  }
+  return { status: status || 'PROCESSING' };
+}
+
+async function pollHolyCrabVideoOnce(config, handle, requestImpl = holyCrabRequest) {
+  const url = joinHolyCrabUrl(
+    config.base_url,
+    `/api/tasks/${encodeURIComponent(handle.uniq_id)}`
+  );
+  try {
+    const response = await requestImpl(url, {
+      method: 'GET',
+      headers: holyCrabHeaders(config.api_key),
+      timeoutMs: 60000,
+    });
+    const task = parseHolyCrabEnvelope(response, 'HolyCrab 视频轮询失败');
+    const step = Number(task?.step);
+    if (step === 3) {
+      return {
+        error: `HolyCrab 视频生成失败: ${
+          task?.error || task?.message || task?.failReason || '任务失败'
+        }`,
+      };
+    }
+    const videoUrl = String(
+      task?.videoUrl || task?.video_url || task?.result?.videoUrl || ''
+    ).trim();
+    if (step === 2) {
+      if (!videoUrl) {
+        return { error: 'HolyCrab 视频任务已完成，但响应中没有 videoUrl' };
+      }
+      if (/^https?:\/\//i.test(videoUrl)) {
+        return { video_url: videoUrl, status: 'COMPLETED' };
+      }
+      return {
+        video_url: new URL(videoUrl, `${holyCrabApiBase(config.base_url)}/`).toString(),
+        status: 'COMPLETED',
+      };
+    }
+    return {
+      status: step === 0 ? 'WAITING' : 'PROCESSING',
+      step: Number.isFinite(step) ? step : null,
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 /**
  * ??????????????????/ChatFire ? ???? DashScope?
  */
-async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 300, intervalMs = 10000) {
+async function pollVideoTaskInternal(db, log, videoGenId, taskId, config, maxAttempts = 300, intervalMs = 10000) {
   const provider = (config.provider || '').toLowerCase();
   const protocol = resolveVideoProtocol(config);
+  const falHandle = decodeFalQueueHandle(taskId);
+  const isFal = protocol === 'fal' || !!falHandle;
+  const veniceHandle = decodeVeniceVideoHandle(taskId);
+  const isVenice = protocol === 'venice' || !!veniceHandle;
+  const holyCrabHandle = decodeHolyCrabVideoHandle(taskId);
+  const isHolyCrab = protocol === 'holycrab' || !!holyCrabHandle;
   const isDashScope = protocol === 'dashscope';
   const isGemini = protocol === 'gemini';
   const isVidu = protocol === 'vidu';
@@ -3785,13 +4959,89 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
     log.warn('[poll] Jimeng AI API 不应进入轮询', { video_gen_id: videoGenId, task_id: taskId });
     return { error: 'Jimeng AI API 为同步返回视频地址，不应进入轮询' };
   }
+  if (isFal && !falHandle) {
+    return { error: 'fal.ai 视频任务标识无效，无法继续轮询' };
+  }
+  if (isVenice && !veniceHandle) {
+    return { error: 'Venice.ai 视频任务标识无效，无法继续轮询' };
+  }
+  if (isHolyCrab && !holyCrabHandle) {
+    return { error: 'HolyCrab 视频任务标识无效，无法继续轮询' };
+  }
   const queryUrl = () => buildQueryUrl(config, taskId);
-  log.info('[poll] ????', { video_gen_id: videoGenId, task_id: taskId, protocol, poll_url: queryUrl() });
+  const initialPollUrl = isHolyCrab
+    ? joinHolyCrabUrl(
+        config.base_url,
+        `/api/tasks/${encodeURIComponent(holyCrabHandle.uniq_id)}`
+      )
+    : isVenice
+    ? joinVeniceUrl(config.base_url, '/video/retrieve')
+    : isFal
+      ? falQueueStatusUrl(config.base_url, falHandle)
+      : queryUrl();
+  log.info('[poll] ????', {
+    video_gen_id: videoGenId,
+    task_id: isHolyCrab
+      ? holyCrabHandle.uniq_id
+      : isVenice
+        ? veniceHandle.queue_id
+        : isFal
+          ? falHandle.request_id
+          : taskId,
+    protocol,
+    poll_url: initialPollUrl,
+  });
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, intervalMs));
     try {
+      if (isHolyCrab) {
+        const result = await pollHolyCrabVideoOnce(
+          config,
+          holyCrabHandle,
+          typeof config.request_impl === 'function'
+            ? config.request_impl
+            : holyCrabRequest
+        );
+        log.info('[HolyCrab poll] 任务状态', {
+          video_gen_id: videoGenId,
+          round: attempt + 1,
+          uniq_id: holyCrabHandle.uniq_id,
+          step: result.step,
+          status: result.status || (result.error ? 'ERROR' : ''),
+        });
+        if (result.error) return { error: result.error };
+        if (result.video_url) return { video_url: result.video_url };
+        continue;
+      }
+
+      if (isVenice) {
+        const result = await pollVeniceVideoOnce(
+          config,
+          veniceHandle,
+          typeof config.request_impl === 'function' ? config.request_impl : veniceRequest
+        );
+        log.info('[Venice.ai poll] 任务状态', {
+          video_gen_id: videoGenId,
+          round: attempt + 1,
+          queue_id: veniceHandle.queue_id,
+          status: result.status || (result.error ? 'ERROR' : ''),
+        });
+        if (result.error) return { error: result.error };
+        if (result.video_url) return { video_url: result.video_url };
+        if (result.video_buffer) {
+          return {
+            video_buffer: result.video_buffer,
+            content_type: result.content_type || 'video/mp4',
+          };
+        }
+        continue;
+      }
+
       let url, headers;
-      if (isKling) {
+      if (isFal) {
+        url = falQueueStatusUrl(config.base_url, falHandle);
+        headers = falHeaders(config.api_key);
+      } else if (isKling) {
         // task_id 编码格式：`t2v:xxx` / `i2v:xxx` / `mc:xxx`
         const klingBase = (config.base_url || 'https://api.klingai.com').replace(/\/$/, '');
         let actualTaskId = taskId;
@@ -3874,6 +5124,67 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
           error: parseErr.message,
           body_head: raw.slice(0, 800),
         });
+        continue;
+      }
+
+      if (isFal) {
+        const status = String(data?.status || '').trim().toUpperCase();
+        const statusVideoUrl = pickProxyVideoUrl(data);
+        log.info('[fal.ai poll] 任务状态', {
+          video_gen_id: videoGenId,
+          round: pollRound,
+          request_id: falHandle.request_id,
+          status,
+        });
+        if (statusVideoUrl) return { video_url: statusVideoUrl };
+        if (['FAILED', 'ERROR', 'CANCELLED', 'CANCELED'].includes(status)) {
+          return {
+            error: `fal.ai 视频生成失败: ${getFalErrorMessage(data, status || '任务失败')}`,
+          };
+        }
+        if (status === 'COMPLETED') {
+          const fallbackRoot = falQueueRequestRoot(config.base_url, falHandle);
+          const resultUrls = Array.from(
+            new Set([
+              falQueueResultUrl(config.base_url, falHandle),
+              fallbackRoot,
+              `${fallbackRoot}/response`,
+            ].filter(Boolean))
+          );
+          let lastError = '';
+          for (const resultUrl of resultUrls) {
+            try {
+              const resultRes = await fetch(resultUrl, {
+                method: 'GET',
+                headers: falHeaders(config.api_key),
+              });
+              const resultRaw = await resultRes.text();
+              let resultData = null;
+              try {
+                resultData = JSON.parse(resultRaw);
+              } catch (_) {}
+              if (!resultRes.ok) {
+                lastError = `${resultRes.status}: ${getFalErrorMessage(resultData, resultRaw.slice(0, 300))}`;
+                continue;
+              }
+              const videoUrl = pickProxyVideoUrl(resultData);
+              if (videoUrl) {
+                log.info('[fal.ai poll] 视频生成完成', {
+                  video_gen_id: videoGenId,
+                  request_id: falHandle.request_id,
+                  video_url: videoUrl,
+                });
+                return { video_url: videoUrl };
+              }
+              lastError = `响应中没有视频地址: ${resultRaw.slice(0, 300)}`;
+            } catch (error) {
+              lastError = error.message;
+            }
+          }
+          return {
+            error: `fal.ai 任务已完成但无法取得视频: ${lastError || '未知响应'}`,
+          };
+        }
         continue;
       }
 
@@ -4079,6 +5390,35 @@ async function pollVideoTask(db, log, videoGenId, taskId, config, maxAttempts = 
   return { error: '??????' };
 }
 
+async function pollVideoTask(
+  db,
+  log,
+  videoGenId,
+  taskId,
+  config,
+  maxAttempts = 300,
+  intervalMs = 10000
+) {
+  try {
+    const result = await pollVideoTaskInternal(
+      db,
+      log,
+      videoGenId,
+      taskId,
+      config,
+      maxAttempts,
+      intervalMs
+    );
+    aiRequestLogService.finishLatestRelated(db, 'video_generation', videoGenId, result || {});
+    return result;
+  } catch (error) {
+    aiRequestLogService.finishLatestRelated(db, 'video_generation', videoGenId, {
+      error: error.message,
+    });
+    throw error;
+  }
+}
+
 module.exports = {
   getDefaultVideoConfig,
   callVideoApi,
@@ -4090,4 +5430,25 @@ module.exports = {
   formatVideoPostBodyForLog,
   isSeedance2FamilyModel,
   normalizeVolcengineDuration,
+  normalizeFalSeedanceDuration,
+  normalizeFalSeedanceResolution,
+  normalizeFalSeedanceAspectRatio,
+  normalizeFalReferencePrompt,
+  resolveFalSeedanceEndpoint,
+  callFalVideoApi,
+  normalizeVeniceSeedanceDuration,
+  normalizeVeniceSeedanceResolution,
+  normalizeVeniceSeedanceAspectRatio,
+  resolveVeniceSeedanceModel,
+  callVeniceVideoApi,
+  pollVeniceVideoOnce,
+  resolveHolyCrabSeedanceModel,
+  normalizeHolyCrabDuration,
+  normalizeHolyCrabAspectRatio,
+  normalizeHolyCrabResolution,
+  resolveHolyCrabLocalImageSource,
+  uploadHolyCrabLocalImage,
+  registerHolyCrabAssetFromUrl,
+  callHolyCrabVideoApi,
+  pollHolyCrabVideoOnce,
 };

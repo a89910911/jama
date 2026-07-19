@@ -12,14 +12,14 @@ function log(msg) {
 
 function stopWindowsAppProcesses() {
   if (process.platform !== 'win32') return;
-  const names = ['本地短剧助手.exe', 'LocalMiniDrama.exe'];
+  const names = ['JamaAI.exe', '本地短剧助手.exe', 'LocalMiniDrama.exe'];
   for (const name of names) {
     spawnSync('taskkill', ['/F', '/IM', name, '/T'], { stdio: 'ignore', shell: true });
   }
   try {
     const ps = [
       "Get-CimInstance Win32_Process |",
-      "Where-Object { $_.ExecutablePath -like '*LocalMiniDrama*' -or $_.ExecutablePath -like '*win-unpacked*' -or $_.Name -like 'LocalMiniDrama*' } |",
+      "Where-Object { $_.ExecutablePath -like '*JamaAI*' -or $_.ExecutablePath -like '*LocalMiniDrama*' -or $_.ExecutablePath -like '*win-unpacked*' -or $_.Name -like 'JamaAI*' -or $_.Name -like 'LocalMiniDrama*' } |",
       "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
     ].join(' ');
     execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: 'ignore', timeout: 15000 });
@@ -43,7 +43,7 @@ function removeDir(dir) {
       return true;
     } catch (renameErr) {
       log(`[clean] FAILED: ${err.message}`);
-      log('[clean] Close running LocalMiniDrama exe, close Explorer on release/win-unpacked, then retry.');
+      log('[clean] Close the running JamaAI exe, close Explorer on release/win-unpacked, then retry.');
       log('[clean] Or reboot if antivirus is scanning app.asar.');
       return false;
     }

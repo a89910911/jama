@@ -548,12 +548,6 @@ Content-Type: application/json
 
 ## 💾 全局设置
 
-### 获取/设置语言（提示词语言）
-```
-GET  {baseUrl}/api/v1/settings/language
-PUT  {baseUrl}/api/v1/settings/language   { "language": "zh" | "en" }
-```
-
 ### 获取/设置生成参数默认值
 ```
 GET  {baseUrl}/api/v1/settings/generation

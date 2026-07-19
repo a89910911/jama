@@ -12,6 +12,21 @@ function getTaskStatus(db, log) {
 function getResourceTasks(db, log) {
   return (req, res) => {
     const resourceId = req.query.resource_id;
+    const rawResourceIds = req.query.resource_ids;
+    if (rawResourceIds) {
+      try {
+        const resourceIds = (Array.isArray(rawResourceIds) ? rawResourceIds : [rawResourceIds])
+          .flatMap((value) => String(value || '').split(','))
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const activeOnly = req.query.active_only === '1' || req.query.active_only === 'true';
+        const tasks = taskService.getTasksByResources(db, resourceIds, { activeOnly });
+        return response.success(res, tasks);
+      } catch (err) {
+        log.errorw('Get resource tasks failed', { error: err.message });
+        return response.internalError(res, err.message);
+      }
+    }
     if (!resourceId) return response.badRequest(res, '缺少resource_id参数');
     try {
       const tasks = taskService.getTasksByResource(db, resourceId);

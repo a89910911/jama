@@ -1,6 +1,6 @@
 {
   "appId": "com.localminidrama.desktop",
-  "productName": "LocalMiniDrama",
+  "productName": "JamaAI",
   "directories": {
     "output": "release"
   },
@@ -29,7 +29,7 @@
   ],
   "win": {
     "target": ["nsis", "portable"],
-    "icon": null,
+    "icon": "build/icon.png",
     "signAndEditExecutable": false,
     "artifactName": "${productName}-Lite-${version}.${ext}"
   },

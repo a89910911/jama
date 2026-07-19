@@ -4,6 +4,7 @@ const {
   getBusinessScene,
   isRegisteredBusinessScene,
 } = require('../services/businessSceneRegistry');
+const { buildBusinessSceneOverview } = require('../services/sceneModelMapService');
 
 function list(db, log) {
   return (req, res) => {
@@ -140,6 +141,14 @@ function remove(db, log) {
 module.exports = function sceneModelMapRoutes(db, log) {
   return {
     definitions: (req, res) => response.success(res, listBusinessScenes()),
+    overview: (req, res) => {
+      try {
+        response.success(res, buildBusinessSceneOverview(db));
+      } catch (err) {
+        log.error('Get business scene overview failed', { error: err.message });
+        response.internalError(res, '获取业务场景概览失败');
+      }
+    },
     list: list(db, log),
     get: get(db, log),
     create: create(db, log),

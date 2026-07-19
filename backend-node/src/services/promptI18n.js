@@ -17,11 +17,11 @@ function clearOverrideInMemory(key) {
 
 // 与 Go application/services/prompt_i18n.go 对齐：提示词与语言
 function getLanguage(cfg) {
-  return (cfg?.app?.language || 'zh').toLowerCase();
+  return 'zh';
 }
 
 function isEnglish(cfg) {
-  return getLanguage(cfg) === 'en';
+  return false;
 }
 
 /** 画风由前端写入 dramas.metadata.style_prompt_zh / style_prompt_en，mergeCfgStyleWithDrama 注入 cfg.style */
@@ -1348,7 +1348,7 @@ CONTEXT_PREV / CONTEXT_NEXT: 上下文（仅用于情绪参考）
  * 全能模式（可灵 Omni-Video、火山即梦 Seedance 2.0 多图参考等）：模板 + 仅用 @图片1/@图片2…（与参考图顺序一致，不用 @姓名）
  */
 function getUniversalOmniSegmentPrompt() {
-  const specZh = getUniversalOmniMultiBeatFormatSpec({ language: 'zh' });
+  const specZh = getUniversalOmniMultiBeatFormatSpec({});
   return `You write the main prompt for multi-reference video (e.g. Kling Omni-Video, Volcengine Seedance omnivideo) "片段描述" in Chinese.
 
 The USER message includes MULTI_BEAT_OUTPUT, TOTAL_CLIP_SECONDS, SHOT_PACING_AND_POSITION, EPISODE_SCRIPT, NEIGHBOR_* detail, IMAGE_SLOT_MAP, LINE3_REQUIRED, STYLE_HINT, and storyboard fields.
@@ -1415,38 +1415,38 @@ ADDITIONAL_POLISH_MODE (short drama enhancement — still MUST obey MULTI_BEAT_O
  * 结果为 JSON 字符串，存入 storyboards.continuity_snapshot
  */
 function getContinuitySnapshotPrompt() {
-  return `You are a script supervisor (continuity analyst) for a film production.
+  return `你是一位影视制作连戏监督，负责分析分镜之间的人物状态、站位和环境连续性。
 
-Given a completed image generation prompt for a storyboard shot, extract a structured continuity state snapshot.
+请根据一个分镜已经完成的生图提示词，提取结构化连戏状态快照。
 
-Output ONLY a valid JSON object — no explanations, no markdown fences.
+只输出一个合法 JSON 对象，不要解释，不要使用 Markdown 代码块。
 
-JSON schema:
+JSON 结构：
 {
   "characters": {
     "<character_name>": {
-      "screen_position": "<EXACT screen standing position for layout lock — e.g. 'left third of frame, facing camera', 'right side of frame standing behind table', 'center, slightly left of partner', 'far left background'. Include relative to other characters and camera. This is CRITICAL for position consistency between first/last frames and cross-shot continuity.>",
-      "body_posture": "<BODY POSTURE only — e.g. 'lying on bed', 'sitting on edge of bed', 'standing', 'kneeling on floor', 'crouching'. NEVER write camera framing here (no 'close-up', 'extreme close-up', etc). If shot is close-up but context implies lying/sitting, infer from scene context>",
-      "clothing": "<clothing description, e.g. 'white hanfu robe, loosened collar'>",
-      "expression": "<facial expression, e.g. 'pained, eyes closed', 'tearful, concerned'>",
-      "props": ["<prop1>", "<prop2>"]
+      "screen_position": "<用于锁定布局的精确画面站位，例如：画面左侧三分之一、面向镜头；画面右侧、站在桌后；居中且略偏同伴左侧；左后方远景。必须说明与其他人物、镜头的相对位置。>",
+      "body_posture": "<只描述身体姿态，例如：躺在床上、坐在床沿、站立、跪在地面、蹲伏。禁止填写近景、特写等景别；可根据场景上下文推断坐卧状态。>",
+      "clothing": "<服装描述，例如：白色汉服长袍、领口微松>",
+      "expression": "<面部表情，例如：痛苦闭眼、含泪担忧>",
+      "props": ["<道具1>", "<道具2>"]
     }
   },
-  "lighting": "<color temperature and direction, e.g. 'warm amber sidelight from window'>",
-  "location": "<scene location, e.g. 'ancient Chinese bedroom, daytime'>",
-  "overall_composition": "<brief overall layout note e.g. 'two-shot, woman left, man right, medium wide framing'>"
+  "lighting": "<光线色温与方向，例如：窗户射入的暖琥珀色侧光>",
+  "location": "<场景地点与时段，例如：古代中式卧房、白天>",
+  "overall_composition": "<简短整体布局，例如：双人镜头，女左男右，中远景>"
 }
 
-Rules:
-- Only include characters that are explicitly described in the prompt
-- Keep each field concise (≤15 words)
-- **screen_position is the MOST IMPORTANT field for solving "人物站位经常变"** — extract or infer precise left/center/right placement + relation to other characters/camera from the prompt description. If the prompt mentions "left", "right", "beside", "opposite", "in front of", use that. For first/last frame pairs this enables layout locking.
-- body_posture MUST describe physical body state, NOT camera shot type. Infer from scene context if needed (e.g. bedroom scene + lying character → 'lying on bed')
-- If a detail truly cannot be determined even by inference, use null
+规则：
+- 只包含生图提示词明确描述的角色。
+- 每个字段保持简洁，使用短语或短句。
+- **screen_position 是解决人物站位漂移的最重要字段**：必须从提示词中提取或合理推断画面左/中/右位置，以及与其他人物和镜头的相对关系。提示词出现左侧、右侧、旁边、对面、前方等信息时必须保留，用于锁定首尾帧和跨镜站位。
+- body_posture 必须描述身体状态，不能填写镜头景别。必要时可根据场景推断，例如卧房场景中的人物可推断为“躺在床上”。
+- 某项信息经过合理推断仍无法确定时填写 null。
 
-Input:
-PROMPT: <the completed image generation prompt>
-ASSETS: <character names present in this shot>`;
+输入：
+已完成的生图提示词：<prompt>
+本镜头角色与素材：<assets>`;
 }
 
 /**
@@ -1490,29 +1490,29 @@ Style: Professional, film-precise, actionable for AI image generators. Use Chine
  * 供 characterGenerationService 调用，生成结果存入 identity_anchors 字段
  */
 function getIdentityAnchorsPrompt() {
-  return `You are a character visual analyst. Extract precise visual identity anchors from character appearance descriptions.
+  return `你是一名角色视觉分析师。请从角色外貌描述中提取精确、稳定、可复用的视觉身份锚点。
 
-Output ONLY a valid JSON object with these exact 6 keys:
+只输出一个合法 JSON 对象，并严格使用以下 6 个字段：
 {
-  "face_shape": "precise description of face/skull shape, jawline, cheekbones (e.g. oval face, sharp jawline, high cheekbones)",
-  "facial_features": "eye shape+color+Hex, nose bridge+tip, lip thickness+shape (e.g. almond eyes #3D2B1F, straight nose, thin lips)",
-  "unique_marks": "scars, moles, tattoos, birthmarks, distinctive features — or 'none'",
+  "face_shape": "精确描述脸型、颌线和颧骨，例如：椭圆脸、下颌线清晰、颧骨较高",
+  "facial_features": "描述眼形、眼睛颜色与 Hex 色值、鼻梁与鼻尖、嘴唇厚度与形状，例如：杏眼 #3D2B1F、鼻梁挺直、薄唇",
+  "unique_marks": "疤痕、痣、纹身、胎记或其他辨识特征；没有时固定填写 none",
   "color_anchors": {
-    "hair": "#HexCode (e.g. #1A0A00 for black, #C8A96E for blonde)",
+    "hair": "#HexCode，例如黑发 #1A0A00、金发 #C8A96E",
     "eyes": "#HexCode",
-    "skin": "#HexCode (e.g. #F5DEB3 for wheat, #FDDBB4 for fair)",
-    "primary_outfit": "#HexCode of dominant clothing color"
+    "skin": "#HexCode，例如小麦肤色 #F5DEB3、白皙肤色 #FDDBB4",
+    "primary_outfit": "主要服装颜色的 #HexCode"
   },
-  "skin_texture": "skin tone description + texture (e.g. fair porcelain smooth, tanned slightly weathered)",
-  "hair_style": "length + style + texture (e.g. shoulder-length wavy black hair with loose strands, short crew cut)"
+  "skin_texture": "肤色与皮肤质感，例如：白皙瓷感、光滑；小麦肤色、略有风霜感",
+  "hair_style": "头发长度、造型与质感，例如：及肩黑色波浪发、带少量碎发；短寸"
 }
 
-Rules:
-- Use Hex color codes for ALL color values — never use color names like "black" or "brown"
-- Extract ONLY what is explicitly stated; infer Hex values from color descriptions
-- Keep each field concise (1-2 sentences max)
-- If information is missing for a field, write "unspecified"
-- Output ONLY the JSON object, no markdown, no explanation`;
+规则：
+- 所有颜色值必须使用 Hex 色值，不能只写“黑色”“棕色”等颜色名称。
+- 只提取原描述明确提供的信息；可以根据颜色文字合理推断对应 Hex 色值。
+- 每个字段保持简洁，最多 1～2 句。
+- 某字段缺少信息时固定填写 unspecified。
+- 只输出 JSON 对象，不要 Markdown，不要解释。`;
 }
 
 /**

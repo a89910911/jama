@@ -106,7 +106,6 @@ export function useCanvasScript(deps) {
     const res = await dramaAPI.extractBackgrounds(episodeId, {
       model: undefined,
       style,
-      language: 'zh',
     })
     await runExtractTask(res?.task_id, '提取场景')
   }

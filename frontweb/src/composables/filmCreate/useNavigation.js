@@ -7,7 +7,8 @@ const NAV_AUTO_COLLAPSE_WIDTH = 960
  */
 export function useNavigation() {
   const navCollapsed = ref(false)
-  const storyboardMenuExpanded = ref(false)
+  // 分镜是创作阶段最高频的跳转入口，进入页面时默认展开，减少逐镜检查时的额外操作。
+  const storyboardMenuExpanded = ref(true)
   let _navAutoCollapsed = false
 
   function _syncNavCollapse() {

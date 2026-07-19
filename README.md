@@ -1,10 +1,12 @@
 <div align="center">
 
-# 🎬 本地短剧助手
+<img src="./logo.jpg" alt="JamaAI" width="180">
+
+# JamaAI
 
 **本地 AI 短剧 & 漫剧生成工具 —— 下载即用，完全开源，数据不出本机**
 
-*LocalMiniDrama · AI-powered short drama creator*
+*JamaAI · AI-powered short drama creator*
 
 [![version](https://img.shields.io/badge/version-1.2.8-blue?style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama/releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -179,8 +181,8 @@
 
 | 版本 | 说明 | 适合 |
 |------|------|------|
-| `本地短剧助手 x.x.x.exe` | 标准版，**含示例项目** | 新手入门 |
-| `本地短剧助手-Lite-x.x.x.exe` | Lite 版，体积更小 | 熟悉流程后 |
+| `JamaAI x.x.x.exe` | 标准版，**含示例项目** | 新手入门 |
+| `JamaAI-Lite-x.x.x.exe` | Lite 版，体积更小 | 熟悉流程后 |
 
 双击运行 → 「AI 配置」填入 API Key → 开始创作。
 

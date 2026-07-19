@@ -1,8 +1,7 @@
 app:
-  name: LocalMiniDrama API
+  name: JamaAI API
   version: 1.0.0
   debug: true
-  language: zh
 server:
   port: 5679
   host: 0.0.0.0

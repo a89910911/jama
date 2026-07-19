@@ -4,6 +4,9 @@ export const aiAPI = {
   list(serviceType) {
     return request.get('/ai-configs', { params: serviceType ? { service_type: serviceType } : {} })
   },
+  listRuntime(serviceType) {
+    return request.get('/runtime/ai-configs', { params: { service_type: serviceType } })
+  },
   get(id) {
     return request.get(`/ai-configs/${id}`)
   },

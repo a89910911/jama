@@ -3,11 +3,28 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const aiConfigService = require('./aiConfigService');
+const aiRequestLogService = require('./aiRequestLogService');
+const { resolveSceneModelSelection } = require('./sceneModelMapService');
 const uploadService = require('./uploadService');
 const storageLayout = require('./storageLayout');
 const taskService = require('./taskService');
 const { loadConfig } = require('../config');
 const { postJSONWithTimeout } = require('./aiClient');
+const {
+  isFalConfig,
+  falDirectBase,
+  falHeaders,
+  normalizeFalEndpoint,
+  joinFalUrl,
+  getFalErrorMessage,
+} = require('./falClient');
+const {
+  isVeniceConfig,
+  veniceHeaders,
+  joinVeniceUrl,
+  getVeniceErrorMessage,
+  veniceRequest,
+} = require('./veniceClient');
 const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 /** 图生 POST 使用 Node http(s)，默认 10 分钟，避免 undici fetch 大包体/慢链路下模糊失败 */
@@ -88,6 +105,8 @@ function getProxyExpireHours() {
  */
 function inferProtocol(provider, model) {
   const p = String(provider || '').toLowerCase();
+  if (p === 'fal' || p === 'fal.ai') return 'fal';
+  if (p === 'venice' || p === 'venice.ai') return 'venice';
   if (p === 'dashscope' || p === 'qwen_image') return 'dashscope';
   if (p === 'nano_banana') return 'nano_banana';
   if (p === 'gemini' || p === 'google') return 'gemini';
@@ -808,6 +827,9 @@ function qwenImageSize(size) {
 function resolveImageRef(value, filesBaseUrl, storageLocalPath) {
   if (!value || !String(value).trim()) return null;
   const s = String(value).trim();
+  // Inline image data is already a complete API input. Treating it as a
+  // storage-relative path would turn it into an invalid localhost URL.
+  if (/^data:image\//i.test(s)) return s;
   const baseUrl = (filesBaseUrl || '').replace(/\/$/, '');
   // isLocalhost: 只要 URL 本身或配置的 base_url 含 localhost/127，都视为本地
   const isLocalhostUrl = /localhost|127\.0\.0\.1/i.test(s);
@@ -818,33 +840,400 @@ function resolveImageRef(value, filesBaseUrl, storageLocalPath) {
     if (!v || !String(v).trim()) return null;
     const sv = String(v).trim();
     if (sv.startsWith('http://') || sv.startsWith('https://')) return sv;
-    if (baseUrl) return baseUrl + '/' + sv.replace(/^\//, '');
+    if (baseUrl) {
+      // storage.base_url 通常已包含 /static；输入也可能是 /static/...，
+      // 避免生成 /static/static/...。
+      if (/^\/?static\//i.test(sv) && /\/static$/i.test(baseUrl)) {
+        try {
+          const base = new URL(baseUrl);
+          return `${base.origin}/${sv.replace(/^\/+/, '')}`;
+        } catch (_) {}
+      }
+      return baseUrl + '/' + sv.replace(/^\//, '');
+    }
     return sv;
   }
 
   let relPath = null;
   if (s.startsWith('http://') || s.startsWith('https://')) {
     if (!isLocalhost || !storageLocalPath) return s;
-    // 从 URL 中提取 /static/ 之后的相对路径；或去掉 baseUrl 前缀
-    const afterStatic = s.split('/static/')[1]
-      || (baseUrl ? s.replace(baseUrl + '/', '').replace(baseUrl, '') : null)
-      || s.replace(/^https?:\/\/[^/]+\//, '');
-    if (afterStatic) relPath = afterStatic.replace(/^\//, '');
-    else return s;
+    try {
+      const parsed = new URL(s);
+      const pathname = decodeURIComponent(parsed.pathname || '');
+      const markerIndex = pathname.toLowerCase().indexOf('/static/');
+      relPath = markerIndex >= 0
+        ? pathname.slice(markerIndex + '/static/'.length)
+        : pathname.replace(/^\/+/, '');
+    } catch (_) {
+      return s;
+    }
   } else if (storageLocalPath) {
-    relPath = s.replace(/^\//, '');
+    relPath = s
+      .split(/[?#]/)[0]
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .replace(/^static\/+/i, '');
   }
   if (!relPath) return toPublicUrl(s);
-  const filePath = path.join(storageLocalPath, relPath);
+  const storageRoot = path.resolve(storageLocalPath);
+  const filePath = path.resolve(storageRoot, relPath);
+  const rootLower = storageRoot.toLowerCase();
+  const fileLower = filePath.toLowerCase();
+  if (
+    fileLower !== rootLower &&
+    !fileLower.startsWith(`${rootLower}${path.sep.toLowerCase()}`)
+  ) {
+    return toPublicUrl(s);
+  }
   try {
     if (!fs.existsSync(filePath)) return toPublicUrl(s);
     const buf = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.bmp': 'image/bmp' }[ext] || 'image/png';
+    const mime = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+      '.avif': 'image/avif',
+      '.heic': 'image/heic',
+      '.heif': 'image/heif',
+    }[ext] || 'image/png';
     return 'data:' + mime + ';base64,' + buf.toString('base64');
   } catch (e) {
     return toPublicUrl(s);
   }
+}
+
+function normalizeFalImageSize(size) {
+  const raw = String(size || '').trim().toLowerCase().replace(/\s/g, '');
+  const presetMap = {
+    '1:1': 'square_hd',
+    '4:3': 'landscape_4_3',
+    '3:4': 'portrait_4_3',
+    '16:9': 'landscape_16_9',
+    '9:16': 'portrait_16_9',
+    square: 'square',
+    square_hd: 'square_hd',
+    portrait_4_3: 'portrait_4_3',
+    portrait_16_9: 'portrait_16_9',
+    landscape_4_3: 'landscape_4_3',
+    landscape_16_9: 'landscape_16_9',
+    auto: 'auto',
+  };
+  if (presetMap[raw]) return presetMap[raw];
+
+  const match = raw.replace(/\*/g, 'x').match(/^(\d+)x(\d+)$/);
+  if (match) {
+    const width = Math.round(Number(match[1]) / 16) * 16;
+    const height = Math.round(Number(match[2]) / 16) * 16;
+    const pixels = width * height;
+    const ratio = width / height;
+    if (
+      width >= 16 &&
+      height >= 16 &&
+      Math.max(width, height) <= 3840 &&
+      pixels >= 655360 &&
+      pixels <= 8294400 &&
+      ratio >= 1 / 3 &&
+      ratio <= 3
+    ) {
+      return { width, height };
+    }
+    if (ratio >= 1.5) return 'landscape_16_9';
+    if (ratio > 1.05) return 'landscape_4_3';
+    if (ratio <= 0.67) return 'portrait_16_9';
+    if (ratio < 0.95) return 'portrait_4_3';
+  }
+  return 'square_hd';
+}
+
+function resolveFalImageEndpoint(modelOrEndpoint, hasReferences) {
+  let endpoint = normalizeFalEndpoint(modelOrEndpoint || 'openai/gpt-image-2');
+  if (!endpoint.includes('/')) endpoint = `openai/${endpoint}`;
+  endpoint = endpoint.replace(/\/edit$/i, '');
+  return hasReferences ? `${endpoint}/edit` : endpoint;
+}
+
+async function callFalImageApi(config, log, opts) {
+  const resolvedRefs = (Array.isArray(opts.reference_image_urls) ? opts.reference_image_urls : [])
+    .map((ref) => resolveImageRef(ref, opts.files_base_url, opts.storage_local_path))
+    .filter(Boolean);
+  const endpoint = resolveFalImageEndpoint(
+    config.endpoint || opts.model || 'openai/gpt-image-2',
+    resolvedRefs.length > 0
+  );
+  const url = joinFalUrl(falDirectBase(config.base_url), endpoint);
+  const requestedQuality = String(opts.quality || '').trim().toLowerCase();
+  const quality = ['auto', 'low', 'medium', 'high'].includes(requestedQuality)
+    ? requestedQuality
+    : 'high';
+  const body = {
+    prompt: opts.prompt || '',
+    image_size: resolvedRefs.length > 0 ? 'auto' : normalizeFalImageSize(opts.size),
+    quality,
+    num_images: 1,
+    output_format: 'png',
+    ...(resolvedRefs.length > 0 ? { image_urls: resolvedRefs.slice(0, 16) } : {}),
+  };
+
+  log.info('[fal.ai 图片] 发送请求', {
+    image_gen_id: opts.image_gen_id,
+    endpoint,
+    reference_count: resolvedRefs.length,
+    image_size: body.image_size,
+    quality,
+  });
+
+  let out;
+  try {
+    out = await postJSONWithTimeout(
+      url,
+      falHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body,
+      IMAGE_HTTP_TIMEOUT_MS
+    );
+  } catch (error) {
+    return { error: `fal.ai 图片请求失败: ${error.message}` };
+  }
+
+  let data = null;
+  try {
+    data = JSON.parse(out.raw);
+  } catch (_) {}
+  if (out.statusCode < 200 || out.statusCode >= 300) {
+    return {
+      error: `fal.ai 图片请求失败 (${out.statusCode}): ${getFalErrorMessage(data, out.raw.slice(0, 300))}`,
+    };
+  }
+  if (!data) return { error: 'fal.ai 图片响应不是有效 JSON' };
+  const imageUrl =
+    data?.images?.[0]?.url ||
+    data?.image?.url ||
+    data?.data?.images?.[0]?.url;
+  if (!imageUrl) {
+    return { error: `fal.ai 未返回图片地址: ${JSON.stringify(data).slice(0, 300)}` };
+  }
+  return { image_url: imageUrl };
+}
+
+function normalizeVeniceImageResolution(size) {
+  const parsed = parseSizeWxHForGemini(size);
+  if (!parsed) return '2K';
+  const longEdge = Math.max(parsed.w, parsed.h);
+  if (longEdge >= 3072) return '4K';
+  if (longEdge >= 1200) return '2K';
+  return '1K';
+}
+
+function normalizeVeniceImageOutput(value, mimeType = 'image/png') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(?:https?:|data:image\/)/i.test(raw)) return raw;
+  return `data:${mimeType};base64,${raw.replace(/^base64,/i, '')}`;
+}
+
+function resolveVeniceImageModel(model, edit = false) {
+  const base = String(model || 'gpt-image-2').trim().replace(/-edit$/i, '') || 'gpt-image-2';
+  return edit ? `${base}-edit` : base;
+}
+
+function isSupportedVeniceImageBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return true;
+  }
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    return true;
+  }
+  if (buffer.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = buffer.toString('ascii', 8, 12).toLowerCase();
+    return ['avif', 'avis', 'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(brand);
+  }
+  return false;
+}
+
+function normalizeVeniceImageInput(value, filesBaseUrl, storageLocalPath) {
+  const resolved = resolveImageRef(value, filesBaseUrl, storageLocalPath);
+  if (!resolved) return '';
+  const raw = String(resolved).trim();
+  const dataUrl = raw.match(
+    /^data:image\/(?:jpeg|jpg|png|webp|heif|heic|avif);base64,([a-z0-9+/=\s]+)$/i
+  );
+  if (dataUrl) {
+    const base64 = dataUrl[1].replace(/\s/g, '');
+    const imageBuffer = Buffer.from(base64, 'base64');
+    if (!base64 || !isSupportedVeniceImageBuffer(imageBuffer)) {
+      throw new Error('参考图 Base64 内容为空或无效');
+    }
+    if (imageBuffer.length >= 25 * 1024 * 1024) {
+      throw new Error('参考图超过 Venice.ai 的 25MB 限制');
+    }
+    // Venice's documented Node/Python examples send raw base64 for JSON
+    // edits. This also avoids inconsistent data-URL handling on /image/edit.
+    return base64;
+  }
+  if (/^data:/i.test(raw)) {
+    throw new Error('参考图格式不受 Venice.ai 支持，请使用 jpeg/png/webp/heif/heic/avif');
+  }
+  if (/^https?:\/\/(?:localhost|127\.0\.0\.1|\[?::1\]?)(?::\d+)?(?:\/|$)/i.test(raw)) {
+    throw new Error('本地参考图文件不存在或无法读取，不能把 localhost 地址发送给 Venice.ai');
+  }
+  if (!/^https?:\/\//i.test(raw)) {
+    throw new Error(`参考图无法解析为图片文件或公网 URL: ${raw.slice(0, 120)}`);
+  }
+  return raw;
+}
+
+function formatVeniceNetworkError(error) {
+  if (error?.name === 'AbortError') return '请求超时';
+  const cause = error?.cause;
+  return [
+    error?.message,
+    cause?.code,
+    cause?.message,
+  ].filter(Boolean).filter((value, index, all) => all.indexOf(value) === index).join(' / ') || '未知网络错误';
+}
+
+function sanitizeVeniceImageGenerateBody(body) {
+  const sanitized = { ...(body || {}) };
+  // Venice 明确禁止 return_binary=true 与 variants 同时出现。
+  // 在最终发送前再次清理，避免以后新增公共参数时重新引入 400。
+  if (sanitized.return_binary === true) delete sanitized.variants;
+  return sanitized;
+}
+
+async function callVeniceImageApi(config, log, opts) {
+  let resolvedRefs;
+  try {
+    resolvedRefs = (Array.isArray(opts.reference_image_urls) ? opts.reference_image_urls : [])
+      .map((ref) => normalizeVeniceImageInput(
+        ref,
+        opts.files_base_url,
+        opts.storage_local_path
+      ))
+      .filter(Boolean)
+      .slice(0, 3);
+  } catch (error) {
+    return { error: `Venice.ai 参考图解析失败: ${error.message}` };
+  }
+  const hasReferences = resolvedRefs.length > 0;
+  const endpoint = hasReferences
+    ? '/image/multi-edit'
+    : '/image/generate';
+  const model = resolveVeniceImageModel(opts.model, hasReferences);
+  const requestedQuality = String(opts.quality || '').trim().toLowerCase();
+  const quality = ['low', 'medium', 'high'].includes(requestedQuality)
+    ? requestedQuality
+    : 'high';
+  const aspectRatio = geminiAspectRatio(opts.size);
+  const resolution = normalizeVeniceImageResolution(opts.size);
+  let body;
+  if (!hasReferences) {
+    body = {
+      model,
+      prompt: String(opts.prompt || ''),
+      aspect_ratio: aspectRatio,
+      resolution,
+      quality,
+      format: 'png',
+      // Venice 支持直接返回图片二进制；避免同步生成完成后再传输数 MB 的 Base64 JSON。
+      return_binary: true,
+    };
+  } else {
+    body = {
+      modelId: model,
+      prompt: String(opts.prompt || ''),
+      images: resolvedRefs,
+      aspect_ratio: aspectRatio,
+      resolution,
+      output_format: 'png',
+    };
+  }
+  body = sanitizeVeniceImageGenerateBody(body);
+
+  const url = joinVeniceUrl(config.base_url, endpoint);
+  log.info('[Venice.ai 图片] 发送请求', {
+    image_gen_id: opts.image_gen_id,
+    endpoint,
+    model,
+    reference_count: resolvedRefs.length,
+    aspect_ratio: aspectRatio,
+    resolution,
+    ...(hasReferences ? {} : { quality }),
+  });
+
+  // 图片生成是长耗时、大响应请求。复用项目已有的 Node http(s) 传输，
+  // 避免 undici fetch 在并发生成时偶发只返回 "fetch failed"。
+  const postImpl = typeof opts.request_impl === 'function'
+    ? opts.request_impl
+    : (requestUrl, headers, requestBody, timeoutMs) =>
+        veniceRequest(requestUrl, {
+          method: 'POST',
+          headers,
+          body: requestBody,
+          timeoutMs,
+        });
+  let response;
+  try {
+    response = await postImpl(
+      url,
+      veniceHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body,
+      IMAGE_HTTP_TIMEOUT_MS
+    );
+  } catch (error) {
+    const detail = formatVeniceNetworkError(error);
+    log.error('[Venice.ai 图片] 网络请求失败', {
+      image_gen_id: opts.image_gen_id,
+      endpoint,
+      error: detail,
+    });
+    return {
+      error: `Venice.ai 图片请求失败: ${detail}`,
+    };
+  }
+
+  const statusCode = Number(response?.statusCode || response?.status || 0);
+  const responseHeaders = response?.headers || {};
+  const contentType = String(
+    typeof responseHeaders.get === 'function'
+      ? responseHeaders.get('content-type')
+      : responseHeaders['content-type']
+  ).toLowerCase();
+  const responseBuffer = Buffer.isBuffer(response?.rawBuffer)
+    ? response.rawBuffer
+    : Buffer.from(response?.raw || '', 'utf8');
+
+  if (statusCode >= 200 && statusCode < 300 && contentType.startsWith('image/')) {
+    const mimeType = contentType.split(';')[0] || 'image/png';
+    return { image_url: `data:${mimeType};base64,${responseBuffer.toString('base64')}` };
+  }
+
+  const raw = typeof response?.raw === 'string'
+    ? response.raw
+    : responseBuffer.toString('utf8');
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (statusCode < 200 || statusCode >= 300) {
+    return {
+      error: `Venice.ai 图片请求失败 (${statusCode}): ${getVeniceErrorMessage(data, raw.slice(0, 300))}`,
+    };
+  }
+
+  const imageValue =
+    data?.images?.[0] ||
+    data?.data?.[0]?.b64_json ||
+    data?.data?.[0]?.url ||
+    (typeof data === 'string' ? data : '');
+  const imageUrl = normalizeVeniceImageOutput(imageValue);
+  if (!imageUrl) {
+    return { error: `Venice.ai 未返回图片内容: ${JSON.stringify(data).slice(0, 300)}` };
+  }
+  return { image_url: imageUrl };
 }
 
 // 通义万象：支持参考图（角色/场景），content 为 [text, image, image, ...]；本地调试时参考图可转 base64
@@ -1392,7 +1781,7 @@ async function callGeminiImageApi(db, config, log, opts) {
  * @param {object} opts - { prompt, model?, size?, quality?, drama_id, preferred_provider?, character_id?, image_type?, image_gen_id, user_negative_prompt? }
  * @returns {Promise<{ image_url?: string, error?: string }>}
  */
-async function callImageApi(db, log, opts) {
+async function callImageApiInternal(db, log, opts) {
   const {
     prompt,
     model: preferredModel,
@@ -1409,13 +1798,29 @@ async function callImageApi(db, log, opts) {
     storage_local_path,
     system_prompt,
     user_negative_prompt,
+    scene_key,
   } = opts;
   const preferredProvider = preferred_provider ?? opts.preferredProvider;
-  const config = getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType);
+  const routedSelection = scene_key
+    ? resolveSceneModelSelection(db, scene_key, {
+        serviceType: imageServiceType || 'image',
+        preferredModel,
+      })
+    : null;
+  const hasSceneOverride = !!(
+    routedSelection?.row &&
+    routedSelection?.config
+  );
+  const config = hasSceneOverride
+    ? routedSelection.config
+    : getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType);
   if (!config) {
     throw new Error('未配置图片模型，请在「AI 配置」中添加 image 类型且已启用的配置');
   }
-  const model = getModelFromConfig(config, preferredModel);
+  const model = getModelFromConfig(
+    config,
+    hasSceneOverride ? (routedSelection.model_override || preferredModel) : preferredModel
+  );
   const provider = (config.provider || '').toLowerCase();
   // api_protocol 显式指定接口规范，优先级高于 provider 推断；未设置时按 provider 自动判断
   const protocol = (config.api_protocol || '').toLowerCase() || inferProtocol(provider, model);
@@ -1438,7 +1843,6 @@ async function callImageApi(db, log, opts) {
         {
           dramaId: drama_id,
           taskId: opts.task_id,
-          locale: 'universal',
           variables: {
             reference_labels: refLines.join('\n'),
             image_prompt: effectivePrompt,
@@ -1456,6 +1860,8 @@ async function callImageApi(db, log, opts) {
     model,
     size,
     imageServiceType,
+    scene_key: scene_key || null,
+    scene_mapping_source: hasSceneOverride ? 'scene' : 'default',
     ref_count: Array.isArray(opts.reference_image_urls) ? opts.reference_image_urls.length : 0,
     ref_label_injected: effectivePrompt !== (prompt || ''),
     effectivePrompt
@@ -1468,13 +1874,38 @@ async function callImageApi(db, log, opts) {
   const autoNegativePrompt = (refCountForNeg > 1 || isVolcOrSeedream)
     ? require('./promptTemplateService').resolvePromptContent(db, 'image.negative.anti_split', {
         dramaId: drama_id,
-        locale: 'universal',
         taskId: opts.task_id,
       })
     : '';
   const suppliedNegativePrompt = user_negative_prompt ?? opts.negative_prompt;
   const userNegFragment = (suppliedNegativePrompt && String(suppliedNegativePrompt).trim()) || '';
   const mergedNegativePrompt = mergeNegativePromptFragments(autoNegativePrompt, userNegFragment);
+
+  if (protocol === 'venice' || isVeniceConfig(config)) {
+    return callVeniceImageApi(config, log, {
+      prompt: effectivePrompt,
+      model,
+      size,
+      quality,
+      image_gen_id,
+      reference_image_urls: opts.reference_image_urls,
+      files_base_url: opts.files_base_url,
+      storage_local_path: opts.storage_local_path,
+    });
+  }
+
+  if (protocol === 'fal' || isFalConfig(config)) {
+    return callFalImageApi(config, log, {
+      prompt: effectivePrompt,
+      model,
+      size,
+      quality,
+      image_gen_id,
+      reference_image_urls: opts.reference_image_urls,
+      files_base_url: opts.files_base_url,
+      storage_local_path: opts.storage_local_path,
+    });
+  }
 
   if (protocol === 'dashscope') {
     return callDashScopeImageApi(config, log, {
@@ -1623,6 +2054,75 @@ async function callImageApi(db, log, opts) {
   return { image_url: imageUrl };
 }
 
+function resolveImageLogMeta(db, opts = {}) {
+  try {
+    const preferredModel = opts.model;
+    const imageServiceType = opts.imageServiceType;
+    const routedSelection = opts.scene_key
+      ? resolveSceneModelSelection(db, opts.scene_key, {
+          serviceType: imageServiceType || 'image',
+          preferredModel,
+        })
+      : null;
+    const config = routedSelection?.row && routedSelection?.config
+      ? routedSelection.config
+      : getDefaultImageConfig(
+          db,
+          preferredModel,
+          opts.preferred_provider ?? opts.preferredProvider,
+          imageServiceType
+        );
+    const model = config
+      ? getModelFromConfig(config, routedSelection?.model_override || preferredModel)
+      : (preferredModel || null);
+    return {
+      config_id: config?.id || null,
+      provider: config?.provider || null,
+      model,
+    };
+  } catch (_) {
+    return {
+      config_id: null,
+      provider: opts.preferred_provider || opts.preferredProvider || null,
+      model: opts.model || null,
+    };
+  }
+}
+
+async function callImageApi(db, log, opts) {
+  const meta = resolveImageLogMeta(db, opts);
+  const record = aiRequestLogService.start(db, {
+    service_type: 'image',
+    operation: opts.scene_key || opts.image_type || 'image_generation',
+    scene_key: opts.scene_key || null,
+    ...meta,
+    options: opts,
+    related_type: opts.image_gen_id ? 'image_generation' : undefined,
+    related_id: opts.image_gen_id,
+    request: {
+      prompt: opts.prompt || '',
+      negative_prompt: opts.user_negative_prompt ?? opts.negative_prompt ?? '',
+      size: opts.size || null,
+      quality: opts.quality || null,
+      reference_image_urls: opts.reference_image_urls || [],
+      system_prompt: opts.system_prompt || '',
+      options: opts,
+    },
+  });
+  try {
+    const result = await callImageApiInternal(db, log, opts);
+    if (result?.error) {
+      aiRequestLogService.fail(db, record, result.error, result, meta);
+    } else {
+      aiRequestLogService.succeed(db, record, result, meta);
+    }
+    return result;
+  } catch (error) {
+    aiRequestLogService.fail(db, record, error, null, meta);
+    throw error;
+  }
+}
+
 /**
  * 创建 image_generation 记录并异步调用 API，完成后更新记录与角色 image_url。
  * 与场景图一致：创建 task 并写入 task_id，便于前端轮询 /tasks/:task_id 获知完成或报错。
@@ -1686,8 +2186,11 @@ function createAndGenerateImage(db, log, opts) {
   }
 
   setImmediate(async () => {
+    let stopTaskHeartbeat = () => {};
     try {
       db.prepare('UPDATE image_generations SET status = ? WHERE id = ?').run('processing', imageGenId);
+      taskService.updateTaskStatus(db, taskId, 'processing', 5, '正在生成图片...');
+      stopTaskHeartbeat = taskService.startTaskHeartbeat(db, log, taskId);
       const result = await callImageApi(db, log, {
         prompt,
         model,
@@ -1740,12 +2243,12 @@ function createAndGenerateImage(db, log, opts) {
       // 兼容旧库无 completed_at：先试完整 UPDATE，失败则只更新必有列
       try {
         db.prepare(
-          'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, completed_at = ?, updated_at = ? WHERE id = ?'
+          'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
         ).run('completed', result.image_url, localPath, now2, now2, imageGenId);
       } catch (e) {
         if ((e.message || '').includes('completed_at')) {
           db.prepare(
-            'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, updated_at = ? WHERE id = ?'
+            'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, updated_at = ? WHERE id = ?'
           ).run('completed', result.image_url, localPath, now2, imageGenId);
         } else {
           throw e;
@@ -1782,7 +2285,13 @@ function createAndGenerateImage(db, log, opts) {
             throw e;
           }
         }
-        log.info('Character image updated', { character_id: charIdNum, image_url: result.image_url, local_path: localPath });
+        log.info('Character image updated', {
+          character_id: charIdNum,
+          image_source: String(result.image_url || '').startsWith('data:')
+            ? `inline-data(${String(result.image_url).length} chars)`
+            : result.image_url,
+          local_path: localPath,
+        });
       }
       if (sceneIdNum != null) {
         try {
@@ -1808,7 +2317,13 @@ function createAndGenerateImage(db, log, opts) {
             throw e;
           }
         }
-        log.info('Scene image updated', { scene_id: sceneIdNum, image_url: result.image_url, local_path: localPath });
+        log.info('Scene image updated', {
+          scene_id: sceneIdNum,
+          image_source: String(result.image_url || '').startsWith('data:')
+            ? `inline-data(${String(result.image_url).length} chars)`
+            : result.image_url,
+          local_path: localPath,
+        });
       }
       log.info('Image generation completed', { image_gen_id: imageGenId, local_path: localPath });
     } catch (err) {
@@ -1837,6 +2352,8 @@ function createAndGenerateImage(db, log, opts) {
         } catch (_) {}
       }
       log.error('Image generation error', { image_gen_id: imageGenId, task_id: taskId, error: err.message });
+    } finally {
+      stopTaskHeartbeat();
     }
   });
 
@@ -1872,6 +2389,9 @@ function getStoryboardReferenceLimits(config, modelName) {
   const protocol = (config?.api_protocol || '').toLowerCase() || inferProtocol(provider, modelName || config?.model);
   if (protocol === 'kling') {
     return { total: 1, maxCharacters: 1, maxObjects: 1 };
+  }
+  if (protocol === 'venice') {
+    return { total: 3, maxCharacters: 3, maxObjects: 3 };
   }
   return { total: 4, maxCharacters: 3, maxObjects: 4 };
 }
@@ -1933,6 +2453,15 @@ module.exports = {
   refListHasCanonical,
   fixAgnesImageSize,
   isAgnesImageConfig,
+  normalizeFalImageSize,
+  resolveFalImageEndpoint,
+  normalizeVeniceImageResolution,
+  normalizeVeniceImageOutput,
+  resolveVeniceImageModel,
+  isSupportedVeniceImageBuffer,
+  normalizeVeniceImageInput,
+  sanitizeVeniceImageGenerateBody,
+  callVeniceImageApi,
   /** 图床 URL 缓存（image_proxy_cache），供 SD2 认证等复用 */
   getProxyCache,
   getProxyCacheValidated,

@@ -3,8 +3,7 @@
     <header class="header">
       <div class="header-inner">
         <h1 class="logo">
-          <span class="logo-main">本地短剧助手</span>
-          <span class="logo-sub">LocalMiniDrama</span>
+          <BrandLogo />
         </h1>
         <!-- 公共资源库（左侧，靛紫调） -->
         <div class="header-library">
@@ -34,7 +33,7 @@
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
           </el-button>
-          <el-button class="btn-settings" @click="showAiConfigDialog = true">
+          <el-button v-if="authState.user?.is_super_admin" class="btn-settings" @click="openAiConfig">
             <el-icon><Setting /></el-icon>AI配置
           </el-button>
           <el-button class="btn-import" :loading="importing" @click="triggerImport">
@@ -143,11 +142,6 @@
         <el-button @click="showNewDialog = false">取消</el-button>
         <el-button type="primary" :loading="newSaving" :disabled="!newForm.title?.trim()" @click="submitNew">确定</el-button>
       </template>
-    </el-dialog>
-
-    <!-- AI 配置弹窗 -->
-    <el-dialog v-model="showAiConfigDialog" title="AI 配置" width="90%" destroy-on-close>
-      <AIConfigContent v-if="showAiConfigDialog" />
     </el-dialog>
 
     <!-- 公共角色库 -->
@@ -314,9 +308,9 @@
     </el-dialog>
 
     <!-- 微信二维码 -->
-    <el-dialog v-if="!vendorLockEnabled" v-model="showWechat" title="微信联系作者" width="320px" align-center>
+    <el-dialog v-if="!vendorLockEnabled" v-model="showWechat" title="微信联系作者" width="min(420px, 92vw)" align-center>
       <div style="text-align:center;padding:8px 0 4px">
-        <img src="/wx.jpg" alt="微信二维码" style="width:240px;height:240px;object-fit:contain;border-radius:8px;" />
+        <img src="/wx.jpg" alt="微信二维码" style="display:block;width:100%;height:auto;max-height:520px;object-fit:contain;border-radius:8px;" />
         <p style="margin:12px 0 0;font-size:13px;color:var(--text-secondary,#a1a1aa);">扫码添加微信，欢迎交流</p>
       </div>
     </el-dialog>
@@ -362,11 +356,12 @@ import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
 import { sceneLibraryAPI } from '@/api/sceneLibrary'
 import { propLibraryAPI } from '@/api/propLibrary'
-import AIConfigContent from '@/components/AIConfigContent.vue'
 import { uploadAPI } from '@/api/upload'
 import { aiAPI } from '@/api/ai'
 import { imagesAPI } from '@/api/images'
 import { taskAPI } from '@/api/task'
+import BrandLogo from '@/components/BrandLogo.vue'
+import { authState } from '@/stores/auth'
 
 const router = useRouter()
 const { isDark, toggle: toggleTheme } = useTheme()
@@ -431,9 +426,12 @@ const loading = ref(false)
 const dramas = ref([])
 const total = ref(0)
 
-const showAiConfigDialog = ref(false)
 const showWechat = ref(false)
 const vendorLockEnabled = ref(false)
+
+function openAiConfig() {
+  router.push({ name: 'ai-config', query: { returnTo: '/' } })
+}
 
 // 图片预览
 const previewImageUrl = ref(null)

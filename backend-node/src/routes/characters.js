@@ -218,7 +218,7 @@ function routes(db, cfg, log, uploadService) {
           if (out.error === 'character not found') return response.notFound(res, '角色不存在');
           return response.badRequest(res, out.error);
         }
-        response.success(res, { message: '已加入本剧角色库', item: out.item });
+        response.success(res, { message: '已保存为可复用角色模板', item: out.item });
       } catch (err) {
         log.error('characters add-to-library', { error: err.message });
         response.internalError(res, err.message);

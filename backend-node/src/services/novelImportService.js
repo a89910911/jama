@@ -55,7 +55,6 @@ async function summarizeChapterToScript(db, log, chapterTitle, chapterContent, d
   const maxLen = 2000;
   const truncated = chapterContent.length > maxLen ? chapterContent.slice(0, maxLen) + '...' : chapterContent;
   const userPrompt = promptTemplates.resolvePromptContent(db, 'novel.import.user', {
-    locale: 'zh',
     variables: {
       drama_title: dramaTitle || '未知',
       chapter_title: chapterTitle || '',

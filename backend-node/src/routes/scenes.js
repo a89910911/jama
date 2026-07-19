@@ -5,6 +5,15 @@ const imageService = require('../services/imageService');
 
 function routes(db, log, cfg) {
   return {
+    listByDrama: (req, res) => {
+      try {
+        const scenes = sceneService.listByDramaId(db, req.params.id);
+        response.success(res, scenes);
+      } catch (err) {
+        log.error('scenes listByDrama', { error: err.message });
+        response.internalError(res, err.message);
+      }
+    },
     getOne: (req, res) => {
       try {
         const scene = sceneService.getSceneById(db, Number(req.params.scene_id));
@@ -116,7 +125,7 @@ function routes(db, log, cfg) {
           if (out.error === 'unauthorized') return response.forbidden(res, '无权限');
           return response.badRequest(res, out.error);
         }
-        response.success(res, { message: '已加入本剧场景库', item: out.item });
+        response.success(res, { message: '已保存为可复用场景模板', item: out.item });
       } catch (err) {
         log.error('scenes add-to-library', { error: err.message });
         response.internalError(res, err.message);

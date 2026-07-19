@@ -2,6 +2,26 @@
 const fs = require('fs');
 const path = require('path');
 const { normalizeMaterialHubToken } = require('./jimengMaterialHubService');
+const {
+  FAL_PLATFORM_BASE,
+  isFalConfig,
+  falHeaders,
+  getFalErrorMessage,
+} = require('./falClient');
+const {
+  isVeniceConfig,
+  veniceApiBase,
+  veniceHeaders,
+  getVeniceErrorMessage,
+  veniceRequest,
+} = require('./veniceClient');
+const {
+  isHolyCrabConfig,
+  joinHolyCrabUrl,
+  holyCrabHeaders,
+  holyCrabRequest,
+  parseHolyCrabEnvelope,
+} = require('./holyCrabClient');
 
 function normalizeApiKeyForService(serviceType, apiKey) {
   if (serviceType === 'jimeng2_character_auth' && apiKey != null) {
@@ -258,6 +278,66 @@ async function testConnection(opts) {
   const provider = (opts.provider || 'openai').toLowerCase();
   const serviceType = (opts.service_type || '').toLowerCase();
   let endpoint = opts.endpoint || '';
+
+  // --- fal.ai：使用只读模型列表验证 Key，避免连接测试触发生成费用 ---
+  if (isFalConfig(opts)) {
+    const res = await fetch(`${FAL_PLATFORM_BASE}/v1/models?limit=1`, {
+      method: 'GET',
+      headers: falHeaders(opts.api_key),
+    });
+    const raw = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(raw);
+    } catch (_) {}
+    if (!res.ok) {
+      throw new Error(
+        `fal.ai API Key 验证失败 (${res.status}): ${getFalErrorMessage(data, raw.slice(0, 300))}`
+      );
+    }
+    return;
+  }
+
+  // --- Venice.ai：读取模型列表验证 Bearer Key，不触发生成计费 ---
+  if (isVeniceConfig(opts)) {
+    const requestImpl = typeof opts.request_impl === 'function'
+      ? opts.request_impl
+      : veniceRequest;
+    const res = await requestImpl(`${veniceApiBase(opts.base_url)}/models?limit=1`, {
+      method: 'GET',
+      headers: veniceHeaders(opts.api_key),
+      timeoutMs: 30000,
+    });
+    const raw = String(res?.raw || '');
+    const statusCode = Number(res?.statusCode || res?.status || 0);
+    let data = null;
+    try {
+      data = JSON.parse(raw);
+    } catch (_) {}
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(
+        `Venice.ai API Key 验证失败 (${statusCode}): ${getVeniceErrorMessage(data, raw.slice(0, 300))}`
+      );
+    }
+    return;
+  }
+
+  // --- HolyCrab：只读查询任务列表验证 X-User-Token，不触发生成费用 ---
+  if (isHolyCrabConfig(opts)) {
+    const requestImpl = typeof opts.request_impl === 'function'
+      ? opts.request_impl
+      : holyCrabRequest;
+    const res = await requestImpl(
+      joinHolyCrabUrl(opts.base_url, '/api/tasks?page=1&pageSize=1'),
+      {
+        method: 'GET',
+        headers: holyCrabHeaders(opts.api_key),
+        timeoutMs: 30000,
+      }
+    );
+    parseHolyCrabEnvelope(res, 'HolyCrab API Key 验证失败');
+    return;
+  }
 
   // --- NanoBanana ---
   if (provider === 'nano_banana') {

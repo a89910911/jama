@@ -123,6 +123,35 @@ async function downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, proj
   }
 }
 
+function saveVideoBufferToLocal(
+  storagePath,
+  videoBuffer,
+  videoGenId,
+  log,
+  projectSubdir = null,
+  contentType = 'video/mp4'
+) {
+  if (!Buffer.isBuffer(videoBuffer) || videoBuffer.length === 0) return null;
+  const { dir, relPrefix } = resolveVideosDir(storagePath, projectSubdir);
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const ext = /webm/i.test(contentType) ? 'webm' : /quicktime|mov/i.test(contentType) ? 'mov' : 'mp4';
+    const name = `vg_${videoGenId}_${randomUUID().slice(0, 8)}.${ext}`;
+    fs.writeFileSync(path.join(dir, name), videoBuffer);
+    const relativePath = `${relPrefix}/${name}`.replace(/\\/g, '/');
+    log.info('Video buffer saved to local', {
+      videoGenId,
+      local_path: relativePath,
+      bytes: videoBuffer.length,
+      projectSubdir: projectSubdir || '(root)',
+    });
+    return relativePath;
+  } catch (error) {
+    log.warn('Save video buffer error', { videoGenId, error: error.message });
+    return null;
+  }
+}
+
 /** 与图生 aspectRatioToSize 对齐的归一化分辨率（偶数像素，便于 H.264） */
 function targetVideoPixelsForAspect(aspectRatio) {
   const r = String(aspectRatio || '16:9').trim();
@@ -212,48 +241,70 @@ function resolveStoragePath(cfg) {
     : path.join(process.cwd(), cfg.storage?.local_path || './data/storage');
 }
 
-async function finalizeSuccessfulVideo(db, log, videoGenId, row, rowForAspect, videoUrl, logLabel) {
+async function finalizeSuccessfulVideo(
+  db,
+  log,
+  videoGenId,
+  row,
+  rowForAspect,
+  videoUrl,
+  logLabel,
+  videoBuffer = null,
+  contentType = 'video/mp4'
+) {
   const now = new Date().toISOString();
   let localPath = null;
   try {
     const cfg = require('../config').loadConfig();
     const storagePath = resolveStoragePath(cfg);
     const projectSubdir = storageLayout.getProjectStorageSubdir(db, row.drama_id);
-    localPath = await downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir);
+    localPath = Buffer.isBuffer(videoBuffer)
+      ? saveVideoBufferToLocal(
+          storagePath,
+          videoBuffer,
+          videoGenId,
+          log,
+          projectSubdir,
+          contentType
+        )
+      : await downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir);
     maybeNormalizeVideoAfterDownload(storagePath, localPath, rowForAspect, videoGenId, log);
   } catch (_) {}
+  const persistedVideoUrl =
+    videoUrl ||
+    (localPath ? `/static/${String(localPath).replace(/^\/+/, '')}` : null);
   try {
     db.prepare(
       'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, completed_at = ?, updated_at = ? WHERE id = ?'
-    ).run('completed', videoUrl, localPath, now, now, videoGenId);
+    ).run('completed', persistedVideoUrl, localPath, now, now, videoGenId);
   } catch (e) {
     if ((e.message || '').includes('completed_at')) {
       db.prepare(
         'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, updated_at = ? WHERE id = ?'
-      ).run('completed', videoUrl, localPath, now, videoGenId);
+      ).run('completed', persistedVideoUrl, localPath, now, videoGenId);
     } else throw e;
   }
   if (row.storyboard_id) {
     try {
       db.prepare('UPDATE storyboards SET video_url = ?, local_path = ?, updated_at = ? WHERE id = ?').run(
-        videoUrl, localPath, now, row.storyboard_id
+        persistedVideoUrl, localPath, now, row.storyboard_id
       );
       log.info('Updated storyboard video' + (logLabel ? ` (${logLabel})` : ''), {
         storyboard_id: row.storyboard_id,
-        video_url: videoUrl,
+        video_url: persistedVideoUrl,
       });
     } catch (_) {}
   }
   if (row.task_id) {
     taskService.updateTaskResult(db, row.task_id, {
       video_generation_id: videoGenId,
-      video_url: videoUrl,
+      video_url: persistedVideoUrl,
       status: 'completed',
     });
   }
   log.info('Video generation completed' + (logLabel ? ` (${logLabel})` : ''), {
     id: videoGenId,
-    video_url: videoUrl,
+    video_url: persistedVideoUrl,
     local_path: localPath,
   });
 }
@@ -277,6 +328,20 @@ async function pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspec
     POLL_INTERVAL_MS
   );
   const now = new Date().toISOString();
+  if (Buffer.isBuffer(pollResult.video_buffer) && pollResult.video_buffer.length > 0) {
+    await finalizeSuccessfulVideo(
+      db,
+      log,
+      videoGenId,
+      row,
+      rowForAspect,
+      null,
+      'after poll',
+      pollResult.video_buffer,
+      pollResult.content_type || 'video/mp4'
+    );
+    return;
+  }
   const polledVideo = resolveRemoteVideoUrl(pollResult.video_url, pollResult.error);
   if (polledVideo.ok) {
     await finalizeSuccessfulVideo(db, log, videoGenId, row, rowForAspect, polledVideo.video_url, 'after poll');
@@ -300,7 +365,7 @@ async function resumePollForVideoGeneration(db, log, videoGenId) {
   const providerTaskId = row.provider_task_id && String(row.provider_task_id).trim();
   if (!providerTaskId) return;
 
-  const config = videoClient.getDefaultVideoConfig(db, row.model);
+  const config = videoClient.getDefaultVideoConfig(db, row.model, 'video_generation');
   if (!config) {
     const now = new Date().toISOString();
     setVideoGenFailed(db, videoGenId, '未配置视频模型', now);
@@ -389,7 +454,7 @@ async function processVideoGeneration(db, log, videoGenId) {
     const storageLocalPath = path.isAbsolute(cfg.storage?.local_path)
       ? cfg.storage.local_path
       : path.join(process.cwd(), cfg.storage?.local_path || './data/storage');
-    const config = videoClient.getDefaultVideoConfig(db, row.model);
+    const config = videoClient.getDefaultVideoConfig(db, row.model, 'video_generation');
     if (!config) {
       setVideoGenFailed(db, videoGenId, '未配置视频模型', now);
       if (row.task_id) taskService.updateTaskError(db, row.task_id, '未配置视频模型');
@@ -431,12 +496,17 @@ async function processVideoGeneration(db, log, videoGenId) {
     const rowForAspect = { ...row, aspect_ratio: aspectForVideo || row.aspect_ratio };
     const hasOmniRefs = !!(reference_urls && reference_urls.length > 0);
     if (row.task_id && hasOmniRefs) {
+      const isHolyCrab =
+        String(config.provider || '').toLowerCase() === 'holycrab' ||
+        String(config.api_protocol || '').toLowerCase() === 'holycrab';
       taskService.updateTaskStatus(
         db,
         row.task_id,
         'processing',
         5,
-        `正在上传 ${reference_urls.length} 张参考图到图床…`
+        isHolyCrab
+          ? `正在直传 ${reference_urls.length} 张参考图到 HolyCrab…`
+          : `正在上传 ${reference_urls.length} 张参考图到图床…`
       );
     }
     const result = await videoClient.callVideoApi(db, log, {
@@ -459,6 +529,7 @@ async function processVideoGeneration(db, log, videoGenId) {
       storage_local_path: storageLocalPath,
       video_gen_id: videoGenId,
       task_id: row.task_id || undefined,
+      scene_key: 'video_generation',
     });
     const now2 = new Date().toISOString();
     if (result.error) {

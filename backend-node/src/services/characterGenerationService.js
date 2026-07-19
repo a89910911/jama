@@ -15,11 +15,9 @@ async function enrichIdentityAnchors(db, log, characterId, appearance) {
   try {
     const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.system', {
       characterId,
-      locale: 'universal',
     });
     const userPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.user', {
       characterId,
-      locale: 'universal',
       variables: { character_appearance: appearance },
     });
     const raw = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {

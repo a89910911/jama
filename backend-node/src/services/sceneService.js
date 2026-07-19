@@ -151,19 +151,13 @@ function getSceneById(db, id) {
  * 与角色的 buildFourViewImagePrompt 对应（画风置顶 + 尾部重申）
  */
 function buildSceneFourViewImagePrompt(db, sceneId, fourViewDescription, styleEn, styleZh) {
-  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.layout', {
-    sceneId,
-    locale: 'universal',
-  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
-  return promptTemplates.resolvePromptContent(db, 'scene.image_four_view.compose', {
+  return promptTemplates.resolvePromptContent(db, 'scene.image_four_view.final', {
     sceneId,
-    locale: 'universal',
     variables: {
       style_zh: zh,
       style_en: en,
-      layout_instruction: imageLayoutInstruction,
       generated_description: fourViewDescription,
     },
   });
@@ -173,19 +167,13 @@ function buildSceneFourViewImagePrompt(db, sceneId, fourViewDescription, styleEn
  * 将文字AI的单图场景描述 + 布局指令 + 风格 合并为完整的图片AI提示词
  */
 function buildSceneSingleImagePrompt(db, sceneId, description, styleEn, styleZh) {
-  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'scene.image_single.layout', {
-    sceneId,
-    locale: 'universal',
-  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
-  return promptTemplates.resolvePromptContent(db, 'scene.image_single.compose', {
+  return promptTemplates.resolvePromptContent(db, 'scene.image_single.final', {
     sceneId,
-    locale: 'universal',
     variables: {
       style_zh: zh,
       style_en: en,
-      layout_instruction: imageLayoutInstruction,
       generated_description: description,
     },
   });
@@ -215,9 +203,8 @@ async function generateScenePromptOnly(db, log, cfg, sceneId, modelName, style) 
 
   const promptContext = { cfg: fourViewCfg, sceneId };
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.user', {
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
     ...promptContext,
-    locale: 'universal',
     variables: {
       entity_name: location || '未知场景',
       entity_time: time,
@@ -274,9 +261,8 @@ async function generateSceneSinglePromptOnly(db, log, cfg, sceneId, modelName, s
 
   const promptContext = { cfg: mergedCfg, sceneId };
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.user', {
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
     ...promptContext,
-    locale: 'universal',
     variables: {
       entity_name: location || '未知场景',
       entity_time: time,
@@ -342,9 +328,8 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
 
     const promptContext = { cfg: mergedCfg, sceneId };
     const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
-    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.user', {
+    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
       ...promptContext,
-      locale: 'universal',
       variables: {
         entity_name: location || '未知场景',
         entity_time: time,
@@ -425,9 +410,8 @@ async function generateSceneSingleImage(db, log, cfg, sceneId, modelName, style)
 
     const promptContext = { cfg: mergedCfg, sceneId };
     const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
-    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image_single.user', {
+    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
       ...promptContext,
-      locale: 'universal',
       variables: {
         entity_name: location || '未知场景',
         entity_time: time,
@@ -494,11 +478,9 @@ async function extractSceneFromImage(db, log, cfg, sceneId) {
   const locationLabel = [sceneRow.location, sceneRow.time].filter(Boolean).join(' · ') || '场景';
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.system', {
     sceneId,
-    locale: 'universal',
   });
   const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.user', {
     sceneId,
-    locale: 'universal',
     variables: { entity_name: locationLabel },
   });
 

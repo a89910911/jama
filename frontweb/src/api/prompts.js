@@ -4,15 +4,14 @@ export const promptsAPI = {
   list(params = {}) {
     return request.get('/settings/prompts', { params })
   },
-  update(key, { locale, content, version }) {
-    return request.put(`/settings/prompts/${encodeURIComponent(key)}`, { locale, content, version })
+  update(key, { content, version }) {
+    return request.put(`/settings/prompts/${encodeURIComponent(key)}`, { content, version })
   },
-  reset(key, { locale, version }) {
-    return request.post(`/settings/prompts/${encodeURIComponent(key)}/reset-seed`, { locale, version })
+  reset(key, { version }) {
+    return request.post(`/settings/prompts/${encodeURIComponent(key)}/reset-seed`, { version })
   },
-  preview(key, { locale, variables = {}, content }) {
+  preview(key, { variables = {}, content }) {
     return request.post(`/settings/prompts/${encodeURIComponent(key)}/preview`, {
-      locale,
       variables,
       content,
     })
@@ -20,21 +19,19 @@ export const promptsAPI = {
   listProject(dramaId, params = {}) {
     return request.get(`/dramas/${dramaId}/prompts`, { params })
   },
-  updateProject(dramaId, key, { locale, content, version }) {
+  updateProject(dramaId, key, { content, version }) {
     return request.put(`/dramas/${dramaId}/prompts/${encodeURIComponent(key)}`, {
-      locale,
       content,
       version,
     })
   },
-  deleteProject(dramaId, key, { locale, version }) {
+  deleteProject(dramaId, key, { version }) {
     return request.delete(`/dramas/${dramaId}/prompts/${encodeURIComponent(key)}`, {
-      data: { locale, version },
+      data: { version },
     })
   },
-  previewProject(dramaId, key, { locale, variables = {}, content }) {
+  previewProject(dramaId, key, { variables = {}, content }) {
     return request.post(`/dramas/${dramaId}/prompts/${encodeURIComponent(key)}/preview`, {
-      locale,
       variables,
       content,
     })

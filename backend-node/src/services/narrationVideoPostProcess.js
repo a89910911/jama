@@ -258,6 +258,7 @@ async function runNarrationSubtitlePostProcess(db, log, opts) {
           synth = await ttsService.synthesize(db, log, {
             text,
             storyboard_id: null,
+            episode_id: episodeId,
             storage_base: storageRoot,
           });
         } catch (e) {

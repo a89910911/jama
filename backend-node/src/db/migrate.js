@@ -97,6 +97,15 @@ function ensureColumns(database, table, columns) {
  * 所以原 schema 中 NOT NULL 的列在这里用 DEFAULT 兜底。
  */
 function ensureAllColumns(database) {
+  // --- prompt_definitions ---
+  ensureColumns(database, 'prompt_definitions', [
+    { name: 'content_type',   type: 'TEXT NOT NULL DEFAULT \'user_template\'' },
+    { name: 'subcategory',    type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'detail_category', type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'workflow_stage', type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'workflow_order', type: 'INTEGER NOT NULL DEFAULT 0' },
+  ]);
+
   // --- dramas ---
   ensureColumns(database, 'dramas', [
     { name: 'title',          type: 'TEXT NOT NULL DEFAULT \'\'' },
@@ -461,6 +470,61 @@ function ensureAllColumns(database) {
     { name: 'created_at',  type: 'TEXT' },
     { name: 'updated_at',  type: 'TEXT' },
     { name: 'deleted_at',  type: 'TEXT' },
+  ]);
+
+  // --- ai_request_logs ---
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS ai_request_logs (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_uuid     TEXT NOT NULL UNIQUE,
+      drama_id         INTEGER,
+      user_id          INTEGER,
+      service_type     TEXT NOT NULL DEFAULT 'text',
+      operation        TEXT NOT NULL DEFAULT 'generate',
+      scene_key        TEXT,
+      provider         TEXT,
+      model            TEXT,
+      config_id        INTEGER,
+      status           TEXT NOT NULL DEFAULT 'processing',
+      request_payload  TEXT,
+      response_payload TEXT,
+      error_message    TEXT,
+      duration_ms      INTEGER,
+      related_type     TEXT,
+      related_id       TEXT,
+      created_at       TEXT NOT NULL DEFAULT '',
+      completed_at     TEXT,
+      updated_at       TEXT NOT NULL DEFAULT ''
+    )`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_ai_request_logs_drama_created
+      ON ai_request_logs(drama_id, created_at DESC)`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_ai_request_logs_drama_status
+      ON ai_request_logs(drama_id, status)`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_ai_request_logs_service_type
+      ON ai_request_logs(service_type)`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_ai_request_logs_related
+      ON ai_request_logs(related_type, related_id, created_at DESC)`);
+  } catch (_) {}
+  ensureColumns(database, 'ai_request_logs', [
+    { name: 'request_uuid',     type: 'TEXT' },
+    { name: 'drama_id',         type: 'INTEGER' },
+    { name: 'user_id',          type: 'INTEGER' },
+    { name: 'service_type',     type: 'TEXT NOT NULL DEFAULT \'text\'' },
+    { name: 'operation',        type: 'TEXT NOT NULL DEFAULT \'generate\'' },
+    { name: 'scene_key',        type: 'TEXT' },
+    { name: 'provider',         type: 'TEXT' },
+    { name: 'model',            type: 'TEXT' },
+    { name: 'config_id',        type: 'INTEGER' },
+    { name: 'status',           type: 'TEXT NOT NULL DEFAULT \'processing\'' },
+    { name: 'request_payload',  type: 'TEXT' },
+    { name: 'response_payload', type: 'TEXT' },
+    { name: 'error_message',    type: 'TEXT' },
+    { name: 'duration_ms',      type: 'INTEGER' },
+    { name: 'related_type',     type: 'TEXT' },
+    { name: 'related_id',       type: 'TEXT' },
+    { name: 'created_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'completed_at',     type: 'TEXT' },
+    { name: 'updated_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
   ]);
 
   // --- image_proxy_cache ---

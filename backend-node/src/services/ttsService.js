@@ -7,6 +7,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
+const aiRequestLogService = require('./aiRequestLogService');
+const {
+  isFalConfig,
+  falDirectBase,
+  falHeaders,
+  joinFalUrl,
+  normalizeFalEndpoint,
+  getFalErrorMessage,
+} = require('./falClient');
 
 /**
  * 使用 MiniMax T2A v2 合成语音
@@ -112,11 +121,100 @@ async function synthesizeWithOpenai(text, voice, apiKey, baseUrl, model, speed) 
   });
 }
 
+function resolveFalTtsEndpoint(config, model) {
+  const endpoint = config?.endpoint || model || 'fal-ai/qwen-3-tts/text-to-speech/1.7b';
+  return normalizeFalEndpoint(endpoint);
+}
+
+function buildFalTtsInput(text, voiceId, model, settings = {}) {
+  const modelLower = String(model || '').toLowerCase();
+  if (modelLower.includes('gemini') && modelLower.includes('tts')) {
+    return {
+      prompt: text,
+      voice: voiceId || settings.voice_id || 'Kore',
+      language_code: settings.language_code || 'Chinese Mandarin (China)',
+      output_format: 'mp3',
+      ...(settings.style_instructions ? { style_instructions: settings.style_instructions } : {}),
+      ...(Number.isFinite(Number(settings.temperature))
+        ? { temperature: Number(settings.temperature) }
+        : {}),
+    };
+  }
+  if (modelLower.includes('qwen-3-tts')) {
+    return {
+      text,
+      voice: voiceId || settings.voice_id || 'Vivian',
+      language: settings.language || 'Chinese',
+      ...(settings.prompt ? { prompt: settings.prompt } : {}),
+    };
+  }
+  return {
+    text,
+    ...(voiceId || settings.voice_id ? { voice: voiceId || settings.voice_id } : {}),
+  };
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('fal.ai TTS 请求超时');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function synthesizeWithFal(text, voiceId, config, model, settings) {
+  const endpoint = resolveFalTtsEndpoint(config, model);
+  const url = joinFalUrl(falDirectBase(config.base_url), endpoint);
+  const input = buildFalTtsInput(text, voiceId, endpoint, settings);
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: falHeaders(config.api_key, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(input),
+    },
+    300000
+  );
+  const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+  if (res.ok && contentType.startsWith('audio/')) {
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const raw = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (!res.ok) {
+    throw new Error(
+      `fal.ai TTS HTTP ${res.status}: ${getFalErrorMessage(data, raw.slice(0, 500))}`
+    );
+  }
+  const audioUrl =
+    data?.audio?.url ||
+    data?.data?.audio?.url ||
+    data?.audio_url ||
+    data?.url;
+  if (!audioUrl) {
+    throw new Error(`fal.ai TTS 未返回音频地址: ${raw.slice(0, 500)}`);
+  }
+  const audioRes = await fetchWithTimeout(audioUrl, { method: 'GET' }, 120000);
+  if (!audioRes.ok) {
+    throw new Error(`fal.ai TTS 音频下载失败: HTTP ${audioRes.status}`);
+  }
+  return Buffer.from(await audioRes.arrayBuffer());
+}
+
 /**
  * 合成 TTS 并保存到本地文件
  * @returns {{ local_path: string, audio_url: string }}
  */
-async function synthesize(db, log, { text, storyboard_id, config, storage_base, voice_id, speed }) {
+async function synthesizeInternal(db, log, { text, storyboard_id, config, storage_base, voice_id, speed }) {
   if (!text || !text.trim()) throw new Error('text 不能为空');
   const aiConfigService = require('./aiConfigService');
   const ttsConfig = config || (() => {
@@ -136,7 +234,15 @@ async function synthesize(db, log, { text, storyboard_id, config, storage_base, 
   const finalSpeed = speed || ttsSettings.speed || 1.0;
   let audioBuffer;
 
-  if (provider === 'minimax') {
+  if (provider === 'fal' || provider === 'fal.ai' || isFalConfig(ttsConfig)) {
+    audioBuffer = await synthesizeWithFal(
+      text,
+      voiceId,
+      ttsConfig,
+      ttsModel || 'fal-ai/qwen-3-tts/text-to-speech/1.7b',
+      ttsSettings
+    );
+  } else if (provider === 'minimax') {
     audioBuffer = await synthesizeWithMinimax(
       text,
       voiceId || 'female-shaonv',
@@ -170,4 +276,54 @@ async function synthesize(db, log, { text, storyboard_id, config, storage_base, 
   return { local_path: localPath };
 }
 
-module.exports = { synthesize };
+function resolveTtsLogMeta(db, options = {}) {
+  try {
+    const aiConfigService = require('./aiConfigService');
+    const config = options.config || (() => {
+      const active = aiConfigService.listConfigs(db, 'tts').filter((item) => item.is_active);
+      return active.find((item) => item.is_default) || active[0];
+    })();
+    return {
+      config_id: config?.id || null,
+      provider: config?.provider || null,
+      model: config?.default_model
+        || (Array.isArray(config?.model) ? config.model[0] : config?.model)
+        || null,
+    };
+  } catch (_) {
+    return { config_id: null, provider: null, model: null };
+  }
+}
+
+async function synthesize(db, log, options) {
+  const meta = resolveTtsLogMeta(db, options);
+  const record = aiRequestLogService.start(db, {
+    service_type: 'tts',
+    operation: 'speech_synthesis',
+    ...meta,
+    options,
+    related_type: options.storyboard_id ? 'storyboard' : undefined,
+    related_id: options.storyboard_id,
+    request: {
+      text: options.text || '',
+      storyboard_id: options.storyboard_id || null,
+      voice_id: options.voice_id || null,
+      speed: options.speed || null,
+    },
+  });
+  try {
+    const result = await synthesizeInternal(db, log, options);
+    aiRequestLogService.succeed(db, record, result, meta);
+    return result;
+  } catch (error) {
+    aiRequestLogService.fail(db, record, error, null, meta);
+    throw error;
+  }
+}
+
+module.exports = {
+  synthesize,
+  resolveFalTtsEndpoint,
+  buildFalTtsInput,
+  synthesizeWithFal,
+};

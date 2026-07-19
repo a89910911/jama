@@ -381,9 +381,10 @@ export function useProps(deps) {
       dramaAllPropTotal.value = list.length
       const start = (dramaAllPropPage.value - 1) * dramaAllPropPageSize.value
       dramaAllPropList.value = list.slice(start, start + dramaAllPropPageSize.value)
-    } catch {
+    } catch (e) {
       dramaAllPropList.value = []
       dramaAllPropTotal.value = 0
+      ElMessage.error(e.message || '加载已创建道具失败')
     } finally {
       dramaAllPropLoading.value = false
     }
@@ -455,7 +456,7 @@ export function useProps(deps) {
   async function onDeletePropLibrary(item) {
     try {
       await ElMessageBox.confirm(
-        `确定删除公共道具「${(item.name || '未命名').slice(0, 20)}」吗？`,
+        `确定删除可复用道具模板「${(item.name || '未命名').slice(0, 20)}」吗？`,
         '删除确认',
         { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
       )
@@ -473,10 +474,10 @@ export function useProps(deps) {
     addingPropToLibraryId.value = prop.id
     try {
       await propAPI.addToLibrary(prop.id, {})
-      ElMessage.success('已加入本剧道具库')
+      ElMessage.success('已保存为可复用道具模板')
       if (showPropLibrary.value) loadPropLibraryList()
     } catch (e) {
-      ElMessage.error(e.message || '加入失败')
+      ElMessage.error(e.message || '保存失败')
     } finally {
       addingPropToLibraryId.value = null
     }

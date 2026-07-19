@@ -419,9 +419,10 @@ export function useCharacters(deps) {
       dramaAllCharTotal.value = list.length
       const start = (dramaAllCharPage.value - 1) * dramaAllCharPageSize.value
       dramaAllCharList.value = list.slice(start, start + dramaAllCharPageSize.value)
-    } catch {
+    } catch (e) {
       dramaAllCharList.value = []
       dramaAllCharTotal.value = 0
+      ElMessage.error(e.message || '加载已创建角色失败')
     } finally {
       dramaAllCharLoading.value = false
     }
@@ -492,7 +493,7 @@ export function useCharacters(deps) {
   async function onDeleteCharLibrary(item) {
     try {
       await ElMessageBox.confirm(
-        `确定删除公共角色「${(item.name || '未命名').slice(0, 20)}」吗？`,
+        `确定删除可复用角色模板「${(item.name || '未命名').slice(0, 20)}」吗？`,
         '删除确认',
         { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
       )
@@ -510,10 +511,10 @@ export function useCharacters(deps) {
     addingCharToLibraryId.value = char.id
     try {
       await characterAPI.addToLibrary(char.id, {})
-      ElMessage.success('已加入本剧角色库')
+      ElMessage.success('已保存为可复用角色模板')
       if (showCharLibrary.value) loadCharLibraryList()
     } catch (e) {
-      ElMessage.error(e.message || '加入失败')
+      ElMessage.error(e.message || '保存失败')
     } finally {
       addingCharToLibraryId.value = null
     }

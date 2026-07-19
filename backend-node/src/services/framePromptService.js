@@ -1,6 +1,5 @@
 // 与 Go application/services/frame_prompt_service.go 对齐：生成首帧/关键帧/尾帧/分镜板/动作序列提示词
 const loadConfig = require('../config').loadConfig;
-const promptI18n = require('./promptI18n');
 const promptTemplates = require('./promptTemplateService');
 const aiClient = require('./aiClient');
 const taskService = require('./taskService');
@@ -101,7 +100,6 @@ function buildCharacterAnchorText(db, storyboardId, name, anchors, appearance) {
     }
     return promptTemplates.resolvePromptContent(db, 'frame.character_anchor.structured', {
       storyboardId,
-      locale: 'universal',
       variables: {
         character_name: name,
         face_shape: anchors.face_shape !== 'unspecified' ? anchors.face_shape || '' : '',
@@ -120,7 +118,6 @@ function buildCharacterAnchorText(db, storyboardId, name, anchors, appearance) {
   if (cleaned) {
     return promptTemplates.resolvePromptContent(db, 'frame.character_anchor.fallback', {
       storyboardId,
-      locale: 'universal',
       variables: { character_name: name, appearance: cleaned },
     });
   }
@@ -232,10 +229,7 @@ function loadScene(db, sceneId) {
 
 function buildDatabaseStoryboardContext(db, cfg, sb, scene, characterNames, taskId) {
   const promptContext = { cfg, storyboardId: sb?.id, taskId };
-  const isEn = promptI18n.isEnglish(cfg);
-  const style = isEn
-    ? (cfg?.style?.default_style_en || cfg?.style?.default_style || cfg?.style?.default_style_zh || '')
-    : (cfg?.style?.default_style_zh || cfg?.style?.default_style || cfg?.style?.default_style_en || '');
+  const style = cfg?.style?.default_style_zh || cfg?.style?.default_style || cfg?.style?.default_style_en || '';
   const styleContract = String(style || '').trim()
     ? promptTemplates.resolvePromptContent(db, 'frame.context.style', {
         ...promptContext,
@@ -252,7 +246,7 @@ function buildDatabaseStoryboardContext(db, cfg, sb, scene, characterNames, task
   const rosterContract = allowedCharNames.length
     ? promptTemplates.resolvePromptContent(db, 'frame.context.character_roster', {
         ...promptContext,
-        variables: { allowed_characters: allowedCharNames.join(isEn ? ', ' : '、') },
+        variables: { allowed_characters: allowedCharNames.join('、') },
       })
     : '';
   const anchorContract = characterNames.length
@@ -286,16 +280,13 @@ function buildDatabaseStoryboardContext(db, cfg, sb, scene, characterNames, task
 }
 
 function buildDatabaseFallbackPrompt(db, cfg, scene, frameKind, storyboardId, taskId) {
-  const isEn = promptI18n.isEnglish(cfg);
-  const style = isEn
-    ? (cfg?.style?.default_style_en || cfg?.style?.default_style || cfg?.style?.default_style_zh || '')
-    : (cfg?.style?.default_style_zh || cfg?.style?.default_style || cfg?.style?.default_style_en || '');
+  const style = cfg?.style?.default_style_zh || cfg?.style?.default_style || cfg?.style?.default_style_en || '';
   return promptTemplates.resolvePromptContent(db, `frame.${frameKind}.fallback`, {
     cfg,
     storyboardId,
     taskId,
     variables: {
-      scene_context: scene ? [scene.location, scene.time].filter(Boolean).join(isEn ? ', ' : '，') : '',
+      scene_context: scene ? [scene.location, scene.time].filter(Boolean).join('，') : '',
       style_prompt: String(style || '').trim(),
     },
   });
@@ -342,20 +333,20 @@ async function generateSingleFrame(db, log, cfg, sb, scene, characterNames, mode
   };
   let systemPrompt = promptTemplates.resolvePromptContent(db, `frame.${promptKind}.system`, promptContext);
   if (promptKind === 'first' || promptKind === 'last') {
-    const scaleContract = promptTemplates.resolvePromptContent(db, 'image.realistic_scale_contract', promptContext);
+    const scaleContract = promptTemplates.resolvePromptContent(
+      db,
+      `frame.${promptKind}.realistic_scale_contract`,
+      promptContext
+    );
     if (!systemPrompt.includes(scaleContract)) {
       systemPrompt = `${systemPrompt}\n\n${scaleContract}`;
     }
   }
-  const userTemplate = promptTemplates.resolvePromptContent(db, `frame.${promptKind}.user`, {
+  const userTemplate = promptTemplates.resolvePromptContent(db, 'frame.input.user', {
     ...promptContext,
     variables: { frame_context: context },
   });
-  const outputContract = promptTemplates.resolvePromptContent(db, 'frame.output_contract', {
-    ...promptContext,
-    locale: 'universal',
-  });
-  const userPrompt = `${userTemplate}\n\n${outputContract}`;
+  const userPrompt = userTemplate;
 
   // ── 调试日志：打印完整提示词，方便确认角度/视角是否正确注入 ──
   log.info('[帧提示词] ===== generateSingleFrame DEBUG =====', {

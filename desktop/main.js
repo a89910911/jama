@@ -180,6 +180,8 @@ function createWindow(port) {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    title: 'JamaAI',
+    icon: path.join(getWebDistPath(), 'logo.jpg'),
     webPreferences: { nodeIntegration: false, contextIsolation: true },
     show: false,
   });
@@ -260,7 +262,7 @@ app.whenReady().then(async () => {
     console.error('Failed to start backend', err);
     const { dialog } = require('electron');
     dialog.showErrorBox(
-      '本地短剧助手启动失败',
+      'JamaAI 启动失败',
       `后端服务未能启动，请查看日志：\n${MAIN_STARTUP_LOG}\n\n${stack}`
     );
     app.quit();

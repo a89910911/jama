@@ -280,6 +280,7 @@ async function runMergedEpisodePostProcess(db, log, opts) {
               synth = await ttsService.synthesize(db, log, {
                 text: narrText,
                 storyboard_id: null,
+                episode_id: episodeId,
                 storage_base: storageRoot,
               });
             } catch (e) {

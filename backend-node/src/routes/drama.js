@@ -2,6 +2,7 @@ const dramaService = require('../services/dramaService');
 const propService = require('../services/propService');
 const response = require('../response');
 const dramaExportService = require('../services/dramaExportService');
+const assetExportService = require('../services/assetExportService');
 const dramaImportService = require('../services/dramaImportService');
 
 function createDrama(db, log) {
@@ -183,6 +184,48 @@ function exportDrama(db, cfg, log) {
   };
 }
 
+function exportAssets(db, cfg, log) {
+  return async (req, res) => {
+    try {
+      const episodeId = Number(req.query.episode_id);
+      if (!Number.isFinite(episodeId) || episodeId <= 0) {
+        return response.badRequest(res, 'episode_id 不能为空');
+      }
+      const result = await assetExportService.exportEpisodeAssets(
+        db,
+        cfg,
+        log,
+        req.params.id,
+        episodeId,
+        { scope: req.query.scope }
+      );
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}.zip`
+      );
+      res.setHeader('X-Exported-Asset-Count', String(result.count));
+      res.setHeader('X-Skipped-Asset-Count', String(result.skipped));
+      res.send(result.buffer);
+    } catch (err) {
+      log.error('Export assets failed', { error: err.message });
+      if (err.code === 'INVALID_EXPORT_SCOPE') {
+        return response.badRequest(res, err.message);
+      }
+      if (err.message === '剧本不存在' || err.message === '当前集不存在') {
+        return response.notFound(res, err.message);
+      }
+      if (
+        err.message.startsWith('当前集没有可导出的')
+        || err.message.startsWith('资产导出失败')
+      ) {
+        return response.badRequest(res, err.message);
+      }
+      response.internalError(res, err.message || '资产导出失败');
+    }
+  };
+}
+
 function importDrama(db, cfg, log) {
   return (req, res) => {
     try {
@@ -298,6 +341,7 @@ module.exports = function dramaRoutes(db, cfg, log) {
     downloadEpisodeVideo: downloadEpisodeVideo(db),
     generateStoryboard: generateStoryboard(db, log),
     exportDrama: exportDrama(db, cfg, log),
+    exportAssets: exportAssets(db, cfg, log),
     importDrama: importDrama(db, cfg, log),
     listExamples: listExamples(log),
     importExample: importExample(db, cfg, log),

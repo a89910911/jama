@@ -164,7 +164,7 @@
     <div class="panel-actions">
       <el-button size="small" :loading="saving" @click.stop="saveFields">保存</el-button>
       <el-button v-if="!isUniversal" size="small" :loading="busyStep === 'polish'" @click.stop="polishPrompt">润色</el-button>
-      <el-button v-if="!isUniversal" size="small" type="primary" :loading="busyStep === 'image'" @click.stop="runStep('image')">生图</el-button>
+      <el-button size="small" type="primary" :loading="busyStep === 'image'" @click.stop="runStep('image')">生图</el-button>
       <el-button size="small" type="primary" :loading="busyStep === 'video'" @click.stop="runStep('video')">生视频</el-button>
       <el-button size="small" type="warning" :loading="busyStep === 'audio'" @click.stop="runStep('audio')">配音</el-button>
       <el-button size="small" type="danger" plain @click.stop="deleteStoryboard">删除</el-button>

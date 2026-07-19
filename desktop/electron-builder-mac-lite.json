@@ -1,6 +1,6 @@
 {
   "appId": "com.localminidrama.desktop",
-  "productName": "LocalMiniDrama",
+  "productName": "JamaAI",
   "directories": {
     "output": "release"
   },
@@ -31,7 +31,7 @@
       { "target": "dmg", "arch": ["x64", "arm64"] }
     ],
     "category": "public.app-category.entertainment",
-    "icon": null,
+    "icon": "build/icon.png",
     "identity": null
   },
   "dmg": {

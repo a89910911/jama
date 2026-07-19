@@ -50,8 +50,14 @@ function generateImage(db, log) {
     if (isNaN(id)) return response.badRequest(res, '无效的ID');
     const model = req.body?.model != null ? String(req.body.model).trim() || null : null;
     const style = req.body?.style != null ? String(req.body.style).trim() || null : null;
+    const useQuadGrid = !!req.body?.use_quad_grid;
     try {
-      const taskId = propImageGenerationService.generatePropImage(db, log, id, { model, style });
+      const taskId = propImageGenerationService.generatePropImage(
+        db,
+        log,
+        id,
+        { model, style, useQuadGrid }
+      );
       response.success(res, { task_id: taskId });
     } catch (err) {
       if (err.message === '道具不存在') return response.notFound(res, err.message);
@@ -99,7 +105,7 @@ function addToLibrary(db, log) {
       if (out.error === 'unauthorized') return response.forbidden(res, '无权限');
       return response.badRequest(res, out.error);
     }
-    response.success(res, { message: '已加入本剧道具库', item: out.item });
+    response.success(res, { message: '已保存为可复用道具模板', item: out.item });
   };
 }
 

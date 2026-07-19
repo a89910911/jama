@@ -1,5 +1,10 @@
 const promptI18n = require('./promptI18n');
 const { EXTRACT_PROMPTS } = require('./aiClient');
+const {
+  getBusinessScene,
+  getPromptBusinessSceneBinding,
+  listBusinessScenes,
+} = require('./businessSceneRegistry');
 
 const SENTINELS = {
   style: '__PROMPT_STYLE__',
@@ -11,9 +16,572 @@ const SENTINELS = {
   shotDuration: '986',
 };
 
-function seedCfg(locale) {
+// 面向用户的名称必须直接说明“输入什么、生成什么、在哪一步使用”。
+// 与定义放在独立清单中，并在 buildCatalog 时校验完整性，避免新增提示词继续使用含糊名称。
+const PROMPT_DISPLAY_NAMES = {
+  'story.generation.system': '根据故事梗概生成分集短剧剧本（系统规则）',
+  'story.generation.user': '故事梗概与剧本生成参数（输入模板）',
+  'novel.import.user': '将小说章节改写为短剧剧本（输入模板）',
+  'character.extraction.system': '从剧本提取角色设定（系统规则）',
+  'character.extraction.user': '待提取角色的剧本内容（输入模板）',
+  'character.extraction.drama_info': '角色提取所需的项目资料（输入模板）',
+  'scene.extraction.system': '从剧本提取场景及生图描述（系统规则）',
+  'scene.extraction.user': '待提取场景的剧本内容（输入模板）',
+  'prop.extraction.system': '从剧本提取关键道具及生图描述（系统规则）',
+  'prop.extraction.user': '待提取道具的剧本内容（输入模板）',
+  'vision.character.extract.system': '从角色参考图提取外貌设定（系统规则）',
+  'vision.character.extract.user': '角色参考图识别任务（输入模板）',
+  'vision.scene.extract.system': '从场景参考图提取生图描述（系统规则）',
+  'vision.scene.extract.user': '场景参考图识别任务（输入模板）',
+  'vision.prop.extract.system': '从道具参考图提取生图描述（系统规则）',
+  'vision.prop.extract.user': '道具参考图识别任务（输入模板）',
+  'character.identity_anchors.system': '从角色描述提炼视觉锚点（系统规则）',
+  'character.identity_anchors.user': '待提炼的角色外貌描述（输入模板）',
+  'storyboard.generation.system': '将剧本拆解为分镜方案（系统规则）',
+  'storyboard.generation.user': '分镜生成所需剧本与素材（输入模板）',
+  'storyboard.generation.continuation': '分镜生成中断后的续写指令（输入模板）',
+  'storyboard.generation.continuation_narration': '分镜续写必须包含旁白（附加约束）',
+  'storyboard.generation.continuation_universal': '分镜续写必须使用全能模式（附加约束）',
+  'storyboard.generation.narration': '全片解说模式的分镜旁白要求（附加约束）',
+  'storyboard.generation.universal_mode': '全能模式的分镜新增字段要求（附加约束）',
+  'storyboard.generation.count_constraint': '用户指定分镜数量范围（附加约束）',
+  'storyboard.generation.duration_constraint': '用户指定视频总时长（附加约束）',
+  'storyboard.generation.project_clip_duration_constraint': '项目单段时长优先规则（附加约束）',
+  'storyboard.generation.calculated_shot_duration_constraint': '按总时长计算单镜时长（附加约束）',
+  'frame.first.system': '生成镜头首帧静态生图提示词（系统规则）',
+  'frame.key.system': '生成镜头动作高潮关键帧提示词（系统规则）',
+  'frame.last.system': '生成镜头动作结束尾帧提示词（系统规则）',
+  'frame.input.user': '分镜帧镜头信息（输入模板）',
+  'frame.context.compose': '拼装分镜帧完整镜头上下文（输入模板）',
+  'frame.context.style': '分镜帧统一画风（附加约束）',
+  'frame.context.character_roster': '限制分镜帧可出场角色（附加约束）',
+  'frame.context.character_anchors': '锁定分镜帧角色外貌（附加约束）',
+  'frame.context.spatial_contract': '锁定分镜帧人物站位与空间布局（附加约束）',
+  'frame.first.fallback': '首帧 AI 生成失败时的回退提示词（生图模板）',
+  'frame.key.fallback': '关键帧 AI 生成失败时的回退提示词（生图模板）',
+  'frame.last.fallback': '尾帧 AI 生成失败时的回退提示词（生图模板）',
+  'storyboard.layout.regenerate.system': '重新生成分镜人物站位与空间布局（系统规则）',
+  'storyboard.layout.regenerate.user': '待重生成布局的分镜及邻镜信息（输入模板）',
+  'storyboard.continuity_snapshot.system': '生成分镜连戏状态摘要（系统规则）',
+  'storyboard.continuity_snapshot.user': '连戏摘要所需提示词与素材（输入模板）',
+  'character.image_polish.system': '将角色描述润色为四视图提示词（系统规则）',
+  'scene.image_four_view.system': '将场景描述润色为四视图提示词（系统规则）',
+  'scene.image_single.system': '将场景描述润色为单图提示词（系统规则）',
+  'prop.image_polish.system': '将道具描述润色为资产主图提示词（系统规则）',
+  'character.image_compose': '生成角色四视图最终生图提示词（生图模板）',
+  'scene.image_four_view.final': '生成场景四视图最终生图提示词（生图模板）',
+  'scene.image_single.final': '生成场景单图最终生图提示词（生图模板）',
+  'character.image_polish.user': '待润色的角色名称与描述（输入模板）',
+  'scene.image.user': '待润色的场景地点、时段与描述（输入模板）',
+  'prop.image_polish.user': '待润色的道具名称、类型与描述（输入模板）',
+  'scene.prompt.translate_zh.user': '将场景生图提示词翻译为中文（输入模板）',
+  'storyboard.image_polish.system': '将分镜描述润色为静态单帧提示词（系统规则）',
+  'storyboard.image_polish.user': '分镜图片润色所需镜头与连戏信息（输入模板）',
+  'omni.segment.system': '生成多参考图全能视频片段提示词（系统规则）',
+  'omni.segment.user': '全能视频片段所需剧本与分镜资料（输入模板）',
+  'omni.segment.image_slot_map': '全能视频参考图槽位对应关系（输出格式）',
+  'omni.segment.image_slot_map_empty': '全能视频无参考图时的槽位规则（输出格式）',
+  'omni.segment.line3_scene_reference': '场景图作为首图时的第三行说明（输出格式）',
+  'omni.segment.line3_primary_reference': '普通参考图作为首图时的第三行说明（输出格式）',
+  'omni.segment.line3_no_reference': '无参考图时的第三行说明（输出格式）',
+  'omni.segment.character_binding_scene_first': '场景图在首位时的角色图片绑定（输出格式）',
+  'omni.segment.character_binding_primary': '普通首图模式的角色图片绑定（输出格式）',
+  'omni.segment.character_binding_empty': '无角色参考图时的绑定规则（输出格式）',
+  'omni.segment.reference_rule': '全能视频有参考图时的引用规则（输出格式）',
+  'omni.segment.reference_rule_empty': '全能视频无参考图时的引用规则（输出格式）',
+  'omni.segment.scene_reference_layout': '全能视频遇到场景拼图时的处理规则（输出格式）',
+  'omni.segment.boundary_changed': '切换剧情段落时的视频节奏提示（输出格式）',
+  'omni.segment.boundary_same': '延续同一段落时的视频节奏提示（输出格式）',
+  'omni.segment.polish.system': '润色多参考图全能视频片段提示词（系统规则）',
+  'omni.segment.polish.user': '待润色的全能视频片段资料（输入模板）',
+  'video.classic_polish.system': '润色经典首尾帧图生视频提示词（系统规则）',
+  'video.classic_polish.user': '经典图生视频润色所需资料（输入模板）',
+  'storyboard.image_prompt.compose': '按分镜字段拼装静态首帧提示词（生图模板）',
+  'storyboard.video_prompt.compose': '按分镜字段拼装视频生成提示词（视频模板）',
+  'image.quad_grid.layout': '拼装四宫格图片布局与分格内容（生图模板）',
+  'image.nine_grid.layout': '拼装九宫格图片布局与分格内容（生图模板）',
+  'image.reference_context.system': '向模型说明每张参考图对应对象（系统规则）',
+  'image.negative.anti_split': '图片安全及防分屏负向提示词（负向词）',
+  'video.aspect_ratio_mismatch_suffix': '修正视频目标画幅不匹配（附加约束）',
+  'image.single_frame.anti_split_suffix': '禁止单帧图片出现分屏拼图（附加约束）',
+  'image.reference_generation.user': '非 Gemini 模型的参考图生图拼装（生图模板）',
+  'image.reference.layout_lock_label': '尾帧生成使用首帧作为布局参考（附加约束）',
+  'image.last_frame.layout_lock_suffix': '锁定尾帧人物站位与首帧一致（附加约束）',
+  'image.default_cinematic_style': '未配置画风时的默认电影感风格（生图模板）',
+  'omni.segment.fallback': '全能片段缺少正文时的回退视频提示词（视频模板）',
+  'frame.character_anchor.structured': '将角色结构化字段拼装为视觉锚点（附加约束）',
+  'frame.character_anchor.fallback': '将角色外貌文本拼装为视觉锚点（附加约束）',
+  'frame.first.realistic_scale_contract': '锁定首帧真实物体尺寸与道具比例（附加约束）',
+  'frame.last.realistic_scale_contract': '锁定尾帧真实物体尺寸与道具比例（附加约束）',
+};
+
+// 按用户可理解的制作链路组织全部提示词：
+// 一级分类（剧本/资产/分镜/视频）→ 二级分类 → 资产专用三级用途。
+const PROMPT_CLASSIFICATION_TREE = [
+  {
+    category: '剧本',
+    order: 1,
+    groups: [
+      { subcategory: '故事创作', keys: ['story.generation.system', 'story.generation.user'] },
+      { subcategory: '小说改编', keys: ['novel.import.user'] },
+    ],
+  },
+  {
+    category: '资产',
+    order: 2,
+    groups: [
+      {
+        subcategory: '人物',
+        details: [
+          {
+            detailCategory: '剧本提取',
+            keys: [
+              'character.extraction.system',
+              'character.extraction.user',
+              'character.extraction.drama_info',
+            ],
+          },
+          {
+            detailCategory: '参考图识别',
+            keys: ['vision.character.extract.system', 'vision.character.extract.user'],
+          },
+          {
+            detailCategory: '视觉身份锚点',
+            keys: ['character.identity_anchors.system', 'character.identity_anchors.user'],
+          },
+          {
+            detailCategory: '图片提示词',
+            keys: [
+              'character.image_polish.system',
+              'character.image_polish.user',
+              'character.image_compose',
+            ],
+          },
+        ],
+      },
+      {
+        subcategory: '场景',
+        details: [
+          {
+            detailCategory: '剧本提取',
+            keys: ['scene.extraction.system', 'scene.extraction.user'],
+          },
+          {
+            detailCategory: '参考图识别',
+            keys: ['vision.scene.extract.system', 'vision.scene.extract.user'],
+          },
+          {
+            detailCategory: '图片提示词',
+            keys: [
+              'scene.image_four_view.system',
+              'scene.image_single.system',
+              'scene.image.user',
+              'scene.image_four_view.final',
+              'scene.image_single.final',
+              'scene.prompt.translate_zh.user',
+            ],
+          },
+        ],
+      },
+      {
+        subcategory: '道具',
+        details: [
+          {
+            detailCategory: '剧本提取',
+            keys: ['prop.extraction.system', 'prop.extraction.user'],
+          },
+          {
+            detailCategory: '参考图识别',
+            keys: ['vision.prop.extract.system', 'vision.prop.extract.user'],
+          },
+          {
+            detailCategory: '图片提示词',
+            keys: ['prop.image_polish.system', 'prop.image_polish.user'],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    category: '分镜',
+    order: 3,
+    groups: [
+      {
+        subcategory: '方案生成',
+        keys: [
+          'storyboard.generation.system',
+          'storyboard.generation.narration',
+          'storyboard.generation.universal_mode',
+          'storyboard.generation.count_constraint',
+          'storyboard.generation.user',
+          'storyboard.generation.duration_constraint',
+          'storyboard.generation.project_clip_duration_constraint',
+          'storyboard.generation.calculated_shot_duration_constraint',
+          'storyboard.generation.continuation',
+          'storyboard.generation.continuation_narration',
+          'storyboard.generation.continuation_universal',
+        ],
+      },
+      {
+        subcategory: '布局与连戏',
+        keys: [
+          'storyboard.layout.regenerate.system',
+          'storyboard.layout.regenerate.user',
+          'storyboard.continuity_snapshot.system',
+          'storyboard.continuity_snapshot.user',
+        ],
+      },
+      {
+        subcategory: '首帧/关键帧/尾帧',
+        keys: [
+          'frame.first.system',
+          'frame.first.fallback',
+          'frame.first.realistic_scale_contract',
+          'frame.key.system',
+          'frame.key.fallback',
+          'frame.last.system',
+          'frame.last.fallback',
+          'frame.last.realistic_scale_contract',
+        ],
+      },
+      {
+        subcategory: '分镜图片',
+        keys: [
+          'frame.input.user',
+          'frame.context.compose',
+          'frame.context.style',
+          'frame.context.character_roster',
+          'frame.context.character_anchors',
+          'frame.context.spatial_contract',
+          'frame.character_anchor.structured',
+          'frame.character_anchor.fallback',
+          'storyboard.image_polish.system',
+          'storyboard.image_polish.user',
+          'storyboard.image_prompt.compose',
+          'image.quad_grid.layout',
+          'image.nine_grid.layout',
+          'image.default_cinematic_style',
+        ],
+      },
+      {
+        subcategory: '参考图与图片约束',
+        keys: [
+          'image.reference_context.system',
+          'image.negative.anti_split',
+          'image.single_frame.anti_split_suffix',
+          'image.reference.layout_lock_label',
+          'image.last_frame.layout_lock_suffix',
+          'image.reference_generation.user',
+        ],
+      },
+    ],
+  },
+  {
+    category: '视频',
+    order: 4,
+    groups: [
+      {
+        subcategory: '通用',
+        keys: ['storyboard.video_prompt.compose', 'video.aspect_ratio_mismatch_suffix'],
+      },
+      {
+        subcategory: '经典模式',
+        keys: ['video.classic_polish.system', 'video.classic_polish.user'],
+      },
+      {
+        subcategory: '全能模式',
+        keys: [
+          'omni.segment.system',
+          'omni.segment.user',
+          'omni.segment.image_slot_map',
+          'omni.segment.image_slot_map_empty',
+          'omni.segment.line3_scene_reference',
+          'omni.segment.line3_primary_reference',
+          'omni.segment.line3_no_reference',
+          'omni.segment.character_binding_scene_first',
+          'omni.segment.character_binding_primary',
+          'omni.segment.character_binding_empty',
+          'omni.segment.reference_rule',
+          'omni.segment.reference_rule_empty',
+          'omni.segment.scene_reference_layout',
+          'omni.segment.boundary_changed',
+          'omni.segment.boundary_same',
+          'omni.segment.fallback',
+          'omni.segment.polish.system',
+          'omni.segment.polish.user',
+        ],
+      },
+    ],
+  },
+];
+
+function buildPromptClassificationIndex() {
+  const index = new Map();
+  let sortOrder = 0;
+  for (const category of PROMPT_CLASSIFICATION_TREE) {
+    for (const group of category.groups) {
+      const details = group.details || [{ detailCategory: '', keys: group.keys }];
+      for (const detail of details) {
+        for (const promptKey of detail.keys) {
+          if (index.has(promptKey)) {
+            throw new Error(`提示词 ${promptKey} 重复配置模板分类`);
+          }
+          index.set(promptKey, {
+            category: category.category,
+            subcategory: group.subcategory,
+            detail_category: detail.detailCategory,
+            workflow_stage: category.category,
+            workflow_order: category.order,
+            sort_order: ++sortOrder,
+          });
+        }
+      }
+    }
+  }
+  return index;
+}
+
+const PROMPT_CLASSIFICATION_BY_KEY = buildPromptClassificationIndex();
+
+const DISPLAY_NAME_SUFFIX_BY_CONTENT_TYPE = {
+  system: '（系统规则）',
+  user_template: '（输入模板）',
+  suffix: '（附加约束）',
+  format_contract: '（输出格式）',
+  image_prompt: '（生图模板）',
+  video_prompt: '（视频模板）',
+  negative_prompt: '（负向词）',
+};
+
+const INJECTION_CHANNEL_BY_CONTENT_TYPE = {
+  system: 'System 消息',
+  user_template: 'User 消息',
+  suffix: '运行时技术补充',
+  format_contract: '输出格式协议',
+  image_prompt: '图片正向提示词',
+  video_prompt: '视频正向提示词',
+  negative_prompt: '图片负向参数',
+};
+
+const AI_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
+
+const BUSINESS_SLOT_OVERRIDES = {
+  'character.extraction.drama_info': {
+    key: 'fallback',
+    label: '无剧本时项目资料',
+  },
+  'scene.prompt.translate_zh.user': {
+    key: 'condition',
+    label: '缺少中文描述时翻译',
+  },
+  'storyboard.generation.continuation': {
+    key: 'continuation',
+    label: '中断续写',
+  },
+};
+
+function businessSlotForDefinition(definition) {
+  if (BUSINESS_SLOT_OVERRIDES[definition.prompt_key]) {
+    return BUSINESS_SLOT_OVERRIDES[definition.prompt_key];
+  }
+  if (definition.template_subtype === 'fallback') {
+    return { key: 'fallback', label: '条件回退' };
+  }
+  const byContentType = {
+    system: { key: 'system', label: '系统规则' },
+    user_template: { key: 'user', label: '输入模板' },
+    suffix: { key: 'condition', label: '条件约束' },
+    format_contract: { key: 'contract', label: '输出协议' },
+    image_prompt: { key: 'image_prompt', label: '图片提示词' },
+    video_prompt: { key: 'video_prompt', label: '视频提示词' },
+    negative_prompt: { key: 'negative_prompt', label: '负向约束' },
+  };
+  return byContentType[definition.content_type] || { key: 'component', label: '模板组件' };
+}
+
+const INDEPENDENT_TECHNICAL_KEYS = new Set([
+  'image.quad_grid.layout',
+  'image.nine_grid.layout',
+  'image.reference_generation.user',
+]);
+
+const FALLBACK_TEMPLATE_KEYS = new Set([
+  'frame.first.fallback',
+  'frame.key.fallback',
+  'frame.last.fallback',
+  'frame.character_anchor.fallback',
+  'omni.segment.fallback',
+  'image.default_cinematic_style',
+]);
+
+const PROMPT_PRESENTATION = {
+  'storyboard.generation.continuation_narration': {
+    parent_prompt_key: 'storyboard.generation.continuation',
+    injection_channel: '续写 User 消息（解说模式条件追加）',
+  },
+  'storyboard.generation.continuation_universal': {
+    parent_prompt_key: 'storyboard.generation.continuation',
+    injection_channel: '续写 User 消息（全能模式条件追加）',
+  },
+  'storyboard.generation.narration': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（解说模式条件追加）',
+  },
+  'storyboard.generation.universal_mode': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（全能模式条件追加）',
+  },
+  'storyboard.generation.count_constraint': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（指定分镜数量时追加）',
+  },
+  'storyboard.generation.duration_constraint': {
+    parent_prompt_key: 'storyboard.generation.user',
+    injection_channel: 'User 消息（指定总时长时追加）',
+  },
+  'storyboard.generation.project_clip_duration_constraint': {
+    parent_prompt_key: 'storyboard.generation.user',
+    injection_channel: 'User 消息（项目单段时长存在时追加）',
+  },
+  'storyboard.generation.calculated_shot_duration_constraint': {
+    parent_prompt_key: 'storyboard.generation.user',
+    injection_channel: 'User 消息（按总时长计算单镜时追加）',
+  },
+  'frame.context.style': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（存在画风时追加）',
+  },
+  'frame.context.character_roster': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（存在角色时追加）',
+  },
+  'frame.context.character_anchors': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（存在角色锚点时追加）',
+  },
+  'frame.context.spatial_contract': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（存在布局时追加）',
+  },
+  'frame.first.fallback': {
+    parent_prompt_key: 'frame.first.system',
+    injection_channel: '图片正向提示词（首帧文本 AI 失败时）',
+  },
+  'frame.key.fallback': {
+    parent_prompt_key: 'frame.key.system',
+    injection_channel: '图片正向提示词（关键帧文本 AI 失败时）',
+  },
+  'frame.last.fallback': {
+    parent_prompt_key: 'frame.last.system',
+    injection_channel: '图片正向提示词（尾帧文本 AI 失败时）',
+  },
+  'frame.character_anchor.structured': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（结构化角色锚点）',
+  },
+  'frame.character_anchor.fallback': {
+    parent_prompt_key: 'frame.context.compose',
+    injection_channel: 'User 镜头上下文（角色锚点回退）',
+  },
+  'frame.first.realistic_scale_contract': {
+    parent_prompt_key: 'frame.first.system',
+    injection_channel: '首帧 System 消息（固定追加）',
+    relation_note: '由首帧主模板独立管理，不与尾帧共用记录。',
+  },
+  'frame.last.realistic_scale_contract': {
+    parent_prompt_key: 'frame.last.system',
+    injection_channel: '尾帧 System 消息（固定追加）',
+    relation_note: '由尾帧主模板独立管理，不与首帧共用记录。',
+  },
+  'omni.segment.image_slot_map': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（有参考图时）',
+  },
+  'omni.segment.image_slot_map_empty': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（无参考图时）',
+  },
+  'omni.segment.line3_scene_reference': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（场景图在首位时）',
+  },
+  'omni.segment.line3_primary_reference': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（普通参考图在首位时）',
+  },
+  'omni.segment.line3_no_reference': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（无参考图时）',
+  },
+  'omni.segment.character_binding_scene_first': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（场景图在首位时）',
+  },
+  'omni.segment.character_binding_primary': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（普通首图时）',
+  },
+  'omni.segment.character_binding_empty': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（无角色参考图时）',
+  },
+  'omni.segment.reference_rule': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（有参考图时）',
+  },
+  'omni.segment.reference_rule_empty': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（无参考图时）',
+  },
+  'omni.segment.scene_reference_layout': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（包含场景参考图时）',
+  },
+  'omni.segment.boundary_changed': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（剧情段落切换时）',
+  },
+  'omni.segment.boundary_same': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（同一剧情段落延续时）',
+  },
+  'image.reference_generation.user': {
+    injection_channel: '非 Gemini 图片正向提示词',
+    relation_note: '独立技术模板；由非 Gemini 参考图生图流程直接调用。',
+  },
+  'image.default_cinematic_style': {
+    injection_channel: '图片正向提示词（未配置画风时）',
+    relation_note: '特殊条件子模板；仅在图片生成流程未配置可用画风时启用。',
+  },
+  'omni.segment.fallback': {
+    parent_prompt_key: 'omni.segment.user',
+    injection_channel: '全能视频 User 消息（片段正文缺失时）',
+    relation_note: '特殊条件子模板；仅在全能视频片段正文缺失时启用。',
+  },
+  'image.negative.anti_split': {
+    parent_prompt_key: 'image.reference_context.system',
+    injection_channel: '图片 API negative_prompt 参数',
+  },
+  'image.single_frame.anti_split_suffix': {
+    parent_prompt_key: 'image.reference_context.system',
+    injection_channel: '多参考图单帧图片正向后缀',
+  },
+  'image.reference.layout_lock_label': {
+    parent_prompt_key: 'image.reference_context.system',
+    injection_channel: '尾帧首帧参考图标签',
+  },
+  'image.last_frame.layout_lock_suffix': {
+    parent_prompt_key: 'image.reference_context.system',
+    injection_channel: '尾帧图片正向提示词后缀',
+  },
+  'video.aspect_ratio_mismatch_suffix': {
+    parent_prompt_key: 'storyboard.video_prompt.compose',
+    injection_channel: '视频正向提示词（参考图画幅不匹配时）',
+  },
+};
+
+function seedCfg() {
   return {
-    app: { language: locale },
     style: {
       default_style: SENTINELS.style,
       default_style_zh: SENTINELS.styleZh,
@@ -65,44 +633,105 @@ function definition({
   source = '',
   seedVersion = 1,
 }) {
+  const canonicalContent =
+    contents.default ??
+    contents.zh ??
+    contents.universal;
+  if (canonicalContent == null || !String(canonicalContent).trim()) {
+    throw new Error(`提示词 ${key} 缺少中文模板`);
+  }
   return {
     prompt_key: key,
     name,
     description,
     category,
-    message_role: role,
+    content_type: role,
+    message_role: role === 'system' ? 'system' : 'user',
     service_type: role === 'image_prompt' ? 'image' : role === 'video_prompt' ? 'video' : 'text',
     scene_key: sceneKey,
     variable_schema: variableSchema(variables, required),
     risk_level: risk,
     allow_project_override: project ? 1 : 0,
     source_ref: source,
-    contents: Object.entries(contents).map(([locale, content]) => ({
-      locale,
-      content: placeholders(content),
+    contents: [{
+      locale: 'default',
+      content: placeholders(canonicalContent),
       seed_version: seedVersion,
-    })),
+    }],
   };
 }
 
 function bilingual(getter, ...args) {
-  return {
-    zh: getter(seedCfg('zh'), ...args),
-    en: getter(seedCfg('en'), ...args),
-  };
+  return { default: getter(seedCfg(), ...args) };
 }
 
 function universal(content) {
-  return { universal: content };
+  return { default: content };
 }
 
 function buildCatalog() {
-  const zh = seedCfg('zh');
-  const en = seedCfg('en');
+  const zh = seedCfg();
+  const en = seedCfg();
   const defs = [];
-  let order = 0;
   const add = (d) => {
-    d.sort_order = ++order;
+    const displayName = PROMPT_DISPLAY_NAMES[d.prompt_key];
+    if (!displayName) {
+      throw new Error(`提示词 ${d.prompt_key} 缺少面向用户的用途名称`);
+    }
+    const requiredSuffix = DISPLAY_NAME_SUFFIX_BY_CONTENT_TYPE[d.content_type];
+    if (!requiredSuffix || !displayName.endsWith(requiredSuffix)) {
+      throw new Error(`提示词 ${d.prompt_key} 的用途名称与内容用途不一致`);
+    }
+    const classification = PROMPT_CLASSIFICATION_BY_KEY.get(d.prompt_key);
+    if (!classification) {
+      throw new Error(`提示词 ${d.prompt_key} 缺少模板分类`);
+    }
+    d.name = displayName;
+    d.category = classification.category;
+    d.subcategory = classification.subcategory;
+    d.detail_category = classification.detail_category;
+    d.workflow_stage = classification.workflow_stage;
+    d.workflow_order = classification.workflow_order;
+    const presentation = PROMPT_PRESENTATION[d.prompt_key] || {};
+    d.parent_prompt_key = presentation.parent_prompt_key || null;
+    d.is_fragment = presentation.parent_prompt_key || FALLBACK_TEMPLATE_KEYS.has(d.prompt_key) ? 1 : 0;
+    d.template_kind = INDEPENDENT_TECHNICAL_KEYS.has(d.prompt_key)
+      ? 'independent_technical'
+      : presentation.parent_prompt_key || FALLBACK_TEMPLATE_KEYS.has(d.prompt_key)
+        ? 'conditional_child'
+        : 'main';
+    d.template_subtype = FALLBACK_TEMPLATE_KEYS.has(d.prompt_key) ? 'fallback' : null;
+    const businessBinding = getPromptBusinessSceneBinding(d.prompt_key);
+    if (!businessBinding) {
+      throw new Error(`提示词 ${d.prompt_key} 缺少业务场景绑定`);
+    }
+    const businessScene = getBusinessScene(businessBinding.scene_key);
+    if (!businessScene) {
+      throw new Error(`提示词 ${d.prompt_key} 绑定了未注册业务场景 ${businessBinding.scene_key}`);
+    }
+    const businessSlot = businessSlotForDefinition(d);
+    d.scene_key = businessBinding.scene_key;
+    d.business_scene_label = businessScene.label;
+    d.business_scene_order = businessBinding.scene_order;
+    d.business_component_order = businessBinding.component_order;
+    d.business_slot = businessSlot.key;
+    d.business_slot_label = businessSlot.label;
+    d.injection_channel =
+      presentation.injection_channel ||
+      INJECTION_CHANNEL_BY_CONTENT_TYPE[d.content_type] ||
+      '运行时提示词';
+    d.message_role = presentation.message_role ||
+      (d.content_type === 'system' || /system\s*消息/i.test(d.injection_channel)
+        ? 'system'
+        : 'user');
+    if (!AI_MESSAGE_ROLES.has(d.message_role)) {
+      throw new Error(`提示词 ${d.prompt_key} 使用了无效的 AI 消息角色: ${d.message_role}`);
+    }
+    d.relation_note = presentation.relation_note ||
+      (d.template_subtype === 'fallback'
+        ? '特殊条件子模板；仅在主流程无法取得可用结果时启用。'
+        : '');
+    d.sort_order = classification.sort_order;
     defs.push(d);
   };
 
@@ -278,6 +907,7 @@ function buildCatalog() {
     contents: universal(promptI18n.getIdentityAnchorsPrompt()),
     risk: 'high',
     source: 'promptI18n.getIdentityAnchorsPrompt',
+    seedVersion: 2,
   }));
   add(definition({
     key: 'character.identity_anchors.user',
@@ -285,21 +915,35 @@ function buildCatalog() {
     category: '参考图视觉识别',
     role: 'user_template',
     sceneKey: 'identity_anchors',
-    contents: universal('Character appearance description:\n{{character_appearance}}'),
+    contents: universal('待分析的角色外貌描述：\n{{character_appearance}}'),
     variables: ['character_appearance'],
     required: ['character_appearance'],
     source: 'characterGenerationService.enrichIdentityAnchors',
+    seedVersion: 2,
   }));
 
+  const storyboardRequirements = promptI18n.getStoryboardUserPromptSuffix(
+    zh,
+    Number(SENTINELS.shotDuration)
+  );
+  const storyboardOutputContract =
+    '返回合法 JSON，包含 storyboards 数组；字段必须符合当前分镜数据协议。不要输出 markdown 或解释文字。';
   add(definition({
     key: 'storyboard.generation.system',
     name: '分镜生成系统规则',
     category: '分镜生成',
     role: 'system',
     sceneKey: 'storyboard_extraction',
-    contents: bilingual(promptI18n.getStoryboardSystemPrompt),
+    contents: universal(
+      `${promptI18n.getStoryboardSystemPrompt(zh)}\n\n${storyboardRequirements}\n\n${storyboardOutputContract}`
+    ),
+    variables: [
+      'shot_duration', 'style_prompt', 'style_prompt_zh', 'style_prompt_en', 'image_ratio',
+    ],
     risk: 'high',
-    source: 'promptI18n.getStoryboardSystemPrompt',
+    source:
+      'promptI18n.getStoryboardSystemPrompt + getStoryboardUserPromptSuffix + output contract',
+    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.generation.user',
@@ -367,30 +1011,6 @@ Break the script into storyboard shots by independent action units.
     required: ['script_content'],
     source: 'episodeStoryboardService.generateEpisodeStoryboards',
     seedVersion: 2,
-  }));
-  add(definition({
-    key: 'storyboard.generation.requirements',
-    name: '分镜要素要求',
-    category: '分镜生成',
-    role: 'suffix',
-    sceneKey: 'storyboard_extraction',
-    contents: {
-      zh: promptI18n.getStoryboardUserPromptSuffix(zh, Number(SENTINELS.shotDuration)),
-      en: promptI18n.getStoryboardUserPromptSuffix(en, Number(SENTINELS.shotDuration)),
-    },
-    variables: ['shot_duration', 'style_prompt', 'style_prompt_zh', 'style_prompt_en', 'image_ratio'],
-    risk: 'high',
-    source: 'promptI18n.getStoryboardUserPromptSuffix',
-  }));
-  add(definition({
-    key: 'storyboard.generation.output_contract',
-    name: '分镜 JSON 输出协议',
-    category: '分镜生成',
-    role: 'format_contract',
-    sceneKey: 'storyboard_extraction',
-    contents: universal('返回合法 JSON，包含 storyboards 数组；字段必须符合当前分镜数据协议。不要输出 markdown 或解释文字。'),
-    risk: 'high',
-    source: 'promptI18n.getStoryboardUserPromptSuffix output contract',
   }));
   add(definition({
     key: 'storyboard.generation.continuation',
@@ -595,37 +1215,20 @@ This overrides default rules such as one action per shot and no merging.
       risk: 'high',
       source: `promptI18n.${getter.name}`,
     }));
-    add(definition({
-      key: `frame.${kind}.user`,
-      name: `${label}上下文输入模板`,
-      category: '分镜帧与布局',
-      role: 'user_template',
-      sceneKey: 'frame_prompt',
-      contents: {
-        zh: `镜头信息：
-{{frame_context}}
-
-请直接生成${label}的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：`,
-        en: `Shot information:
-{{frame_context}}
-
-Generate the image prompt for the ${kind === 'first' ? 'first frame' : kind === 'key' ? 'key frame' : 'last frame'} directly, without explanation:`,
-      },
-      variables: ['frame_context'],
-      required: ['frame_context'],
-      source: 'framePromptService.generateSingleFrame',
-      seedVersion: 2,
-    }));
   }
   add(definition({
-    key: 'frame.output_contract',
-    name: '帧提示词 JSON 输出协议',
+    key: 'frame.input.user',
+    name: '帧提示词通用输入模板',
     category: '分镜帧与布局',
-    role: 'format_contract',
+    role: 'user_template',
     sceneKey: 'frame_prompt',
-    contents: universal('返回 JSON 对象，包含 prompt 和 description；不要输出 markdown 或额外解释。'),
-    risk: 'high',
-    source: 'promptI18n frame output contract',
+    contents: universal(`镜头信息：
+{{frame_context}}
+
+请严格按照系统提示词要求生成对应帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：`),
+    variables: ['frame_context'],
+    required: ['frame_context'],
+    source: 'framePromptService.generateSingleFrame',
   }));
   add(definition({
     key: 'frame.context.compose',
@@ -823,6 +1426,7 @@ Follow the system instructions and return only the optimized layout_description 
     contents: universal(promptI18n.getContinuitySnapshotPrompt()),
     risk: 'high',
     source: 'promptI18n.getContinuitySnapshotPrompt',
+    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.continuity_snapshot.user',
@@ -830,19 +1434,20 @@ Follow the system instructions and return only the optimized layout_description 
     category: '分镜帧与布局',
     role: 'user_template',
     sceneKey: 'continuity_snapshot',
-    contents: universal('PROMPT: {{image_prompt}}\nASSETS: {{assets}}'),
+    contents: universal('已完成的生图提示词：\n{{image_prompt}}\n\n本镜头角色与素材：\n{{assets}}'),
     variables: ['image_prompt', 'assets'],
     required: ['image_prompt'],
     source: 'imageService/storyboards continuity snapshot',
+    seedVersion: 2,
   }));
 
+  const characterImageLayout = promptI18n.getRoleGenerateImagePrompt();
+  const sceneFourViewLayout = promptI18n.getSceneGenerateImagePrompt();
+  const sceneSingleLayout = promptI18n.getSceneGenerateSingleImagePrompt();
   const assetDefs = [
     ['character.image_polish.system', '角色生图提示词润色', '角色/场景/道具生图', 'system', 'role_image_polish', bilingual(promptI18n.getRolePolishPrompt), 'promptI18n.getRolePolishPrompt'],
-    ['character.image_layout', '角色四视图布局要求', '角色/场景/道具生图', 'image_prompt', 'role_image_polish', universal(promptI18n.getRoleGenerateImagePrompt()), 'promptI18n.getRoleGenerateImagePrompt'],
     ['scene.image_four_view.system', '场景四视图提示词润色', '角色/场景/道具生图', 'system', 'scene_image_polish', bilingual(promptI18n.getScenePolishPrompt), 'promptI18n.getScenePolishPrompt'],
-    ['scene.image_four_view.layout', '场景四视图布局要求', '角色/场景/道具生图', 'image_prompt', 'scene_image_polish', universal(promptI18n.getSceneGenerateImagePrompt()), 'promptI18n.getSceneGenerateImagePrompt'],
     ['scene.image_single.system', '场景单图提示词润色', '角色/场景/道具生图', 'system', 'scene_image_polish', bilingual(promptI18n.getScenePolishPromptSingle), 'promptI18n.getScenePolishPromptSingle'],
-    ['scene.image_single.layout', '场景单图布局要求', '角色/场景/道具生图', 'image_prompt', 'scene_image_polish', universal(promptI18n.getSceneGenerateSingleImagePrompt()), 'promptI18n.getSceneGenerateSingleImagePrompt'],
     ['prop.image_polish.system', '道具生图提示词润色', '角色/场景/道具生图', 'system', 'prop_image_polish', bilingual(promptI18n.getPropPolishPrompt), 'promptI18n.getPropPolishPrompt'],
   ];
   for (const [key, name, category, role, sceneKey, contents, source] of assetDefs) {
@@ -862,7 +1467,7 @@ Follow the system instructions and return only the optimized layout_description 
     contents: universal(`【画风·最高优先级】四格统一：{{style_zh}}
 MANDATORY ART STYLE (all 4 panels): {{style_en}}.
 
-{{layout_instruction}}
+${characterImageLayout}
 
 ---
 
@@ -872,20 +1477,22 @@ MANDATORY ART STYLE (all 4 panels): {{style_en}}.
 
 GENDER: {{gender}} only; keep body build and facial presentation consistent.
 Reiterate the same art style in every panel: {{style_en}} {{style_zh}}.`),
-    variables: ['style_zh', 'style_en', 'layout_instruction', 'generated_description', 'gender'],
-    required: ['layout_instruction', 'generated_description'],
-    source: 'characterLibraryService.buildFourViewImagePrompt',
+    variables: ['style_zh', 'style_en', 'generated_description', 'gender'],
+    required: ['generated_description'],
+    source:
+      'characterLibraryService.buildFourViewImagePrompt + promptI18n.getRoleGenerateImagePrompt',
+    seedVersion: 2,
   }));
   add(definition({
-    key: 'scene.image_four_view.compose',
-    name: '场景四视图最终生图拼装模板',
+    key: 'scene.image_four_view.final',
+    name: '场景四视图最终生图模板',
     category: '角色/场景/道具生图',
     role: 'image_prompt',
     sceneKey: 'scene_image_polish',
     contents: universal(`【画风·最高优先级】四格统一：{{style_zh}}
 MANDATORY ART STYLE (all 4 panels): {{style_en}}.
 
-{{layout_instruction}}
+${sceneFourViewLayout}
 
 ---
 
@@ -894,20 +1501,21 @@ MANDATORY ART STYLE (all 4 panels): {{style_en}}.
 ---
 
 Reiterate the same art style in every panel: {{style_en}} {{style_zh}}. No people, no text.`),
-    variables: ['style_zh', 'style_en', 'layout_instruction', 'generated_description'],
-    required: ['layout_instruction', 'generated_description'],
-    source: 'sceneService.buildSceneFourViewImagePrompt',
+    variables: ['style_zh', 'style_en', 'generated_description'],
+    required: ['generated_description'],
+    source:
+      'sceneService.buildSceneFourViewImagePrompt + promptI18n.getSceneGenerateImagePrompt',
   }));
   add(definition({
-    key: 'scene.image_single.compose',
-    name: '场景单图最终生图拼装模板',
+    key: 'scene.image_single.final',
+    name: '场景单图最终生图模板',
     category: '角色/场景/道具生图',
     role: 'image_prompt',
     sceneKey: 'scene_image_polish',
     contents: universal(`【画风·最高优先级】{{style_zh}}
 MANDATORY ART STYLE: {{style_en}}.
 
-{{layout_instruction}}
+${sceneSingleLayout}
 
 ---
 
@@ -916,9 +1524,10 @@ MANDATORY ART STYLE: {{style_en}}.
 ---
 
 Reiterate the same art style: {{style_en}} {{style_zh}}. No people, no text.`),
-    variables: ['style_zh', 'style_en', 'layout_instruction', 'generated_description'],
-    required: ['layout_instruction', 'generated_description'],
-    source: 'sceneService.buildSceneSingleImagePrompt',
+    variables: ['style_zh', 'style_en', 'generated_description'],
+    required: ['generated_description'],
+    source:
+      'sceneService.buildSceneSingleImagePrompt + promptI18n.getSceneGenerateSingleImagePrompt',
   }));
   const assetUserDefs = [
     [
@@ -927,13 +1536,8 @@ Reiterate the same art style: {{style_en}} {{style_zh}}. No people, no text.`),
       ['entity_name', 'entity_description'], ['entity_description'],
     ],
     [
-      'scene.image_four_view.user', '场景四视图输入模板', 'scene_image_polish',
-      '请根据以下场景信息生成四格场景参考图提示词：\n地点：{{entity_name}}\n时段：{{entity_time}}\n描述：{{entity_description}}',
-      ['entity_name', 'entity_time', 'entity_description'], ['entity_name'],
-    ],
-    [
-      'scene.image_single.user', '场景单图输入模板', 'scene_image_polish',
-      '请根据以下场景信息生成单图场景参考图提示词：\n地点：{{entity_name}}\n时段：{{entity_time}}\n描述：{{entity_description}}',
+      'scene.image.user', '场景生图通用输入模板', 'scene_image_polish',
+      '请根据以下场景信息，严格按照系统提示词要求生成场景参考图提示词：\n地点：{{entity_name}}\n时段：{{entity_time}}\n描述：{{entity_description}}',
       ['entity_name', 'entity_time', 'entity_description'], ['entity_name'],
     ],
     [
@@ -1365,7 +1969,7 @@ BOTTOM ROW:
 [Panel 9 — diagonal 45-degree angle]: {{panel_9}}
 
 The output must visibly contain exactly nine equal cells.`, 'imageService.buildNineGridPrompt'],
-    ['image.reference_context.system', '参考图上下文说明', 'system', `The following lines map each reference image to its intended subject. Use every image only for identity, appearance, environment or object semantics. Do not copy a reference image's grid, split-screen, border, framing or multi-panel layout into the generated result.
+    ['image.reference_context.system', '参考图上下文说明', 'system', `以下内容说明每张参考图对应的目标对象。每张图片只能用于参考对象身份、外貌、环境或物体语义；禁止把参考图中的宫格、分屏、边框、构图或多面板布局复制到生成结果中。
 {{reference_context}}`, 'imageService.reference_context_note'],
     ['image.negative.anti_split', '防分屏负向提示词', 'negative_prompt', 'nsfw, nudity, naked, violence, blood, gore, sensitive content, split panels, side-by-side layout, collage, diptych, triptych, grid layout, multiple panels, comparison view, composite image, two images in one frame', 'imageClient.ANTI_SPLIT_NEGATIVE_PROMPT'],
     ['video.aspect_ratio_mismatch_suffix', '视频画幅不匹配补充规则', 'suffix', '保持目标画幅 {{target_ratio}}，主体完整位于安全构图区，禁止拉伸、裁断主体或生成黑白边。', 'videoClient.viduMismatchAspectPromptSuffix'],
@@ -1382,9 +1986,10 @@ The output must visibly contain exactly nine equal cells.`, 'imageService.buildN
       required,
       risk: 'high',
       source,
-      seedVersion: key === 'image.quad_grid.layout'
+      seedVersion: key === 'image.reference_context.system'
+        ? 3
+        : key === 'image.quad_grid.layout'
         || key === 'image.nine_grid.layout'
-        || key === 'image.reference_context.system'
         ? 2
         : 1,
     }));
@@ -1470,13 +2075,14 @@ GENERATE ONE CONTINUOUS SINGLE-FRAME SCENE — NO GRID, SPLIT PANELS OR COLLAGE:
     category: '分镜帧与布局',
     role: 'suffix',
     sceneKey: 'frame_prompt',
-    contents: universal('Character: {{character_name}}; Face: {{face_shape}}; Features: {{facial_features}}; Hair: {{hair_style}}; Skin: {{skin_texture}}; Colors: {{color_anchors}}; Marks: {{unique_marks}}'),
+    contents: universal('角色：{{character_name}}；脸型：{{face_shape}}；五官：{{facial_features}}；发型：{{hair_style}}；肤质：{{skin_texture}}；颜色锚点：{{color_anchors}}；独特标记：{{unique_marks}}'),
     variables: [
       'character_name', 'face_shape', 'facial_features', 'hair_style',
       'skin_texture', 'color_anchors', 'unique_marks',
     ],
     required: ['character_name'],
     source: 'framePromptService.buildCharacterAnchorText',
+    seedVersion: 2,
   }));
   add(definition({
     key: 'frame.character_anchor.fallback',
@@ -1489,20 +2095,48 @@ GENERATE ONE CONTINUOUS SINGLE-FRAME SCENE — NO GRID, SPLIT PANELS OR COLLAGE:
     required: ['character_name', 'appearance'],
     source: 'framePromptService.buildCharacterAnchorText fallback',
   }));
-  add(definition({
-    key: 'image.realistic_scale_contract',
-    name: '真实物理尺度约束',
-    category: '图片/视频技术约束',
-    role: 'suffix',
-    sceneKey: 'frame_prompt',
-    contents: {
-      zh: promptI18n.getRealisticPhysicalScaleContract(false),
-      en: promptI18n.getRealisticPhysicalScaleContract(true),
-    },
-    risk: 'high',
-    source: 'promptI18n.getRealisticPhysicalScaleContract',
-  }));
+  for (const frameKind of ['first', 'last']) {
+    const frameLabel = frameKind === 'first' ? '首帧' : '尾帧';
+    const scaleContract = promptI18n.getRealisticPhysicalScaleContract(false)
+      .replace(
+        '本铁律同时适用于首帧和尾帧生成，零例外。',
+        `本铁律仅适用于${frameLabel}生成，零例外。`
+      );
+    add(definition({
+      key: `frame.${frameKind}.realistic_scale_contract`,
+      name: `${frameKind} frame realistic scale contract`,
+      category: '分镜帧与布局',
+      role: 'suffix',
+      sceneKey: 'frame_prompt',
+      contents: universal(scaleContract),
+      risk: 'high',
+      source: `promptI18n.getRealisticPhysicalScaleContract (${frameKind} frame)`,
+      seedVersion: 2,
+    }));
+  }
 
+  const unusedDisplayKeys = Object.keys(PROMPT_DISPLAY_NAMES)
+    .filter((key) => !defs.some((item) => item.prompt_key === key));
+  if (unusedDisplayKeys.length) {
+    throw new Error(`存在未使用的提示词用途名称: ${unusedDisplayKeys.join(', ')}`);
+  }
+  const duplicateDisplayNames = defs
+    .map((item) => item.name)
+    .filter((name, index, names) => names.indexOf(name) !== index);
+  if (duplicateDisplayNames.length) {
+    throw new Error(`存在重复的提示词用途名称: ${[...new Set(duplicateDisplayNames)].join(', ')}`);
+  }
+  const unusedClassificationKeys = [...PROMPT_CLASSIFICATION_BY_KEY.keys()]
+    .filter((key) => !defs.some((item) => item.prompt_key === key));
+  if (unusedClassificationKeys.length) {
+    throw new Error(`存在未使用的模板分类: ${unusedClassificationKeys.join(', ')}`);
+  }
+  const unusedBusinessPromptKeys = listBusinessScenes()
+    .flatMap((scene) => scene.prompt_keys)
+    .filter((key) => !defs.some((item) => item.prompt_key === key));
+  if (unusedBusinessPromptKeys.length) {
+    throw new Error(`存在未使用的业务场景模板绑定: ${unusedBusinessPromptKeys.join(', ')}`);
+  }
   return defs;
 }
 

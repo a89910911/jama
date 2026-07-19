@@ -3,8 +3,7 @@
     <header class="header">
       <div class="header-inner">
         <h1 class="logo" @click="router.push('/')">
-          <span class="logo-main">本地短剧助手</span>
-          <span class="logo-sub">LocalMiniDrama</span>
+          <BrandLogo />
         </h1>
         <span class="breadcrumb-sep">›</span>
         <span class="page-title">{{ drama?.title || '剧集管理' }}</span>
@@ -12,6 +11,9 @@
           <el-icon><ArrowLeft /></el-icon>返回列表
         </el-button>
         <div class="header-actions">
+          <el-button @click="goAiRecords">
+            <el-icon><DataAnalysis /></el-icon>AI 记录
+          </el-button>
           <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
@@ -195,7 +197,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="!charLoading && charList.length === 0" class="library-empty">暂无本剧角色库记录，可在制作页面「加入本剧库」</div>
+            <div v-if="!charLoading && charList.length === 0" class="library-empty">暂无可复用角色模板，可在制作页面将角色「保存为可复用模板」</div>
           </div>
           <div class="library-pagination">
             <el-pagination v-model:current-page="charPage" v-model:page-size="charPageSize" :total="charTotal" :page-sizes="[10,20,50]" layout="total, sizes, prev, pager, next" @current-change="loadCharList" @size-change="loadCharList" />
@@ -223,7 +225,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="!sceneLoading && sceneList.length === 0" class="library-empty">暂无本剧场景库记录，可在制作页面「加入本剧库」</div>
+            <div v-if="!sceneLoading && sceneList.length === 0" class="library-empty">暂无可复用场景模板，可在制作页面将场景「保存为可复用模板」</div>
           </div>
           <div class="library-pagination">
             <el-pagination v-model:current-page="scenePage" v-model:page-size="scenePageSize" :total="sceneTotal" :page-sizes="[10,20,50]" layout="total, sizes, prev, pager, next" @current-change="loadSceneList" @size-change="loadSceneList" />
@@ -251,7 +253,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="!propLoading && propList.length === 0" class="library-empty">暂无本剧道具库记录，可在制作页面「加入本剧库」</div>
+            <div v-if="!propLoading && propList.length === 0" class="library-empty">暂无可复用道具模板，可在制作页面将道具「保存为可复用模板」</div>
           </div>
           <div class="library-pagination">
             <el-pagination v-model:current-page="propPage" v-model:page-size="propPageSize" :total="propTotal" :page-sizes="[10,20,50]" layout="total, sizes, prev, pager, next" @current-change="loadPropList" @size-change="loadPropList" />
@@ -423,7 +425,7 @@
     </el-dialog>
 
     <!-- 编辑角色 -->
-    <el-dialog v-model="editCharVisible" title="编辑角色库" width="480px" @close="editCharForm = null">
+    <el-dialog v-model="editCharVisible" title="编辑可复用角色模板" width="480px" @close="editCharForm = null">
       <el-form v-if="editCharForm" label-width="80px">
         <el-form-item label="图片">
           <div class="lib-img-editor">
@@ -450,7 +452,7 @@
     </el-dialog>
 
     <!-- 编辑场景 -->
-    <el-dialog v-model="editSceneVisible" title="编辑场景库" width="480px" @close="editSceneForm = null">
+    <el-dialog v-model="editSceneVisible" title="编辑可复用场景模板" width="480px" @close="editSceneForm = null">
       <el-form v-if="editSceneForm" label-width="80px">
         <el-form-item label="图片">
           <div class="lib-img-editor">
@@ -478,7 +480,7 @@
     </el-dialog>
 
     <!-- 编辑道具 -->
-    <el-dialog v-model="editPropVisible" title="编辑道具库" width="480px" @close="editPropForm = null">
+    <el-dialog v-model="editPropVisible" title="编辑可复用道具模板" width="480px" @close="editPropForm = null">
       <el-form v-if="editPropForm" label-width="80px">
         <el-form-item label="图片">
           <div class="lib-img-editor">
@@ -563,8 +565,9 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, Grid } from '@element-plus/icons-vue'
+import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, Grid, DataAnalysis } from '@element-plus/icons-vue'
 import EpisodeBatchImportDialog from '@/components/EpisodeBatchImportDialog.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import { useTheme } from '@/composables/useTheme'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
@@ -941,6 +944,14 @@ function goCreate() {
 
 function goCanvasMode() {
   router.push(`/film/${dramaId}/canvas`)
+}
+
+function goAiRecords() {
+  router.push({
+    name: 'ai-records',
+    params: { id: String(dramaId) },
+    query: { returnTo: route.fullPath },
+  })
 }
 
 function goEpisode(epId) {

@@ -1,4 +1,5 @@
 const aiConfigService = require('../services/aiConfigService');
+const aiRequestLogService = require('../services/aiRequestLogService');
 const response = require('../response');
 
 function list(db) {
@@ -103,9 +104,25 @@ function bulkUpdateKey(db, log, cfg) {
   };
 }
 
-function testConnection(log) {
+function testConnection(db, log) {
   return async (req, res) => {
     const body = req.body || {};
+    const model = Array.isArray(body.model) ? body.model[0] : body.model;
+    const record = aiRequestLogService.start(db, {
+      service_type: 'connection_test',
+      operation: 'test_connection',
+      provider: body.provider || null,
+      model: model || null,
+      request: {
+        base_url: body.base_url,
+        api_key: body.api_key,
+        model: body.model,
+        provider: body.provider,
+        api_protocol: body.api_protocol,
+        endpoint: body.endpoint,
+        service_type: body.service_type,
+      },
+    });
     if (!body.base_url || !body.api_key) {
       return response.badRequest(res, '缺少 base_url 或 api_key');
     }
@@ -115,12 +132,15 @@ function testConnection(log) {
         api_key: body.api_key,
         model: body.model,
         provider: body.provider,
+        api_protocol: body.api_protocol,
         endpoint: body.endpoint,
         service_type: body.service_type,
         settings: body.settings,
       });
+      aiRequestLogService.succeed(db, record, { connected: true });
       response.success(res, { message: '连接测试成功' });
     } catch (err) {
+      aiRequestLogService.fail(db, record, err);
       log.error('AI config test connection failed', { error: err.message });
       response.badRequest(res, '连接测试失败: ' + (err.message || '未知错误'));
     }
@@ -190,7 +210,7 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     create: create(db, log, cfg),
     update: update(db, log, cfg),
     delete: remove(db, log, cfg),
-    testConnection: testConnection(log),
+    testConnection: testConnection(db, log),
     listJimeng2MaterialAssets: listJimeng2MaterialAssets(log),
     modelArkAsset: modelArkAsset(log),
     bulkUpdateKey: bulkUpdateKey(db, log, cfg),

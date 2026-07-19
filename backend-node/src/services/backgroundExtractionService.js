@@ -1,33 +1,18 @@
 // 与 Go ImageGenerationService.ExtractBackgroundsForEpisode + processBackgroundExtraction 对齐
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
 const promptTemplates = require('./promptTemplateService');
 const sceneService = require('./sceneService');
 const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 
-function normalizeLanguage(language) {
-  const lang = (language || '').toString().trim().toLowerCase();
-  return lang === 'zh' || lang === 'en' ? lang : '';
-}
-
 function hasChinese(text) {
   return /[\u4e00-\u9fff]/.test(text || '');
-}
-
-function withLanguage(cfg, language) {
-  if (!language) return cfg;
-  return {
-    ...cfg,
-    app: { ...(cfg?.app || {}), language },
-  };
 }
 
 async function translatePromptToChinese(db, log, model, prompt, dramaId, taskId) {
   const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.prompt.translate_zh.user', {
     dramaId,
     taskId,
-    locale: 'universal',
     variables: { source_prompt: prompt },
   });
   const text = await aiClient.generateText(db, log, 'text', userPrompt, '', {
@@ -63,7 +48,7 @@ async function extractBackgroundsFromScript(db, cfg, log, scriptContent, dramaId
   }));
 }
 
-async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, model, style, language) {
+async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, model, style) {
   taskService.updateTaskStatus(db, taskID, 'processing', 0, '正在提取场景信息...');
   const episode = db.prepare('SELECT id, drama_id, script_content FROM episodes WHERE id = ? AND deleted_at IS NULL').get(Number(episodeId));
   if (!episode) {
@@ -101,18 +86,11 @@ async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, mode
     style = paramStyle || effectiveCfg?.style?.default_style_en || effectiveCfg?.style?.default_style || style;
   } catch (_) {}
 
-  const requestedLanguage = normalizeLanguage(language);
-  const configuredLanguage = normalizeLanguage(promptI18n.getLanguage(effectiveCfg));
-  let effectiveLanguage = requestedLanguage || configuredLanguage;
-  if (!requestedLanguage && effectiveLanguage === 'en' && hasChinese(scriptContent)) {
-    effectiveLanguage = 'zh';
-  }
-  const cfgForPrompt = withLanguage(effectiveCfg, effectiveLanguage);
   let backgroundsInfo;
   try {
     backgroundsInfo = await extractBackgroundsFromScript(
       db,
-      cfgForPrompt,  // 已包含 effectiveCfg + language
+      effectiveCfg,
       log,
       String(scriptContent),
       episode.drama_id,
@@ -125,30 +103,28 @@ async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, mode
     taskService.updateTaskStatus(db, taskID, 'failed', 0, 'AI提取场景失败: ' + err.message);
     return;
   }
-  if (effectiveLanguage === 'zh') {
-    const translated = await Promise.all(
-      (backgroundsInfo || []).map(async (bg) => {
-        const original = (bg.prompt || '').toString().trim();
-        if (!original || hasChinese(original)) return bg;
-        try {
-          const translatedPrompt = await translatePromptToChinese(
-            db,
-            log,
-            model,
-            original,
-            episode.drama_id,
-            taskID
-          );
-          if (!translatedPrompt) return bg;
-          return { ...bg, prompt: translatedPrompt };
-        } catch (err) {
-          log.warn('Background prompt translate failed', { error: err.message, task_id: taskID });
-          return bg;
-        }
-      })
-    );
-    backgroundsInfo = translated;
-  }
+  const translated = await Promise.all(
+    (backgroundsInfo || []).map(async (bg) => {
+      const original = (bg.prompt || '').toString().trim();
+      if (!original || hasChinese(original)) return bg;
+      try {
+        const translatedPrompt = await translatePromptToChinese(
+          db,
+          log,
+          model,
+          original,
+          episode.drama_id,
+          taskID
+        );
+        if (!translatedPrompt) return bg;
+        return { ...bg, prompt: translatedPrompt };
+      } catch (err) {
+        log.warn('Background prompt translate failed', { error: err.message, task_id: taskID });
+        return bg;
+      }
+    })
+  );
+  backgroundsInfo = translated;
   sceneService.deleteScenesByEpisodeId(db, log, episodeId);
   const scenes = [];
   for (const bg of backgroundsInfo) {
@@ -179,7 +155,7 @@ async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, mode
   log.info('Background extraction completed', { task_id: taskID, episode_id: episodeId, count: scenes.length });
 }
 
-function extractBackgroundsForEpisode(db, cfg, log, episodeId, model, style, language) {
+function extractBackgroundsForEpisode(db, cfg, log, episodeId, model, style) {
   const episode = db.prepare('SELECT id, drama_id, script_content FROM episodes WHERE id = ? AND deleted_at IS NULL').get(Number(episodeId));
   if (!episode) throw new Error('episode not found');
   if (!episode.script_content || !String(episode.script_content).trim()) {
@@ -211,7 +187,7 @@ function extractBackgroundsForEpisode(db, cfg, log, episodeId, model, style, lan
 
   const task = taskService.createTask(db, log, 'background_extraction', String(episodeId));
   setImmediate(() => {
-    processBackgroundExtraction(db, runCfg, log, task.id, episodeId, model, style, language).catch((err) => {
+    processBackgroundExtraction(db, runCfg, log, task.id, episodeId, model, style).catch((err) => {
       log.error('processBackgroundExtraction fatal', { error: err.message, task_id: task.id });
       taskService.updateTaskError(db, task.id, err.message || '场景提取失败');
     });

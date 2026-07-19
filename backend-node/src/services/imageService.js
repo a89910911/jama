@@ -212,7 +212,6 @@ async function buildQuadGridPrompt(db, log, cfg, storyboardId, model) {
   const quadPrompt = promptTemplates.resolvePromptContent(db, 'image.quad_grid.layout', {
     cfg,
     storyboardId,
-    locale: 'universal',
     variables: {
       style_zh: styleZhGrid,
       style_en: rawStyle,
@@ -257,7 +256,6 @@ async function buildNineGridPrompt(db, log, cfg, storyboardId, model) {
   const ninePrompt = promptTemplates.resolvePromptContent(db, 'image.nine_grid.layout', {
     cfg,
     storyboardId,
-    locale: 'universal',
     variables: {
       style_zh: styleZhGrid,
       style_en: rawStyle,
@@ -568,8 +566,13 @@ async function processImageGeneration(db, log, imageGenId) {
   });
 
   const now = new Date().toISOString();
+  let stopTaskHeartbeat = () => {};
   try {
     db.prepare('UPDATE image_generations SET status = ?, updated_at = ? WHERE id = ?').run('processing', now, imageGenId);
+    if (row.task_id) {
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 5, '正在生成图片...');
+      stopTaskHeartbeat = taskService.startTaskHeartbeat(db, log, row.task_id);
+    }
     const imageServiceType = row.storyboard_id ? 'storyboard_image' : 'image';
 
     // ── 四宫格模式：先生成4帧提示词，再拼装组合提示词 ──────────────────
@@ -729,7 +732,6 @@ async function processImageGeneration(db, log, imageGenId) {
                 storyboardId: row.storyboard_id,
                 dramaId: row.drama_id,
                 taskId: row.task_id,
-                locale: 'universal',
               }
             );
             if (!reference_image_urls || reference_image_urls.length === 0) {
@@ -1166,7 +1168,6 @@ async function processImageGeneration(db, log, imageGenId) {
               storyboardId: row.storyboard_id,
               dramaId: row.drama_id,
               taskId: row.task_id,
-              locale: 'universal',
             }
           );
           const assetNames = (reference_context_note || '').split('\n')
@@ -1322,7 +1323,6 @@ async function processImageGeneration(db, log, imageGenId) {
           storyboardId: row.storyboard_id,
           dramaId: row.drama_id,
           taskId: row.task_id,
-          locale: 'universal',
           variables: { negative_terms: antiSplitTerms },
         }
       );
@@ -1343,7 +1343,6 @@ async function processImageGeneration(db, log, imageGenId) {
           storyboardId: row.storyboard_id,
           dramaId: row.drama_id,
           taskId: row.task_id,
-          locale: 'universal',
         }
       );
       if (!finalPrompt.includes('人物站位最高铁律') && !finalPrompt.includes('CHARACTER POSITION LOCK')) {
@@ -1362,7 +1361,6 @@ async function processImageGeneration(db, log, imageGenId) {
           storyboardId: row.storyboard_id,
           dramaId: row.drama_id,
           taskId: row.task_id,
-          locale: 'universal',
           variables: { reference_context: reference_context_note },
         })
       : undefined;
@@ -1408,6 +1406,7 @@ async function processImageGeneration(db, log, imageGenId) {
       character_id: row.character_id,
       image_gen_id: imageGenId,
       imageServiceType,
+      scene_key: 'storyboard_image_generation',
       reference_image_urls: reference_image_urls || undefined,
       files_base_url: filesBaseUrl,
       storage_local_path: storageLocalPath,
@@ -1481,7 +1480,7 @@ async function processImageGeneration(db, log, imageGenId) {
 
     // ── Step 6: 写库 & 任务完成 ──────────────────────────────────────
     db.prepare(
-      'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, completed_at = ?, updated_at = ? WHERE id = ?'
+      'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
     ).run('completed', persistedImageUrl, localPath, now2, now2, imageGenId);
     if (row.task_id) {
       taskService.updateTaskResult(db, row.task_id, {
@@ -1588,6 +1587,8 @@ async function processImageGeneration(db, log, imageGenId) {
     if (row.storyboard_id != null) {
       try { db.prepare('UPDATE storyboards SET error_msg = ?, updated_at = ? WHERE id = ?').run(err.message, now2, row.storyboard_id); } catch (_) {}
     }
+  } finally {
+    stopTaskHeartbeat();
   }
 }
 

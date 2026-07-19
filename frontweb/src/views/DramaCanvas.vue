@@ -3,8 +3,7 @@
     <header class="header">
       <div class="header-inner">
         <h1 class="logo" @click="router.push('/')">
-          <span class="logo-main">本地短剧助手</span>
-          <span class="logo-sub">画布模式</span>
+          <BrandLogo />
         </h1>
         <span class="breadcrumb-sep">›</span>
         <span class="page-title">{{ drama?.title || '加载中…' }}</span>
@@ -51,6 +50,10 @@
           <el-button type="primary" plain @click="goListMode">
             <el-icon><List /></el-icon>
             列表模式
+          </el-button>
+          <el-button @click="goAiRecords">
+            <el-icon><DataAnalysis /></el-icon>
+            AI 记录
           </el-button>
           <el-button class="btn-theme" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
@@ -125,6 +128,15 @@
           @click="batchGenerateVideos"
         >
           批量生视频
+        </el-button>
+        <el-button
+          size="small"
+          :loading="exportingStoryboardVideos"
+          :disabled="!filterEpisodeId || exportingStoryboardVideos"
+          @click="exportStoryboardVideos"
+        >
+          <el-icon><Download /></el-icon>
+          批量导出视频
         </el-button>
         <span class="gen-hint" title="完整创作流水线">剧本 → 提取角色/场景/道具 → 分镜 → 生图 → 视频</span>
       </div>
@@ -265,8 +277,9 @@ import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
-import { List, Moon, Plus, Sunny, Grid } from '@element-plus/icons-vue'
+import { DataAnalysis, Download, List, Moon, Plus, Sunny, Grid } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import BrandLogo from '@/components/BrandLogo.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -336,6 +349,7 @@ const selectedStoryboardIds = ref([])
 const pipelineSteps = ref(['image', 'video', 'audio'])
 const workflowRunning = ref(false)
 const workflowProgress = ref('')
+const exportingStoryboardVideos = ref(false)
 const layoutSaveState = ref('idle')
 const layoutDirty = ref(false)
 const currentViewport = ref({ x: 0, y: 0, zoom: 0.75 })
@@ -369,6 +383,44 @@ const nodeTypes = {
 }
 
 const dramaId = computed(() => Number(route.params.id))
+
+function safeDownloadName(value, fallback) {
+  return String(value || fallback)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/[.\s]+$/g, '')
+    .trim() || fallback
+}
+
+async function exportStoryboardVideos() {
+  if (!dramaId.value || !filterEpisodeId.value || exportingStoryboardVideos.value) return
+  exportingStoryboardVideos.value = true
+  try {
+    const blob = await dramaAPI.exportAssets(
+      dramaId.value,
+      filterEpisodeId.value,
+      'storyboard_videos'
+    )
+    const episode = (drama.value?.episodes || []).find(
+      (item) => Number(item.id) === Number(filterEpisodeId.value)
+    )
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${safeDownloadName(drama.value?.title, '短剧')}-${safeDownloadName(
+      episode?.title || `第${episode?.episode_number || filterEpisodeId.value}集`,
+      '当前集'
+    )}-分镜视频.zip`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    ElMessage.success('分镜视频已批量导出')
+  } catch (e) {
+    if (!e.response) ElMessage.error(e?.message || '分镜视频导出失败')
+  } finally {
+    exportingStoryboardVideos.value = false
+  }
+}
 const savedLayout = computed(() => layoutCache.value || parseCanvasLayout(drama.value?.metadata))
 
 const initialViewport = computed(() => {
@@ -834,6 +886,14 @@ function stopStatusPoll() {
 function goListMode() {
   const query = filterEpisodeId.value ? { episode: String(filterEpisodeId.value) } : {}
   router.push({ path: `/film/${dramaId.value}`, query })
+}
+
+function goAiRecords() {
+  router.push({
+    name: 'ai-records',
+    params: { id: String(dramaId.value) },
+    query: { returnTo: route.fullPath },
+  })
 }
 
 function navigateToStoryboard(episodeId, storyboardId) {

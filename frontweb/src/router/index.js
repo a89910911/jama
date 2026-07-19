@@ -1,8 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { authState, initializeAuth } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/Login.vue'),
+      meta: { title: '登录', public: true }
+    },
     {
       path: '/',
       name: 'list',
@@ -28,10 +35,28 @@ const router = createRouter({
       meta: { title: '画布模式' }
     },
     {
+      path: '/film/:id/prompts',
+      name: 'project-prompts',
+      component: () => import('@/views/ProjectPrompts.vue'),
+      meta: { title: '项目提示词' }
+    },
+    {
+      path: '/film/:id/ai-records',
+      name: 'ai-records',
+      component: () => import('@/views/AiRequests.vue'),
+      meta: { title: 'AI 记录' }
+    },
+    {
       path: '/ai-config',
       name: 'ai-config',
       component: () => import('@/views/AiConfig.vue'),
-      meta: { title: 'AI 配置' }
+      meta: { title: 'AI 配置', requiresSuperAdmin: true }
+    },
+    {
+      path: '/accounts',
+      name: 'accounts',
+      component: () => import('@/views/AccountManagement.vue'),
+      meta: { title: '账号管理', requiresSuperAdmin: true }
     },
     {
       path: '/free-create',
@@ -48,9 +73,28 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to) => {
-  if (to.meta.title) {
-    document.title = `${to.meta.title} - LocalMiniDrama`
+router.beforeEach(async (to) => {
+  document.title = 'JamaAI'
+
+  await initializeAuth()
+
+  if (to.meta.public) {
+    if (to.name === 'login' && authState.user) {
+      const redirect = String(to.query.redirect || '/')
+      return redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/'
+    }
+    return true
+  }
+
+  if (!authState.user) {
+    return {
+      name: 'login',
+      query: to.fullPath === '/' ? {} : { redirect: to.fullPath }
+    }
+  }
+
+  if (to.meta.requiresSuperAdmin && !authState.user.is_super_admin) {
+    return { name: 'list' }
   }
   return true
 })

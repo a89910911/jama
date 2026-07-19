@@ -13,7 +13,6 @@ import { buildExtractTaskMeta, isEpisodeExtractRunning } from '@/composables/use
  * @param {import('vue').ComputedRef} deps.dramaId
  * @param {import('vue').ComputedRef} deps.currentEpisodeId
  * @param {Function} deps.getSelectedStyle
- * @param {Function} deps.scriptLanguage - ref
  * @param {Function} deps.loadDrama
  * @param {Function} deps.pollTask
  * @param {Function} deps.pollUntilResourceHasImage
@@ -21,7 +20,7 @@ import { buildExtractTaskMeta, isEpisodeExtractRunning } from '@/composables/use
  * @param {object} deps.dramaAPI
  */
 export function useScenes(deps) {
-  const { store, dramaId, currentEpisodeId, getSelectedStyle, scriptLanguage, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage, dramaAPI } = deps
+  const { store, dramaId, currentEpisodeId, getSelectedStyle, loadDrama, pollTask, pollUntilResourceHasImage, hasAssetImage, dramaAPI } = deps
   const genStore = useGenerationTaskStore()
 
   function buildSceneImageMeta(scene) {
@@ -100,8 +99,7 @@ export function useScenes(deps) {
     try {
       const res = await dramaAPI.extractBackgrounds(epId, {
         model: undefined,
-        style: getSelectedStyle(),
-        language: scriptLanguage.value
+        style: getSelectedStyle()
       })
       const taskId = res?.task_id
       if (taskId) {
@@ -402,9 +400,10 @@ export function useScenes(deps) {
       dramaAllSceneTotal.value = list.length
       const start = (dramaAllScenePage.value - 1) * dramaAllScenePageSize.value
       dramaAllSceneList.value = list.slice(start, start + dramaAllScenePageSize.value)
-    } catch {
+    } catch (e) {
       dramaAllSceneList.value = []
       dramaAllSceneTotal.value = 0
+      ElMessage.error(e.message || '加载已创建场景失败')
     } finally {
       dramaAllSceneLoading.value = false
     }
@@ -478,7 +477,7 @@ export function useScenes(deps) {
     try {
       const name = (item.location || item.time || '未命名').slice(0, 20)
       await ElMessageBox.confirm(
-        `确定删除公共场景「${name}」吗？`,
+        `确定删除可复用场景模板「${name}」吗？`,
         '删除确认',
         { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
       )
@@ -496,7 +495,7 @@ export function useScenes(deps) {
     addingSceneToLibraryId.value = scene.id
     try {
       await sceneAPI.addToLibrary(scene.id, {})
-      ElMessage.success('已加入本剧场景库')
+      ElMessage.success('已保存为可复用场景模板')
       if (showSceneLibrary.value) loadSceneLibraryList()
     } catch (e) {
       ElMessage.error(e.message || '加入失败')

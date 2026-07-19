@@ -3,11 +3,10 @@
     <header class="header">
       <div class="header-inner">
         <h1 class="logo" @click="goList">
-          <span class="logo-main">本地短剧助手</span>
-          <span class="logo-sub">LocalMiniDrama</span>
+          <BrandLogo />
         </h1>
         <span class="page-title">AI 配置</span>
-        <el-button class="btn-back" @click="goList">
+        <el-button class="btn-back" @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
@@ -21,14 +20,26 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import AIConfigContent from '@/components/AIConfigContent.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 
+const route = useRoute()
 const router = useRouter()
+
+const returnTo = computed(() => {
+  const value = Array.isArray(route.query.returnTo) ? route.query.returnTo[0] : route.query.returnTo
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/'
+})
 
 function goList() {
   router.push({ name: 'list' })
+}
+
+function goBack() {
+  router.push(returnTo.value)
 }
 </script>
 
@@ -62,7 +73,7 @@ html.light .header {
   box-shadow: 0 2px 16px rgba(139, 92, 246, 0.08);
 }
 .header-inner {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 12px 24px;
   display: flex;
@@ -113,8 +124,10 @@ html.light .logo-sub {
 }
 html.light .page-title { color: #6b7280; }
 .main {
-  max-width: 1200px;
-  margin: 24px auto;
+  width: calc(100% - 40px);
+  max-width: 1600px;
+  min-height: calc(100vh - 96px);
+  margin: 20px auto;
   background: rgba(24, 24, 27, 0.75);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -127,5 +140,15 @@ html.light .main {
   background: rgba(255, 255, 255, 0.88);
   border-color: rgba(139, 92, 246, 0.15);
   box-shadow: 0 4px 20px rgba(139, 92, 246, 0.08);
+}
+@media (max-width: 720px) {
+  .header-inner { padding: 10px 14px; }
+  .page-title { font-size: 14px; }
+  .main {
+    width: calc(100% - 20px);
+    margin: 10px auto;
+    padding: 14px;
+    border-radius: 12px;
+  }
 }
 </style>

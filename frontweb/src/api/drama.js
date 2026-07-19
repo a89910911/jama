@@ -22,6 +22,11 @@ export const dramaAPI = {
   saveCharacters(id, data) {
     return request.put(`/dramas/${id}/characters`, data)
   },
+  getCharacters(id, episodeId) {
+    return request.get(`/dramas/${id}/characters`, {
+      params: episodeId ? { episode_id: episodeId } : {}
+    })
+  },
   /** 保存梗概/故事摘要到项目（outline），body: { summary, title?, genre?, tags? } */
   saveOutline(id, data) {
     return request.put(`/dramas/${id}/outline`, data)
@@ -60,6 +65,12 @@ export const dramaAPI = {
   },
   exportDrama(id) {
     return request.get(`/dramas/${id}/export`, { responseType: 'blob' })
+  },
+  exportAssets(id, episodeId, scope = 'all') {
+    return request.get(`/dramas/${id}/assets/export`, {
+      params: { episode_id: episodeId, scope },
+      responseType: 'blob'
+    })
   },
   importDrama(file) {
     const form = new FormData()

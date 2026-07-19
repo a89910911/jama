@@ -1,6 +1,10 @@
 // 与 Go pkg/ai + application/services/ai_service 对齐：读取 ai_service_configs，调用 OpenAI 兼容的 chat completions
 const aiConfigService = require('./aiConfigService');
+const { resolveSceneModelSelection } = require('./sceneModelMapService');
 const { applyDeepSeekChatOptions } = require('./deepseekConfig');
+const { isFalConfig, falAuthorizationValue } = require('./falClient');
+const { isVeniceConfig, veniceHeaders } = require('./veniceClient');
+const aiRequestLogService = require('./aiRequestLogService');
 const https = require('https');
 const http = require('http');
 
@@ -59,7 +63,7 @@ function postJSONNonStream(url, headers, body, timeoutMs = 120000) {
 /**
  * 图生等长耗时 JSON POST：使用 Node http(s) + 可配置超时（默认 10 分钟），
  * 避免 undici fetch 在慢链路或大包体（多参考图 base64）下长时间挂起后以模糊的 fetch failed 结束。
- * @returns {Promise<{ statusCode: number, raw: string }>}
+ * @returns {Promise<{ statusCode: number, raw: string, rawBuffer: Buffer, headers: object }>}
  */
 function postJSONWithTimeout(url, headers, body, timeoutMs = 600000) {
   return new Promise((resolve, reject) => {
@@ -84,8 +88,14 @@ function postJSONWithTimeout(url, headers, body, timeoutMs = 600000) {
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
         clearTimeout(timer);
-        const raw = Buffer.concat(chunks).toString('utf-8');
-        resolve({ statusCode: res.statusCode || 0, raw });
+        const rawBuffer = Buffer.concat(chunks);
+        const raw = rawBuffer.toString('utf-8');
+        resolve({
+          statusCode: res.statusCode || 0,
+          raw,
+          rawBuffer,
+          headers: res.headers || {},
+        });
       });
       res.on('error', (e) => {
         clearTimeout(timer);
@@ -225,6 +235,16 @@ function buildChatUrl(config) {
   return base + ep;
 }
 
+function buildChatAuthHeaders(config) {
+  const apiKey = config.api_key || '';
+  if (isVeniceConfig(config)) return veniceHeaders(apiKey);
+  return {
+    Authorization: isFalConfig(config)
+      ? falAuthorizationValue(apiKey)
+      : 'Bearer ' + apiKey,
+  };
+}
+
 function getModelFromConfig(config, preferredModel) {
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
   if (preferredModel && models.includes(preferredModel)) return preferredModel;
@@ -238,23 +258,18 @@ function getModelFromConfig(config, preferredModel) {
  */
 function getConfigFromModelMap(db, sceneKey) {
   try {
-    const row = db.prepare('SELECT * FROM ai_model_map WHERE key = ?').get(sceneKey);
-    if (!row) return null;
-    const configs = aiConfigService.listConfigs(db, row.service_type || 'text');
-    let config = null;
-    if (row.config_id) {
-      config = configs.find((c) => c.id === row.config_id && c.is_active) || null;
-    }
-    if (!config) {
-      config = configs.find((c) => c.is_active && c.is_default) || configs.find((c) => c.is_active) || null;
-    }
-    return config ? { config, modelOverride: row.model_override || null } : null;
+    const selection = resolveSceneModelSelection(db, sceneKey, { serviceType: 'text' });
+    if (!selection.row || !selection.config) return null;
+    return {
+      config: selection.config,
+      modelOverride: selection.model_override || null,
+    };
   } catch (_) {
     return null;
   }
 }
 
-async function generateText(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
+async function generateTextInternal(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
   const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, streamCallback = null, scene_key = null } = options;
 
   // F2: 若传入 scene_key，优先从 ai_model_map 查找对应的模型路由配置
@@ -337,7 +352,7 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
   body = applyDeepSeekChatOptions(config, body);
   const startMs = Date.now();
   log.info('AI generateText request', { url: url.slice(0, 60), model, max_tokens: finalMaxTokens ?? '(model default)', json_mode, stream: true });
-  const res = await postJSONStream(url, { Authorization: 'Bearer ' + (config.api_key || '') }, body, 60000, (receivedLen, event, accumulated) => {
+  const res = await postJSONStream(url, buildChatAuthHeaders(config), body, 60000, (receivedLen, event, accumulated) => {
     if (event === 'first_token') {
       log.info('AI stream first token', { model, ttft_ms: Date.now() - startMs });
     } else if (receivedLen > 0 && receivedLen % 500 < 20) {
@@ -361,7 +376,7 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
  * 与 generateText 相同的路由与鉴权，但将模型增量以 delta 回调给调用方；返回完整拼接文本。
  * @param {(delta: string) => void} onDelta 仅增量片段（UTF-8 字符串）
  */
-async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
+async function streamGenerateTextInternal(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
   const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, scene_key = null } = options;
   let config = null;
   let routedModelOverride = null;
@@ -443,7 +458,7 @@ async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt
   let lastLen = 0;
   const res = await postJSONStream(
     url,
-    { Authorization: 'Bearer ' + (config.api_key || '') },
+    buildChatAuthHeaders(config),
     body,
     silenceMs,
     (receivedLen, event, accumulated) => {
@@ -505,7 +520,7 @@ function resolveEntityImageSource(entity, cfg) {
  * imageSource: { localAbsPath: string } 或 { imageUrl: string }
  * 使用 OpenAI vision 消息格式（兼容 GPT-4o / Gemini openai-compat / Qwen-VL 等）。
  */
-async function generateTextWithVision(db, log, serviceType, userPrompt, systemPrompt, imageSource, options = {}) {
+async function generateTextWithVisionInternal(db, log, serviceType, userPrompt, systemPrompt, imageSource, options = {}) {
   const fs = require('fs');
   const path = require('path');
 
@@ -613,7 +628,7 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   let res;
   try {
     // 使用非流式请求：视觉分析响应短，且流式对推理模型（o1/o3/o4）和部分代理兼容性差
-    res = await postJSONNonStream(url, { Authorization: 'Bearer ' + (config.api_key || '') }, body, 120000);
+    res = await postJSONNonStream(url, buildChatAuthHeaders(config), body, 120000);
   } catch (httpErr) {
     log.error('[Vision] HTTP 请求失败', { model, url: url.slice(0, 80), error: httpErr.message });
     throw httpErr;
@@ -629,6 +644,132 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   }
   log.info('[Vision] 请求成功', { model, elapsed_ms: Date.now() - startMs, result_len: content.length, result_preview: content.slice(0, 100) });
   return content.trim();
+}
+
+function resolveTextLogMeta(db, serviceType, options = {}) {
+  try {
+    let config = null;
+    let modelOverride = null;
+    if (options.scene_key) {
+      const mapped = getConfigFromModelMap(db, options.scene_key);
+      if (mapped) {
+        config = mapped.config;
+        modelOverride = mapped.modelOverride;
+      }
+    }
+    if (!config) {
+      config = options.model
+        ? getConfigForModel(db, serviceType, options.model)
+        : getDefaultConfig(db, serviceType);
+    }
+    if (!config) config = getDefaultConfig(db, 'text');
+    return {
+      config_id: config?.id || null,
+      provider: config?.provider || null,
+      model: config ? getModelFromConfig(config, modelOverride || options.model) : (options.model || null),
+    };
+  } catch (_) {
+    return { config_id: null, provider: null, model: options.model || null };
+  }
+}
+
+async function runLoggedTextCall({
+  db,
+  log,
+  serviceType,
+  userPrompt,
+  systemPrompt,
+  imageSource,
+  options,
+  operation,
+  invoke,
+}) {
+  const meta = resolveTextLogMeta(db, serviceType, options);
+  const record = aiRequestLogService.start(db, {
+    service_type: imageSource ? 'vision' : 'text',
+    operation,
+    scene_key: options.scene_key || null,
+    ...meta,
+    options,
+    request: {
+      system_prompt: systemPrompt || '',
+      user_prompt: userPrompt || '',
+      ...(imageSource ? { image_source: imageSource } : {}),
+      options,
+    },
+  });
+  try {
+    const content = await invoke();
+    aiRequestLogService.succeed(db, record, { content }, meta);
+    return content;
+  } catch (error) {
+    aiRequestLogService.fail(db, record, error, null, meta);
+    throw error;
+  }
+}
+
+async function generateText(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
+  return runLoggedTextCall({
+    db,
+    log,
+    serviceType,
+    userPrompt,
+    systemPrompt,
+    options,
+    operation: options.scene_key || 'generate_text',
+    invoke: () => generateTextInternal(db, log, serviceType, userPrompt, systemPrompt, options),
+  });
+}
+
+async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
+  return runLoggedTextCall({
+    db,
+    log,
+    serviceType,
+    userPrompt,
+    systemPrompt,
+    options,
+    operation: options.scene_key || 'stream_generate_text',
+    invoke: () => streamGenerateTextInternal(
+      db,
+      log,
+      serviceType,
+      userPrompt,
+      systemPrompt,
+      options,
+      onDelta
+    ),
+  });
+}
+
+async function generateTextWithVision(
+  db,
+  log,
+  serviceType,
+  userPrompt,
+  systemPrompt,
+  imageSource,
+  options = {}
+) {
+  return runLoggedTextCall({
+    db,
+    log,
+    serviceType,
+    userPrompt,
+    systemPrompt,
+    imageSource,
+    options,
+    operation: options.scene_key || 'vision_analysis',
+    invoke: () => generateTextWithVisionInternal(
+      db,
+      log,
+      serviceType,
+      userPrompt,
+      systemPrompt,
+      imageSource,
+      options
+    ),
+  });
 }
 
 const EXTRACT_PROMPTS = {
@@ -673,10 +814,8 @@ async function extractDescriptionFromImage(db, log, entityType, imageUrl, entity
     prop: 'vision_prop_extract',
   };
   const systemPrompt = promptTemplates.resolvePromptContent(db, `vision.${entityType}.extract.system`, {
-    locale: 'universal',
   });
   const userPrompt = promptTemplates.resolvePromptContent(db, `vision.${entityType}.extract.user`, {
-    locale: 'universal',
     variables: { entity_name: entityName || '' },
   });
 
@@ -741,4 +880,5 @@ module.exports = {
   EXTRACT_PROMPTS,
   isRefusalResponse,
   postJSONWithTimeout,
+  buildChatAuthHeaders,
 };

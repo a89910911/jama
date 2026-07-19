@@ -147,7 +147,6 @@ async function generatePropPromptOnly(db, log, cfg, propId, modelName, style) {
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.system', promptContext);
   const userPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.user', {
     ...promptContext,
-    locale: 'universal',
     variables: {
       entity_name: prop.name || '',
       entity_type: prop.type || '',
@@ -196,11 +195,9 @@ async function extractPropFromImage(db, log, cfg, propId) {
   const propLabel = prop.name || '道具';
   const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.system', {
     propId,
-    locale: 'universal',
   });
   const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.user', {
     propId,
-    locale: 'universal',
     variables: { entity_name: propLabel },
   });
 

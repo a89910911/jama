@@ -94,14 +94,10 @@
 为避免“系统级提示词”和大模型消息中的 `system` 角色混淆，数据库中分别使用：
 
 - `scope`：配置层级，值为 `system` 或 `project`。
-- `message_role`：发送给模型时的角色或用途，例如：
-  - `system`
-  - `user_template`
-  - `suffix`
-  - `format_contract`
-  - `image_prompt`
-  - `video_prompt`
-  - `negative_prompt`
+- `message_role`：AI 消息角色，只允许 `system`、`user`、`assistant`。
+- `content_type`：模板内容用途，例如 `system`、`user_template`、`suffix`、`format_contract`、`image_prompt`、`video_prompt`、`negative_prompt`。
+
+当前 94 条模板实际只需要 `system` 和 `user`；暂时没有需要预填模型回复的 `assistant` 模板，但目录校验允许以后按标准 AI 消息协议增加。
 
 ### 4.3 提示词键 `prompt_key`
 
@@ -208,7 +204,6 @@ drama_id    → 决定优先读取哪个项目级提示词
 - 分类
 - 消息角色
 - 关联业务场景
-- 语言
 - 当前状态
 - 更新时间
 
@@ -218,11 +213,24 @@ drama_id    → 决定优先读取哪个项目级提示词
 - 按分类筛选。
 - 按 `scene_key` 筛选。
 - 按消息角色筛选。
-- 按语言筛选。
 - 查看使用说明和代码接入位置。
 - 编辑全部提示词正文。
 - 预览变量替换后的最终内容。
 - 恢复数据库中保存的出厂默认内容。
+
+#### 6.2.1 用户可读名称
+
+每个提示词名称必须让非开发人员直接看出实际用途，统一采用“动作 + 业务对象 + 结果/使用阶段 + 模板类型”的表达方式：
+
+- 系统消息使用“（系统规则）”结尾。
+- 业务资料输入使用“（输入模板）”结尾。
+- 运行时追加条件使用“（附加约束）”结尾。
+- JSON、固定行或字段协议使用“（输出格式）”结尾。
+- 直接发送给图片模型的模板使用“（生图模板）”结尾。
+- 直接发送给视频模型的模板使用“（视频模板）”结尾。
+- 负向提示词使用“（负向词）”结尾。
+
+禁止只使用“系统提示词”“通用规则”“合同”“处理模板”等无法说明业务对象和结果的名称。最终 94 个提示词的用户可读名称必须完整、唯一，并与正文实际作用一致。新增提示词没有配置用户可读名称、名称类型与消息角色不一致、名称重复或正文为空时，目录初始化必须报错。
 
 ### 6.3 全部内容可编辑
 
@@ -231,11 +239,10 @@ drama_id    → 决定优先读取哪个项目级提示词
 为降低误操作风险：
 
 - JSON、字段约束、负向提示词、接口协议提示词标记为“高风险”。
-- 编辑高风险提示词时，在编辑器顶部持续显示醒目警告：`高风险配置，可能导致 AI 输出无法解析或生成失败，非专业人员请勿编辑。`
-- 用户首次进入高风险提示词编辑状态时，弹出二次提示；用户明确确认后才开放本次编辑。
+- 编辑任意提示词时，编辑器顶部都持续显示醒目警告：`高风险配置，非专业人员请勿编辑。修改 JSON 协议、变量、负向词或技术模板可能导致生成失败。`
 - 保存前执行变量校验和基础格式校验。
 - 不再采用不可编辑锁定区。
-- 保存高风险内容时再次确认，并展示本次修改影响的业务场景。
+- 高风险内容直接开放编辑和保存，不显示“确认风险后进入编辑”或保存二次确认弹窗。
 
 格式校验只用于提示风险，不应偷偷恢复代码默认值。
 
@@ -273,19 +280,17 @@ drama_id    → 决定优先读取哪个项目级提示词
 resolvePrompt({
   promptKey,
   dramaId,
-  locale,
   variables
 })
 ```
 
 解析顺序：
 
-1. `dramaId + promptKey + locale` 对应的项目级提示词。
-2. `promptKey + locale` 对应的系统级提示词。
-3. `promptKey + universal` 对应的系统通用提示词。
-4. 均不存在时返回 `PROMPT_TEMPLATE_NOT_FOUND`，停止 AI 调用。
+1. `dramaId + promptKey` 对应的项目级提示词。
+2. `promptKey` 对应的系统级提示词。
+3. 均不存在时返回 `PROMPT_TEMPLATE_NOT_FOUND`，停止 AI 调用。
 
-不得在第 4 步回退到代码中写死的提示词。
+不得回退到代码中写死的提示词。
 
 项目上下文解析规则：
 
@@ -342,19 +347,74 @@ resolvePrompt({
 
 为防止项目内容破坏模板，变量渲染器不得执行 JavaScript、表达式或任意代码。
 
-### 6.8 多语言
+### 6.8 单一中文模板
 
-提示词内容按以下语言保存：
+- 每个 `prompt_key` 在系统级和每个项目级各只允许一份有效模板。
+- 全系统不再提供 `language=en` 配置，不区分 `zh`、`en` 或 `universal`，界面和接口均不暴露语言维度。
+- 初始化统一采用当前中文模板；模板正文中因模型协议需要保留的英文关键词不代表英文模板。
+- 历史多语言数据升级时按 `zh → universal → en` 的顺序选择一份内容迁移为单一模板；迁移完成后物理删除所有非 `default` 的旧语言行。
+- 运行时只执行“项目模板 → 系统模板”的两级解析。
 
-- `zh`
-- `en`
-- `universal`
+### 6.8.1 第一批简单合并
 
-运行时优先读取项目当前语言对应的模板。
+对结构、变量和用途相同，仅因调用分支不同而重复的模板先执行简单合并：
 
-同一 `prompt_key` 的中文和英文内容分别编辑。不能用中文内容自动覆盖英文内容，也不能在缺失时静默跨语言回退。
+| 被替换的旧定义 | 合并后的定义 |
+|---|---|
+| `frame.first.user`、`frame.key.user`、`frame.last.user` | `frame.input.user` |
+| `scene.image_four_view.user`、`scene.image_single.user` | `scene.image.user` |
+| `scene.image_four_view.compose`、`scene.image_single.compose` | `scene.image.compose` |
 
-对于当前只有一种语言的提示词，初始化为 `universal`，并在界面明确标记。
+合并要求：
+
+- 首帧、关键帧、尾帧各自的系统规则继续独立，只有结构相同的上下文输入模板合并。
+- 场景四视图和单图的系统规则、布局规则继续独立；通用输入和最终拼装通过各分支传入的布局变量保持差异。
+- 目录由 102 个定义减少为 98 个定义。
+- 升级时先创建新的通用定义，再迁移旧系统自定义和项目覆盖，最后物理删除 7 个旧定义关联的全部模板记录及 7 个旧定义，不保留兼容别名。
+- 同一合并组存在多份旧系统自定义时，按表中旧定义顺序选择第一份合法内容；同一项目存在多份旧覆盖时也采用相同顺序。新定义已经存在用户自定义或项目覆盖时，不覆盖新内容。
+
+### 6.8.2 第二批技术模板合理收敛
+
+技术补充仅在“固定随主模板发送、没有独立条件、没有复用价值”时物理合并；条件分支、供应商差异、负向词和跨流程复用规则继续独立：
+
+| 被吸收的旧定义 | 合并后的定义 |
+|---|---|
+| `storyboard.generation.requirements`、`storyboard.generation.output_contract` | `storyboard.generation.system` |
+| `frame.output_contract` | `frame.first.system`、`frame.key.system`、`frame.last.system` 已有输出协议 |
+| `character.image_layout` | `character.image_compose` |
+| `scene.image.compose` + `scene.image_four_view.layout` | `scene.image_four_view.final` |
+| `scene.image.compose` + `scene.image_single.layout` | `scene.image_single.final` |
+
+合并要求：
+
+- 目录由 98 个定义减少为 93 个定义。
+- `storyboard.generation.narration`、`storyboard.generation.universal_mode`、数量/时长约束、Omni 条件片段、参考图规则、负向词等仍保留独立编辑，因为它们按运行条件注入或被多个流程复用。
+- 升级时先创建最终定义，再迁移系统自定义和逐项目覆盖，最后物理删除 7 个被吸收定义及其全部模板记录。
+- 未修改的旧片段不得因空行或格式标准化导致最终模板被误标为“已修改”。
+- 本阶段完成后目录为 93 条；后续用途类型重构见 6.8.3。
+
+### 6.8.3 模板用途类型重构
+
+模板的“用途类型”、AI `message_role` 和 `content_type` 分开。`message_role` 只表达 AI 的 `system`、`user`、`assistant` 角色；图片正向、视频正向、负向参数、格式协议或后缀由 `content_type` 和“注入位置”说明。用途类型只允许以下三种：
+
+| `template_kind` | 页面名称 | 定义 |
+|---|---|---|
+| `main` | 主模板 | 一次业务调用的主体模板，或者拥有自己条件模板的主流程模板 |
+| `conditional_child` | 条件子模板 | 仅在固定条件和注入位置使用；回退逻辑属于该类型的特殊子类型 |
+| `independent_technical` | 独立技术模板 | 不依赖主模板，可以被业务代码直接解析和使用 |
+
+整理要求：
+
+- 不设置“共享技术模板”类型。
+- 普通条件子模板必须只有一个 `parent_prompt_key`，由该主模板独立管理。
+- `image.reference_generation.user` 提升为独立技术模板，清除其 `parent_prompt_key`。
+- 独立技术模板固定为 `image.quad_grid.layout`、`image.nine_grid.layout`、`image.reference_generation.user`。
+- 回退逻辑统一设置为 `template_kind=conditional_child`、`template_subtype=fallback`。
+- 回退子模板固定为 `frame.first.fallback`、`frame.key.fallback`、`frame.last.fallback`、`frame.character_anchor.fallback`、`omni.segment.fallback`、`image.default_cinematic_style`。
+- `omni.segment.fallback` 归属 `omni.segment.user`；`image.default_cinematic_style` 会被多个图片流程在“未配置画风”条件下使用，没有唯一父模板，作为唯一允许无 `parent_prompt_key` 的特殊回退子模板。
+- 原 `image.realistic_scale_contract` 不再由首帧和尾帧共享，拆为 `frame.first.realistic_scale_contract`、`frame.last.realistic_scale_contract`，分别归属 `frame.first.system`、`frame.last.system`；出厂正文分别限定为仅用于首帧、仅用于尾帧。
+- 拆分迁移必须把旧系统自定义和每个项目覆盖各复制到两条新模板，再物理删除旧定义和旧模板记录；新模板已有内容时不得覆盖。
+- 最终目录为 94 条：52 个主模板、39 个条件子模板（其中 6 个回退子类型）、3 个独立技术模板。
 
 ### 6.9 最终提示词预览
 
@@ -363,10 +423,7 @@ resolvePrompt({
 - 显示当前选择的提示词来源。
 - 使用示例变量进行渲染。
 - 展示最终发送给模型的完整内容。
-- 如果一次调用由多个模板组成，按发送顺序展示：
-  - system
-  - user
-  - suffix/format contract
+- 如果一次调用由多个模板组成，按实际组合顺序展示，并分别标明 AI 消息角色、内容用途和注入位置。
 - 标出尚未赋值的变量。
 
 预览不得发起真实 AI 请求。
@@ -486,8 +543,6 @@ scene_key 负责模型
 |---|---|---|---|
 | `storyboard.generation.system` | 分镜生成系统规则 | system | `storyboard_extraction` |
 | `storyboard.generation.user` | 分镜生成用户模板 | user_template | `storyboard_extraction` |
-| `storyboard.generation.requirements` | 分镜要素要求 | suffix | `storyboard_extraction` |
-| `storyboard.generation.output_contract` | 分镜 JSON 输出协议 | format_contract | `storyboard_extraction` |
 | `storyboard.generation.continuation` | 分镜截断续写模板 | user_template | `storyboard_extraction` |
 | `storyboard.generation.narration` | 分镜旁白附加规则 | suffix | `storyboard_extraction` |
 | `storyboard.generation.universal_mode` | 全能模式分镜附加规则 | suffix | `storyboard_extraction` |
@@ -499,12 +554,11 @@ scene_key 负责模型
 | 建议 `prompt_key` | 名称 | 消息角色 | 关联 `scene_key` |
 |---|---|---|---|
 | `frame.first.system` | 首帧提示词生成规则 | system | `frame_prompt` |
-| `frame.first.user` | 首帧上下文输入模板 | user_template | `frame_prompt` |
 | `frame.key.system` | 关键帧提示词生成规则 | system | `frame_prompt` |
-| `frame.key.user` | 关键帧上下文输入模板 | user_template | `frame_prompt` |
 | `frame.last.system` | 尾帧提示词生成规则 | system | `frame_prompt` |
-| `frame.last.user` | 尾帧上下文输入模板 | user_template | `frame_prompt` |
-| `frame.output_contract` | 帧提示词 JSON 输出协议 | format_contract | `frame_prompt` |
+| `frame.first.realistic_scale_contract` | 首帧真实物理尺度约束 | suffix | `frame_prompt` |
+| `frame.last.realistic_scale_contract` | 尾帧真实物理尺度约束 | suffix | `frame_prompt` |
+| `frame.input.user` | 帧提示词通用输入模板 | user_template | `frame_prompt` |
 | `storyboard.layout.regenerate.system` | 画面布局重生成规则 | system | `layout_regenerate` |
 | `storyboard.layout.regenerate.user` | 画面布局重生成输入模板 | user_template | `layout_regenerate` |
 | `storyboard.continuity_snapshot.system` | 连戏状态摘要规则 | system | `continuity_snapshot` |
@@ -516,13 +570,12 @@ scene_key 负责模型
 |---|---|---|---|
 | `character.image_polish.system` | 角色生图提示词润色 | system | `role_image_polish` |
 | `character.image_polish.user` | 角色生图提示词输入模板 | user_template | `role_image_polish` |
-| `character.image_layout` | 角色四视图布局要求 | image_prompt | `role_image_polish` |
+| `character.image_compose` | 角色四视图最终生图提示词 | image_prompt | `role_image_polish` |
 | `scene.image_four_view.system` | 场景四视图提示词润色 | system | `scene_image_polish` |
-| `scene.image_four_view.user` | 场景四视图输入模板 | user_template | `scene_image_polish` |
-| `scene.image_four_view.layout` | 场景四视图布局要求 | image_prompt | `scene_image_polish` |
 | `scene.image_single.system` | 场景单图提示词润色 | system | `scene_image_polish` |
-| `scene.image_single.user` | 场景单图输入模板 | user_template | `scene_image_polish` |
-| `scene.image_single.layout` | 场景单图布局要求 | image_prompt | `scene_image_polish` |
+| `scene.image.user` | 场景生图通用输入模板 | user_template | `scene_image_polish` |
+| `scene.image_four_view.final` | 场景四视图最终生图提示词 | image_prompt | `scene_image_polish` |
+| `scene.image_single.final` | 场景单图最终生图提示词 | image_prompt | `scene_image_polish` |
 | `scene.prompt.translate_zh.user` | 场景提示词翻译中文 | user_template | `scene_extraction` |
 | `prop.image_polish.system` | 道具生图提示词润色 | system | `prop_image_polish` |
 | `prop.image_polish.user` | 道具生图提示词输入模板 | user_template | `prop_image_polish` |
@@ -549,8 +602,8 @@ scene_key 负责模型
 | `image.quad_grid.layout` | 四宫格图片布局要求 | image_prompt | 无 |
 | `image.nine_grid.layout` | 九宫格图片布局要求 | image_prompt | 无 |
 | `image.reference_context.system` | 参考图上下文说明 | system | 无 |
+| `image.reference_generation.user` | 非 Gemini 参考图生图拼装 | image_prompt | 无 |
 | `image.negative.anti_split` | 防分屏负向提示词 | negative_prompt | 无 |
-| `image.realistic_scale_contract` | 真实物理尺度约束 | suffix | 多场景复用 |
 | `video.aspect_ratio_mismatch_suffix` | 视频画幅不匹配补充规则 | suffix | 无 |
 
 ### 7.9 当前代码缺口
@@ -576,6 +629,7 @@ CREATE TABLE prompt_definitions (
   description TEXT NOT NULL DEFAULT '',
   category TEXT NOT NULL,
   message_role TEXT NOT NULL,
+  content_type TEXT NOT NULL DEFAULT 'user_template',
   service_type TEXT NOT NULL DEFAULT 'text',
   scene_key TEXT,
   variable_schema TEXT NOT NULL DEFAULT '{}',
@@ -596,7 +650,7 @@ CREATE TABLE prompt_templates (
   definition_id INTEGER NOT NULL,
   scope TEXT NOT NULL,
   drama_id INTEGER,
-  locale TEXT NOT NULL DEFAULT 'zh',
+  locale TEXT NOT NULL DEFAULT 'default',
   content TEXT NOT NULL,
   seed_content TEXT,
   seed_version INTEGER NOT NULL DEFAULT 1,
@@ -625,6 +679,7 @@ WHERE scope = 'project' AND deleted_at IS NULL;
 
 - 系统级记录：`scope = system`，`drama_id = NULL`。
 - 项目级记录：`scope = project`，`drama_id` 必填。
+- `locale` 是旧数据库兼容字段，固定为内部值 `default`，不在 API 或界面暴露。
 - `seed_content` 只用于系统级“恢复出厂默认”。
 - 项目级“恢复系统值”通过删除项目记录实现，不复制系统值。
 - `version` 每次保存加 1，用于并发控制和任务快照。
@@ -699,7 +754,7 @@ POST   /dramas/:drama_id/prompts/:prompt_key/preview
 |---|---|
 | `story_expansion_system` | `story.generation.system` |
 | `storyboard_system` | `storyboard.generation.system` |
-| `storyboard_user_suffix` | `storyboard.generation.requirements` |
+| `storyboard_user_suffix` | 追加到 `storyboard.generation.system` |
 | `character_extraction` | `character.extraction.system` |
 | `scene_extraction` | `scene.extraction.system` |
 | `prop_extraction` | `prop.extraction.system` |
@@ -851,7 +906,7 @@ model
    包含所有发送给文本、视觉、图片和视频模型的静态模板、负向提示词、格式协议和技术约束；不包含用户输入和 AI 已生成的业务数据。
 
 2. **原锁定格式完全开放编辑**  
-   JSON 格式要求等原锁定内容全部可以编辑，但必须持续显示“高风险配置，非专业人员请勿编辑”的提示，并在进入编辑和保存时二次确认。
+   JSON 格式要求等原锁定内容全部可以直接编辑和保存。编辑任意模板时，编辑器都持续显示“高风险配置，非专业人员请勿编辑。修改 JSON 协议、变量、负向词或技术模板可能导致生成失败。”，不设置进入编辑确认或保存二次确认弹窗。
 
 3. **项目级覆盖范围**  
    所有具备项目上下文、能够解析 `drama_id` 的提示词都允许项目覆盖。
@@ -859,8 +914,8 @@ model
 4. **业务场景路由同步整理**  
    本需求同步补齐 `frame_prompt`、`scene_image_polish` 等未接入路由，并拆分当前过度复用的 `image_polish`。
 
-5. **多语言策略**  
-   分别管理 `zh`、`en` 和 `universal`。中文项目按“项目 `zh` → 系统 `zh` → 系统 `universal` → 报错”解析；英文项目按“项目 `en` → 系统 `en` → 系统 `universal` → 报错”解析。不自动翻译，也不跨语言回退。
+5. **单一中文模板策略**
+   全系统移除 `language=en` 配置，每个提示词只管理一份中文模板，不再区分中文、英文和通用。运行时按“项目模板 → 系统模板 → 报错”解析；历史语言模板由迁移合并为内部 `default` 模板，随后硬删除所有旧语言行。
 
 6. **异步任务提示词快照**  
    创建任务时固定有效提示词的 key、层级、版本和内容快照。提示词修改不影响已经创建或排队的任务，只影响修改后创建的新任务。

@@ -143,8 +143,6 @@ database:
 storage:
   local_path: ./data/storage      # 图片/视频本地存储根目录
 
-language: zh                      # 提示词语言（zh / en）
-
 style:
   default_style: realistic         # 默认绘图风格
   default_image_ratio: "16:9"      # 默认图片比例

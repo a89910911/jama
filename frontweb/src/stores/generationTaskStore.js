@@ -498,13 +498,30 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
       _recoverAttachTask(vid.task_id, meta, () => callbacks.onStoryboardMedia?.(resourceId), pollOpts)
     }
 
+    const recoveryResourceIds = [
+      String(episodeId),
+      String(dramaId),
+      ...[...charIdSet].map((id) => `character_${id}`),
+      ...[...charIdSet].map((id) => String(id)),
+      ...[...propIdSet].map((id) => String(id)),
+      ...[...sceneIdSet].map((id) => `scene_${id}`),
+    ]
+
     try {
-      const [pendingImg, processingImg, processingVid, episodeTasks] = await Promise.all([
+      const [pendingImg, processingImg, processingVid, recoveryTasks] = await Promise.all([
         imagesAPI.list({ drama_id: dramaId, status: 'pending', page_size: 100 }).catch(() => ({ items: [] })),
         imagesAPI.list({ drama_id: dramaId, status: 'processing', page_size: 100 }).catch(() => ({ items: [] })),
         videosAPI.list({ drama_id: dramaId, status: 'processing', page_size: 100 }).catch(() => ({ items: [] })),
-        taskAPI.listByResource(String(episodeId)).catch(() => []),
+        taskAPI.listByResources(recoveryResourceIds).catch(() => []),
       ])
+
+      const tasksByResource = new Map()
+      for (const task of recoveryTasks || []) {
+        const key = String(task.resource_id ?? '')
+        if (!tasksByResource.has(key)) tasksByResource.set(key, [])
+        tasksByResource.get(key).push(task)
+      }
+      const episodeTasks = tasksByResource.get(String(episodeId)) || []
 
       const seenImg = new Set()
       for (const img of [...(pendingImg.items || []), ...(processingImg.items || [])]) {
@@ -556,7 +573,7 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
       }
 
       // 角色提取 task 挂在 dramaId 上，同一 taskId 只恢复一次（避免多集重复显示）
-      const dramaTasks = await taskAPI.listByResource(String(dramaId)).catch(() => [])
+      const dramaTasks = tasksByResource.get(String(dramaId)) || []
       for (const t of dramaTasks || []) {
         if (!isActiveTaskStatus(t.status)) continue
         if (t.type !== 'character_generation') continue
@@ -595,23 +612,54 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
         break
       }
 
-      const attachResourceTask = (resourceId, resourceType, label) => {
-        return taskAPI.listByResource(String(resourceId)).then((tasks) => {
-          for (const t of tasks || []) {
-            if (!isActiveTaskStatus(t.status)) continue
-            const meta = {
-              dramaId,
-              episodeId,
-              dramaTitle,
-              episodeNumber,
-              resourceType,
-              resourceId: Number(resourceId),
-              label,
-              taskId: t.id,
-            }
-            _recoverAttachTask(t.id, meta, () => callbacks.onDramaRefresh?.(), pollOpts)
+      const attachResourceTasks = (taskResourceId, resourceId, resourceType, label, allowedTypes) => {
+        const resourceTasks = tasksByResource.get(String(taskResourceId)) || []
+        for (const t of resourceTasks) {
+          if (!isActiveTaskStatus(t.status)) continue
+          if (allowedTypes?.length && !allowedTypes.includes(t.type)) continue
+          const meta = {
+            dramaId,
+            episodeId,
+            dramaTitle,
+            episodeNumber,
+            resourceType,
+            resourceId: Number(resourceId),
+            label,
+            taskId: t.id,
           }
-        }).catch(() => {})
+          _recoverAttachTask(t.id, meta, () => callbacks.onDramaRefresh?.(), pollOpts)
+        }
+      }
+
+      const attachResourceTask = (resourceId, resourceType, label) => {
+        if (resourceType === GEN_RESOURCE.CHAR_IMAGE) {
+          attachResourceTasks(
+            `character_${resourceId}`,
+            resourceId,
+            resourceType,
+            label,
+            ['image_generation', 'character_image']
+          )
+          attachResourceTasks(resourceId, resourceId, resourceType, label, ['character_image'])
+          return
+        }
+        if (resourceType === GEN_RESOURCE.SCENE_IMAGE) {
+          attachResourceTasks(
+            `scene_${resourceId}`,
+            resourceId,
+            resourceType,
+            label,
+            ['image_generation']
+          )
+          return
+        }
+        attachResourceTasks(
+          resourceId,
+          resourceId,
+          resourceType,
+          label,
+          ['prop_image_generation']
+        )
       }
 
       await Promise.all([
