@@ -2,6 +2,7 @@
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
 const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const sceneService = require('./sceneService');
 const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 
@@ -22,10 +23,13 @@ function withLanguage(cfg, language) {
   };
 }
 
-async function translatePromptToChinese(db, log, model, prompt) {
-  const userPrompt =
-    '请将以下场景图像提示词翻译为中文，保留风格词或比例（如 realistic、16:9）原样，直接返回翻译后的中文提示词，不要解释：\n' +
-    prompt;
+async function translatePromptToChinese(db, log, model, prompt, dramaId, taskId) {
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.prompt.translate_zh.user', {
+    dramaId,
+    taskId,
+    locale: 'universal',
+    variables: { source_prompt: prompt },
+  });
   const text = await aiClient.generateText(db, log, 'text', userPrompt, '', {
     scene_key: 'scene_extraction',
     model: model || undefined,
@@ -35,12 +39,14 @@ async function translatePromptToChinese(db, log, model, prompt) {
   return (text || '').toString().trim();
 }
 
-async function extractBackgroundsFromScript(db, cfg, log, scriptContent, dramaId, model, style) {
+async function extractBackgroundsFromScript(db, cfg, log, scriptContent, dramaId, model, style, taskId) {
   if (!scriptContent || !scriptContent.trim()) return [];
-  const systemPrompt = promptI18n.getSceneExtractionPrompt(cfg, style);
-  const prompt = (promptI18n.getLanguage(cfg) === 'en' ? '[Script Content]\n' : '【剧本内容】\n') + scriptContent;
-  console.log('systemPrompt', systemPrompt);
-  console.log('prompt', prompt);
+  const promptContext = { cfg, dramaId, taskId };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.extraction.system', promptContext);
+  const prompt = promptTemplates.resolvePromptContent(db, 'scene.extraction.user', {
+    ...promptContext,
+    variables: { script_content: scriptContent },
+  });
   const text = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, { scene_key: 'scene_extraction', model: model || undefined, temperature: 0.7 });
   let list = [];
   try {
@@ -111,7 +117,8 @@ async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, mode
       String(scriptContent),
       episode.drama_id,
       model,
-      style  // 作为 prompt 追加（extractBackgroundsFromScript 内部会用到）
+      style,  // 作为 prompt 追加（extractBackgroundsFromScript 内部会用到）
+      taskID
     );
   } catch (err) {
     log.error('Background extraction AI failed', { error: err.message, task_id: taskID });
@@ -124,7 +131,14 @@ async function processBackgroundExtraction(db, cfg, log, taskID, episodeId, mode
         const original = (bg.prompt || '').toString().trim();
         if (!original || hasChinese(original)) return bg;
         try {
-          const translatedPrompt = await translatePromptToChinese(db, log, model, original);
+          const translatedPrompt = await translatePromptToChinese(
+            db,
+            log,
+            model,
+            original,
+            episode.drama_id,
+            taskID
+          );
           if (!translatedPrompt) return bg;
           return { ...bg, prompt: translatedPrompt };
         } catch (err) {

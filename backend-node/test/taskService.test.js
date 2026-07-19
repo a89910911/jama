@@ -18,6 +18,7 @@ function createTestDb() {
       created_at TEXT,
       updated_at TEXT,
       completed_at TEXT,
+      prompt_snapshot TEXT,
       deleted_at TEXT
     );
   `);

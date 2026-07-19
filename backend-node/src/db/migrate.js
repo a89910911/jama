@@ -303,6 +303,7 @@ function ensureAllColumns(database) {
     { name: 'completed_at', type: 'TEXT' },
     { name: 'error',        type: 'TEXT' },
     { name: 'result',       type: 'TEXT' },
+    { name: 'prompt_snapshot', type: 'TEXT' },
     { name: 'created_at',   type: 'TEXT' },
     { name: 'updated_at',   type: 'TEXT' },
     { name: 'deleted_at',   type: 'TEXT' },

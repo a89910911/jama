@@ -538,13 +538,34 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   }
 
   // 复用 generateText 的配置查找逻辑
-  const { model: preferredModel, temperature = 0.3, max_tokens = 500 } = options;
-  let config = preferredModel
-    ? getConfigForModel(db, serviceType, preferredModel)
-    : getDefaultConfig(db, serviceType);
+  const {
+    model: preferredModel,
+    temperature = 0.3,
+    max_tokens = 500,
+    scene_key = null,
+  } = options;
+  let config = null;
+  let routedModelOverride = null;
+  if (scene_key) {
+    const mapped = getConfigFromModelMap(db, scene_key);
+    if (mapped) {
+      config = mapped.config;
+      routedModelOverride = mapped.modelOverride;
+      log.info('AI generateTextWithVision: scene_key routing', {
+        scene_key,
+        config_id: config.id,
+        model_override: routedModelOverride,
+      });
+    }
+  }
+  if (!config) {
+    config = preferredModel
+      ? getConfigForModel(db, serviceType, preferredModel)
+      : getDefaultConfig(db, serviceType);
+  }
   if (!config) config = getDefaultConfig(db, 'text');
   if (!config) throw new Error(`未配置文本模型，请在「AI 配置」中添加 ${serviceType} 类型的配置`);
-  const model = getModelFromConfig(config, preferredModel);
+  const model = getModelFromConfig(config, routedModelOverride || preferredModel);
   const url = buildChatUrl(config);
 
   log.info('[Vision] 开始请求', {
@@ -644,8 +665,20 @@ const EXTRACT_PROMPTS = {
  * imageUrl: http URL 或 data:image/xxx;base64,... 格式的 data URL
  */
 async function extractDescriptionFromImage(db, log, entityType, imageUrl, entityName) {
-  const prompts = EXTRACT_PROMPTS[entityType];
-  if (!prompts) throw new Error(`不支持的实体类型：${entityType}`);
+  if (!EXTRACT_PROMPTS[entityType]) throw new Error(`不支持的实体类型：${entityType}`);
+  const promptTemplates = require('./promptTemplateService');
+  const sceneKeyMap = {
+    character: 'vision_character_extract',
+    scene: 'vision_scene_extract',
+    prop: 'vision_prop_extract',
+  };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, `vision.${entityType}.extract.system`, {
+    locale: 'universal',
+  });
+  const userPrompt = promptTemplates.resolvePromptContent(db, `vision.${entityType}.extract.user`, {
+    locale: 'universal',
+    variables: { entity_name: entityName || '' },
+  });
 
   let imageSource;
   if (imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:'))) {
@@ -657,10 +690,10 @@ async function extractDescriptionFromImage(db, log, entityType, imageUrl, entity
   try {
     const result = await generateTextWithVision(
       db, log, 'text',
-      prompts.user(entityName),
-      prompts.system,
+      userPrompt,
+      systemPrompt,
       imageSource,
-      { max_tokens: 2000 },
+      { scene_key: sceneKeyMap[entityType], max_tokens: 2000 },
     );
     // 检测模型因安全策略拒绝描述真人的回答
     if (isRefusalResponse(result)) {

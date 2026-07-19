@@ -1,6 +1,6 @@
 // 根据故事梗概 + 风格/类型/集数，调用文本模型生成扩展后的故事/剧本（JSON 数组格式）
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const taskService = require('./taskService');
 const dramaService = require('./dramaService');
 const { safeParseAIJSON } = require('../utils/safeJson');
@@ -16,8 +16,24 @@ async function generateStory(db, log, body) {
   const type = body.type || null;
   const episodeCount = Math.max(1, Math.floor(Number(body.episode_count) || 1));
 
-  const systemPrompt = promptI18n.getStoryExpansionSystemPrompt(cfg, episodeCount);
-  const userPrompt = promptI18n.buildStoryExpansionUserPrompt(cfg, premise, style, type, episodeCount);
+  const promptContext = {
+    cfg,
+    dramaId: body.drama_id,
+    taskId: body._task_id,
+  };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'story.generation.system', {
+    ...promptContext,
+    variables: { episode_count: episodeCount },
+  });
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'story.generation.user', {
+    ...promptContext,
+    variables: {
+      episode_count: episodeCount,
+      story_premise: premise,
+      story_style: style || '',
+      story_type: type || '',
+    },
+  });
 
   // 每集约 800 字（中文）≈ 1600 token，多留余量作为最低需求；
   // 不使用 max_tokens 硬上限，而是用 min_max_tokens 确保即使用户 AI 配置了小上限也能保证基本输出量。
@@ -95,7 +111,7 @@ async function generateStory(db, log, body) {
 async function processStoryGeneration(db, log, taskId, req) {
   taskService.updateTaskStatus(db, taskId, 'processing', 10, '正在生成剧本...');
   try {
-    const result = await generateStory(db, log, req);
+    const result = await generateStory(db, log, { ...req, _task_id: taskId });
     const episodes = result?.episodes || [];
     if (episodes.length === 0) {
       taskService.updateTaskError(db, taskId, 'AI 未能生成剧本');

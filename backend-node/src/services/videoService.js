@@ -458,6 +458,7 @@ async function processVideoGeneration(db, log, videoGenId) {
       files_base_url: filesBaseUrl,
       storage_local_path: storageLocalPath,
       video_gen_id: videoGenId,
+      task_id: row.task_id || undefined,
     });
     const now2 = new Date().toISOString();
     if (result.error) {

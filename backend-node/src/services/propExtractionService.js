@@ -1,7 +1,7 @@
 // 与 Go PropService.ExtractPropsFromScript + processPropExtraction 对齐：从剧本提取道具
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const propService = require('./propService');
 const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 let _cfg = null; // 由 extractPropsForEpisode 注入，供异步任务使用
@@ -41,9 +41,16 @@ async function processPropExtraction(db, log, taskId, episodeId) {
       cfg = mergeCfgStyleWithDrama(next, dramaRow);
     }
   } catch (_) {}
-  const systemPrompt = promptI18n.getPropExtractionPrompt(cfg);
-  const contentLabel = promptI18n.isEnglish(cfg) ? '[Script Content]\n' : '【剧本内容】\n';
-  const prompt = contentLabel + String(scriptContent).trim();
+  const promptContext = {
+    cfg,
+    dramaId: episode.drama_id,
+    taskId,
+  };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'prop.extraction.system', promptContext);
+  const prompt = promptTemplates.resolvePromptContent(db, 'prop.extraction.user', {
+    ...promptContext,
+    variables: { script_content: String(scriptContent).trim() },
+  });
 
   let response;
   try {

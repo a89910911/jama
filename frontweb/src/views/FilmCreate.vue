@@ -35,6 +35,10 @@
           画布模式
         </el-button>
         <div class="header-actions">
+          <el-button v-if="dramaId" class="btn-project-prompts" @click="showProjectPromptDialog = true">
+            <el-icon><Document /></el-icon>
+            项目提示词
+          </el-button>
           <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
@@ -2592,6 +2596,16 @@
       <AIConfigContent v-if="showAiConfigDialog" />
     </el-dialog>
 
+    <el-dialog
+      v-model="showProjectPromptDialog"
+      title="项目提示词"
+      width="92%"
+      destroy-on-close
+      class="ai-config-dialog"
+    >
+      <PromptEditor v-if="showProjectPromptDialog && dramaId" :drama-id="dramaId" />
+    </el-dialog>
+
     <!-- 图片放大预览：点击遮罩或图片关闭 -->
     <Teleport to="body">
       <div
@@ -2634,6 +2648,7 @@ import { parseScriptIntoEpisodes, episodesListToPlainScript } from '@/utils/scri
 import { exportStoryboardSheet } from '@/utils/exportStoryboardSheet'
 import StylePickerButton from '@/components/StylePickerButton.vue'
 import AIConfigContent from '@/components/AIConfigContent.vue'
+import PromptEditor from '@/components/PromptEditor.vue'
 import UniversalSegmentOmniAtEditor from '@/components/UniversalSegmentOmniAtEditor.vue'
 import {
   generationStyleOptions,
@@ -2670,6 +2685,7 @@ function goCanvasMode() {
 
 
 const showAiConfigDialog = ref(false)
+const showProjectPromptDialog = ref(false)
 watch(showAiConfigDialog, (open) => {
   if (!open) invalidateActiveVideoAiConfigCache()
 })

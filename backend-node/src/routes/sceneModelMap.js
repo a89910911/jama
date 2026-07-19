@@ -1,4 +1,9 @@
 const response = require('../response');
+const {
+  listBusinessScenes,
+  getBusinessScene,
+  isRegisteredBusinessScene,
+} = require('../services/businessSceneRegistry');
 
 function list(db, log) {
   return (req, res) => {
@@ -36,6 +41,13 @@ function create(db, log) {
     if (!key) {
       return response.badRequest(res, '缺少必填字段: key');
     }
+    if (!isRegisteredBusinessScene(key)) {
+      return response.badRequest(res, `未注册的业务场景键: ${key}`);
+    }
+    const registered = getBusinessScene(key);
+    if (service_type && service_type !== registered.service_type) {
+      return response.badRequest(res, `业务场景 ${key} 的服务类型必须为 ${registered.service_type}`);
+    }
     
     const now = new Date().toISOString();
     try {
@@ -48,7 +60,15 @@ function create(db, log) {
       const result = db.prepare(`
         INSERT INTO ai_model_map (key, service_type, config_id, model_override, description, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(key, service_type, config_id || null, model_override || null, description || '', now, now);
+      `).run(
+        key,
+        registered.service_type,
+        config_id || null,
+        model_override || null,
+        description || registered.description || '',
+        now,
+        now
+      );
       
       const row = db.prepare('SELECT * FROM ai_model_map WHERE id = ?').get(result.lastInsertRowid);
       response.created(res, row);
@@ -64,6 +84,11 @@ function update(db, log) {
     const { key } = req.params;
     const body = req.body || {};
     const { service_type, config_id, model_override, description } = body;
+    const registered = getBusinessScene(key);
+    if (!registered) return response.badRequest(res, `未注册的业务场景键: ${key}`);
+    if (service_type && service_type !== registered.service_type) {
+      return response.badRequest(res, `业务场景 ${key} 的服务类型必须为 ${registered.service_type}`);
+    }
     
     const now = new Date().toISOString();
     try {
@@ -77,7 +102,7 @@ function update(db, log) {
         SET service_type = ?, config_id = ?, model_override = ?, description = ?, updated_at = ?
         WHERE key = ?
       `).run(
-        service_type || 'text',
+        registered.service_type,
         config_id !== undefined ? config_id : null,
         model_override !== undefined ? model_override : null,
         description !== undefined ? description : '',
@@ -114,6 +139,7 @@ function remove(db, log) {
 
 module.exports = function sceneModelMapRoutes(db, log) {
   return {
+    definitions: (req, res) => response.success(res, listBusinessScenes()),
     list: list(db, log),
     get: get(db, log),
     create: create(db, log),

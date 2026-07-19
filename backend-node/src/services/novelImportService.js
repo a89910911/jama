@@ -3,6 +3,7 @@
  * 功能：上传 txt/docx 内容 → AI 识别章节分割 → 自动填充各集剧本
  */
 const aiClient = require('./aiClient');
+const promptTemplates = require('./promptTemplateService');
 const { safeParseAIJSON } = require('../utils/safeJson');
 
 /**
@@ -53,13 +54,14 @@ function detectChaptersByRules(text) {
 async function summarizeChapterToScript(db, log, chapterTitle, chapterContent, dramaTitle) {
   const maxLen = 2000;
   const truncated = chapterContent.length > maxLen ? chapterContent.slice(0, maxLen) + '...' : chapterContent;
-  const userPrompt = `小说名称：${dramaTitle || '未知'}
-章节标题：${chapterTitle}
-
-章节原文（部分）：
-${truncated}
-
-请将上述章节内容改写为短剧剧本格式，包含：场景描述、角色对话、动作说明。输出为中文纯文本，不需要 JSON 格式，长度200-500字。`;
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'novel.import.user', {
+    locale: 'zh',
+    variables: {
+      drama_title: dramaTitle || '未知',
+      chapter_title: chapterTitle || '',
+      chapter_content: truncated,
+    },
+  });
 
   try {
     const result = await aiClient.generateText(db, log, 'text', userPrompt, null, {

@@ -1,7 +1,7 @@
 // 场景：与 Go scene_handler + storyboard_composition 对齐
 const imageClient = require('./imageClient');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 
 function applySceneStyleOverride(cfg, styleOverride) {
@@ -150,43 +150,45 @@ function getSceneById(db, id) {
  * 将文字AI的四视图描述 + 布局指令 + 风格 合并为完整的图片AI提示词
  * 与角色的 buildFourViewImagePrompt 对应（画风置顶 + 尾部重申）
  */
-function buildSceneFourViewImagePrompt(fourViewDescription, styleEn, styleZh) {
-  const imageLayoutInstruction = promptI18n.getSceneGenerateImagePrompt();
+function buildSceneFourViewImagePrompt(db, sceneId, fourViewDescription, styleEn, styleZh) {
+  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.layout', {
+    sceneId,
+    locale: 'universal',
+  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
-
-  const styleLines = [];
-  if (zh) styleLines.push(`【画风·最高优先级】四格统一：${zh}`);
-  if (en && en !== zh) styleLines.push(`MANDATORY ART STYLE (all 4 panels): ${en}.`);
-  else if (en && !zh) styleLines.push(`MANDATORY ART STYLE (all 4 panels): ${en}.`);
-  const styleHeader = styleLines.length ? `${styleLines.join('\n')}\n\n` : '';
-
-  const tailParts = [];
-  if (zh || en) tailParts.push(`Reiterate: same art style as above (${en || zh}). No people, no text.`);
-  const tail = tailParts.length ? `\n\n---\n\n${tailParts.join(' ')}` : '';
-
-  return `${styleHeader}${imageLayoutInstruction}\n\n---\n\n${fourViewDescription}${tail}`;
+  return promptTemplates.resolvePromptContent(db, 'scene.image_four_view.compose', {
+    sceneId,
+    locale: 'universal',
+    variables: {
+      style_zh: zh,
+      style_en: en,
+      layout_instruction: imageLayoutInstruction,
+      generated_description: fourViewDescription,
+    },
+  });
 }
 
 /**
  * 将文字AI的单图场景描述 + 布局指令 + 风格 合并为完整的图片AI提示词
  */
-function buildSceneSingleImagePrompt(description, styleEn, styleZh) {
-  const imageLayoutInstruction = promptI18n.getSceneGenerateSingleImagePrompt();
+function buildSceneSingleImagePrompt(db, sceneId, description, styleEn, styleZh) {
+  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'scene.image_single.layout', {
+    sceneId,
+    locale: 'universal',
+  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
-
-  const styleLines = [];
-  if (zh) styleLines.push(`【画风·最高优先级】${zh}`);
-  if (en && en !== zh) styleLines.push(`MANDATORY ART STYLE: ${en}.`);
-  else if (en && !zh) styleLines.push(`MANDATORY ART STYLE: ${en}.`);
-  const styleHeader = styleLines.length ? `${styleLines.join('\n')}\n\n` : '';
-
-  const tailParts = [];
-  if (zh || en) tailParts.push(`Reiterate: same art style as above (${en || zh}). No people, no text.`);
-  const tail = tailParts.length ? `\n\n---\n\n${tailParts.join(' ')}` : '';
-
-  return `${styleHeader}${imageLayoutInstruction}\n\n---\n\n${description}${tail}`;
+  return promptTemplates.resolvePromptContent(db, 'scene.image_single.compose', {
+    sceneId,
+    locale: 'universal',
+    variables: {
+      style_zh: zh,
+      style_en: en,
+      layout_instruction: imageLayoutInstruction,
+      generated_description: description,
+    },
+  });
 }
 
 /**
@@ -211,21 +213,24 @@ async function generateScenePromptOnly(db, log, cfg, sceneId, modelName, style) 
   const rawPrompt = (sceneRow.prompt || '').trim();
   const fourViewCfg = mergedCfg;
 
-  // 构建文字AI输入（location + time + 原始描述）
-  const sceneDesc = [
-    location ? `场景地点：${location}` : '',
-    time ? `时间/时段：${time}` : '',
-    rawPrompt ? `场景描述：${rawPrompt}` : '',
-  ].filter(Boolean).join('\n') || location || '未知场景';
-
-  const systemPrompt = promptI18n.getScenePolishPrompt(fourViewCfg);
-  const userPrompt = `请根据以下场景信息，生成四格场景参考图的提示词：\n\n${sceneDesc}`;
+  const promptContext = { cfg: fourViewCfg, sceneId };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.user', {
+    ...promptContext,
+    locale: 'universal',
+    variables: {
+      entity_name: location || '未知场景',
+      entity_time: time,
+      entity_description: rawPrompt,
+    },
+  });
 
   log.info('[场景提示词] Step1 开始生成四视图描述', { scene_id: sceneId, location, time });
 
   let fourViewDescription;
   try {
     fourViewDescription = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
+      scene_key: 'scene_image_polish',
       model: modelName || undefined,
       max_tokens: 4000,
     });
@@ -240,7 +245,7 @@ async function generateScenePromptOnly(db, log, cfg, sceneId, modelName, style) 
 
   const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
   const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-  const polishedPrompt = buildSceneFourViewImagePrompt(fourViewDescription.trim(), styleEn, styleZh);
+  const polishedPrompt = buildSceneFourViewImagePrompt(db, sceneId, fourViewDescription.trim(), styleEn, styleZh);
 
   db.prepare('UPDATE scenes SET polished_prompt = ?, updated_at = ? WHERE id = ?').run(
     polishedPrompt, new Date().toISOString(), Number(sceneId)
@@ -267,20 +272,24 @@ async function generateSceneSinglePromptOnly(db, log, cfg, sceneId, modelName, s
   const time = (sceneRow.time || '').trim();
   const rawPrompt = (sceneRow.prompt || '').trim();
 
-  const sceneDesc = [
-    location ? `场景地点：${location}` : '',
-    time ? `时间/时段：${time}` : '',
-    rawPrompt ? `场景描述：${rawPrompt}` : '',
-  ].filter(Boolean).join('\n') || location || '未知场景';
-
-  const systemPrompt = promptI18n.getScenePolishPromptSingle(mergedCfg);
-  const userPrompt = `请根据以下场景信息，生成单图场景参考图的提示词：\n\n${sceneDesc}`;
+  const promptContext = { cfg: mergedCfg, sceneId };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.user', {
+    ...promptContext,
+    locale: 'universal',
+    variables: {
+      entity_name: location || '未知场景',
+      entity_time: time,
+      entity_description: rawPrompt,
+    },
+  });
 
   log.info('[场景单图提示词] Step1 开始生成单图描述', { scene_id: sceneId, location, time });
 
   let singleViewDescription;
   try {
     singleViewDescription = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
+      scene_key: 'scene_image_polish',
       model: modelName || undefined,
       max_tokens: 4000,
     });
@@ -295,7 +304,7 @@ async function generateSceneSinglePromptOnly(db, log, cfg, sceneId, modelName, s
 
   const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
   const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-  const polishedPrompt = buildSceneSingleImagePrompt(singleViewDescription.trim(), styleEn, styleZh);
+  const polishedPrompt = buildSceneSingleImagePrompt(db, sceneId, singleViewDescription.trim(), styleEn, styleZh);
 
   db.prepare('UPDATE scenes SET polished_prompt_single = ?, updated_at = ? WHERE id = ?').run(
     polishedPrompt, new Date().toISOString(), Number(sceneId)
@@ -329,21 +338,26 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
     const location = (sceneRow.location || '').toString().trim();
     const time = (sceneRow.time || '').toString().trim();
     const rawPrompt = (sceneRow.prompt || '').toString().trim();
-    const sceneDesc = [
-      location ? `场景地点：${location}` : '',
-      time ? `时间/时段：${time}` : '',
-      rawPrompt ? `场景描述：${rawPrompt}` : '',
-    ].filter(Boolean).join('\n');
-    const inputText = sceneDesc || (location || '未知场景');
+    const inputText = [location, time, rawPrompt].filter(Boolean).join('，') || '未知场景';
 
-    const systemPrompt = promptI18n.getScenePolishPrompt(mergedCfg);
-    const userMsg = `请根据以下场景信息，生成四格场景参考图的提示词：\n\n${inputText}`;
+    const promptContext = { cfg: mergedCfg, sceneId };
+    const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
+    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.user', {
+      ...promptContext,
+      locale: 'universal',
+      variables: {
+        entity_name: location || '未知场景',
+        entity_time: time,
+        entity_description: rawPrompt,
+      },
+    });
 
     log.info('[场景四视图] Step1 开始生成提示词', { scene_id: sceneId, location, time });
 
     let fourViewDescription;
     try {
       fourViewDescription = await aiClient.generateText(db, log, 'text', userMsg, systemPrompt, {
+        scene_key: 'scene_image_polish',
         model: modelName || undefined,
         max_tokens: 4000,
       });
@@ -354,7 +368,7 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
 
     const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
     const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-    imagePrompt = buildSceneFourViewImagePrompt(fourViewDescription, styleEn, styleZh);
+    imagePrompt = buildSceneFourViewImagePrompt(db, sceneId, fourViewDescription, styleEn, styleZh);
 
     // 顺带保存，供下次复用
     try {
@@ -407,21 +421,26 @@ async function generateSceneSingleImage(db, log, cfg, sceneId, modelName, style)
     const location = (sceneRow.location || '').toString().trim();
     const time = (sceneRow.time || '').toString().trim();
     const rawPrompt = (sceneRow.prompt || '').toString().trim();
-    const sceneDesc = [
-      location ? `场景地点：${location}` : '',
-      time ? `时间/时段：${time}` : '',
-      rawPrompt ? `场景描述：${rawPrompt}` : '',
-    ].filter(Boolean).join('\n');
-    const inputText = sceneDesc || (location || '未知场景');
+    const inputText = [location, time, rawPrompt].filter(Boolean).join('，') || '未知场景';
 
-    const systemPrompt = promptI18n.getScenePolishPromptSingle(mergedCfg);
-    const userMsg = `请根据以下场景信息，生成单图场景参考图的提示词：\n\n${inputText}`;
+    const promptContext = { cfg: mergedCfg, sceneId };
+    const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
+    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image_single.user', {
+      ...promptContext,
+      locale: 'universal',
+      variables: {
+        entity_name: location || '未知场景',
+        entity_time: time,
+        entity_description: rawPrompt,
+      },
+    });
 
     log.info('[场景单图] Step1 开始生成提示词', { scene_id: sceneId, location, time });
 
     let singleViewDescription;
     try {
       singleViewDescription = await aiClient.generateText(db, log, 'text', userMsg, systemPrompt, {
+        scene_key: 'scene_image_polish',
         model: modelName || undefined,
         max_tokens: 4000,
       });
@@ -432,7 +451,7 @@ async function generateSceneSingleImage(db, log, cfg, sceneId, modelName, style)
 
     const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
     const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-    imagePrompt = buildSceneSingleImagePrompt(singleViewDescription, styleEn, styleZh);
+    imagePrompt = buildSceneSingleImagePrompt(db, sceneId, singleViewDescription, styleEn, styleZh);
 
     try {
       db.prepare('UPDATE scenes SET polished_prompt_single = ?, updated_at = ? WHERE id = ?').run(
@@ -462,7 +481,7 @@ async function generateSceneSingleImage(db, log, cfg, sceneId, modelName, style)
  * 从场景现有图片中反向提取场景描述，更新 prompt 字段。
  */
 async function extractSceneFromImage(db, log, cfg, sceneId) {
-  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+  const { generateTextWithVision, resolveEntityImageSource } = require('./aiClient');
 
   const sceneRow = db.prepare(
     'SELECT id, location, time, image_url, local_path, extra_images, ref_image FROM scenes WHERE id = ? AND deleted_at IS NULL'
@@ -473,12 +492,22 @@ async function extractSceneFromImage(db, log, cfg, sceneId) {
   if (!imgSrc) return { ok: false, error: '该场景暂无参考图片，请先上传图片' };
 
   const locationLabel = [sceneRow.location, sceneRow.time].filter(Boolean).join(' · ') || '场景';
-  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.scene;
-  const userPrompt = userFn(locationLabel);
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.system', {
+    sceneId,
+    locale: 'universal',
+  });
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.user', {
+    sceneId,
+    locale: 'universal',
+    variables: { entity_name: locationLabel },
+  });
 
   let prompt;
   try {
-    prompt = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+    prompt = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, {
+      scene_key: 'vision_scene_extract',
+      max_tokens: 2000,
+    });
   } catch (err) {
     log.error('[extractSceneFromImage] AI 调用失败', { sceneId, error: err.message });
     const errMsg = /image|vision|visual|multimodal/i.test(err.message)

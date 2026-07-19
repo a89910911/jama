@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const imageClient = require('./imageClient');
 const { aspectRatioToSize } = require('./imageService');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 const jimengMaterialHubService = require('./jimengMaterialHubService');
 const modelArkAssetConfigService = require('./modelArkAssetConfigService');
@@ -449,30 +449,25 @@ function detectGenderFromDescription(text) {
  * @param {string} [styleEn] default_style_en 或 fallback default_style
  * @param {string} [styleZh] default_style_zh（可与 en 相同；相同时不重复输出英文行）
  */
-function buildFourViewImagePrompt(fourViewDescription, styleEn, styleZh) {
-  const imageLayoutInstruction = promptI18n.getRoleGenerateImagePrompt();
+function buildFourViewImagePrompt(db, characterId, fourViewDescription, styleEn, styleZh) {
+  const imageLayoutInstruction = promptTemplates.resolvePromptContent(db, 'character.image_layout', {
+    characterId,
+    locale: 'universal',
+  });
   const zh = (styleZh || '').trim();
   const en = (styleEn || '').trim();
-
-  const styleLines = [];
-  if (zh) styleLines.push(`【画风·最高优先级】四格统一：${zh}`);
-  if (en && en !== zh) styleLines.push(`MANDATORY ART STYLE (all 4 panels): ${en}.`);
-  else if (en && !zh) styleLines.push(`MANDATORY ART STYLE (all 4 panels): ${en}.`);
-  const styleHeader = styleLines.length ? `${styleLines.join('\n')}\n\n` : '';
-
   const gender = detectGenderFromDescription(fourViewDescription);
-  const genderEnforcement = gender === 'MALE'
-    ? 'GENDER: male only — masculine build and facial features; do not feminize.'
-    : gender === 'FEMALE'
-      ? 'GENDER: female only — feminine build and facial features; do not masculinize.'
-      : '';
-
-  const tailParts = [];
-  if (genderEnforcement) tailParts.push(genderEnforcement);
-  if (zh || en) tailParts.push(`Reiterate: same art style as above (${en || zh}).`);
-  const tail = tailParts.length ? `\n\n---\n\n${tailParts.join(' ')}` : '';
-
-  return `${styleHeader}${imageLayoutInstruction}\n\n---\n\n${fourViewDescription}${tail}`;
+  return promptTemplates.resolvePromptContent(db, 'character.image_compose', {
+    characterId,
+    locale: 'universal',
+    variables: {
+      style_zh: zh,
+      style_en: en,
+      layout_instruction: imageLayoutInstruction,
+      generated_description: fourViewDescription,
+      gender: gender === 'MALE' ? 'male' : gender === 'FEMALE' ? 'female' : '',
+    },
+  });
 }
 
 /**
@@ -499,8 +494,13 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
     appearanceText = charRow.name || '';
   }
 
-  const systemPrompt = promptI18n.getRolePolishPrompt(mergedCfg);
-  const userPrompt = `角色名称：${charRow.name}\n\n角色描述：\n${appearanceText}`;
+  const promptContext = { cfg: mergedCfg, characterId };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
+    ...promptContext,
+    locale: 'universal',
+    variables: { entity_name: charRow.name || '', entity_description: appearanceText },
+  });
 
   log.info('[四视图提示词] 开始生成', { character_id: characterId, name: charRow.name });
 
@@ -518,7 +518,7 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
 
   const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
   const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-  const polishedPrompt = buildFourViewImagePrompt(fourViewDescription, styleEn, styleZh);
+  const polishedPrompt = buildFourViewImagePrompt(db, characterId, fourViewDescription, styleEn, styleZh);
 
   // 保存到 characters.polished_prompt
   db.prepare('UPDATE characters SET polished_prompt = ?, updated_at = ? WHERE id = ?').run(
@@ -556,8 +556,13 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
       appearanceText = charRow.name || '';
     }
 
-    const systemPrompt = promptI18n.getRolePolishPrompt(mergedCfg);
-    const userPrompt = `角色名称：${charRow.name}\n\n角色描述：\n${appearanceText}`;
+    const promptContext = { cfg: mergedCfg, characterId };
+    const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
+    const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
+      ...promptContext,
+      locale: 'universal',
+      variables: { entity_name: charRow.name || '', entity_description: appearanceText },
+    });
 
     log.info('[四视图] Step1 开始生成四视图提示词', { character_id: characterId, name: charRow.name });
 
@@ -575,7 +580,7 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
 
     const styleEn = (mergedCfg.style.default_style_en || mergedCfg.style.default_style || '').trim();
     const styleZh = (mergedCfg.style.default_style_zh || '').trim();
-    imagePrompt = buildFourViewImagePrompt(fourViewDescription, styleEn, styleZh);
+    imagePrompt = buildFourViewImagePrompt(db, characterId, fourViewDescription, styleEn, styleZh);
 
     // 顺带保存，供下次复用
     try {
@@ -608,7 +613,7 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
  * 从角色现有图片中反向提取外貌描述，更新 appearance 字段。
  */
 async function extractAppearanceFromImage(db, log, cfg, characterId) {
-  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+  const { generateTextWithVision, resolveEntityImageSource } = require('./aiClient');
 
   const charRow = db.prepare(
     'SELECT id, name, image_url, local_path, extra_images, ref_image FROM characters WHERE id = ? AND deleted_at IS NULL'
@@ -618,13 +623,23 @@ async function extractAppearanceFromImage(db, log, cfg, characterId) {
   const imgSrc = resolveEntityImageSource(charRow, cfg);
   if (!imgSrc) return { ok: false, error: '该角色暂无参考图片，请先上传图片' };
 
-  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.character;
-  const userPrompt = userFn(charRow.name);
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.system', {
+    characterId,
+    locale: 'universal',
+  });
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.user', {
+    characterId,
+    locale: 'universal',
+    variables: { entity_name: charRow.name || '' },
+  });
 
   const { isRefusalResponse } = require('./aiClient');
   let appearance;
   try {
-    appearance = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+    appearance = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, {
+      scene_key: 'vision_character_extract',
+      max_tokens: 2000,
+    });
   } catch (err) {
     log.error('[extractAppearanceFromImage] AI 调用失败', { characterId, error: err.message });
     const errMsg = /image|vision|visual|multimodal/i.test(err.message)

@@ -13,8 +13,6 @@ const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 /** 图生 POST 使用 Node http(s)，默认 10 分钟，避免 undici fetch 大包体/慢链路下模糊失败 */
 const IMAGE_HTTP_TIMEOUT_MS = 600000;
 
-// 多参考图时注入到所有支持 negative_prompt 的模型，防止生成分割/拼贴布局；同时加入安全词以减少敏感拦截
-const ANTI_SPLIT_NEGATIVE_PROMPT = 'nsfw, nudity, naked, violence, blood, gore, sensitive content, split panels, side-by-side layout, collage, diptych, triptych, grid layout, multiple panels, comparison view, composite image, two images in one frame';
 
 function mergeNegativePromptFragments(auto, user) {
   const a = (auto || '').trim();
@@ -953,7 +951,7 @@ async function callDashScopeImageApi(config, log, opts) {
       size: dashScopeSize(size),
       stream,
       // 多张参考图时注入 negative_prompt，防止生成分割/拼贴布局
-      ...(hasRefs ? { negative_prompt: negative_prompt || ANTI_SPLIT_NEGATIVE_PROMPT } : (negative_prompt ? { negative_prompt } : {})),
+      ...(negative_prompt ? { negative_prompt } : {}),
     },
   };
   const contentSummary = content.map((p) => (p.text != null ? 'text' : p.image && p.image.startsWith('data:') ? 'image(base64)' : 'image(url)'));
@@ -1434,10 +1432,19 @@ async function callImageApi(db, log, opts) {
   ) {
     const refLines = String(system_prompt).split('\n').filter(l => /^Image\s+\d+:/i.test(l));
     if (refLines.length > 0) {
-      const refHeader = refLines
-        .map(l => `[${l} — FOR REFERENCE ONLY, DO NOT copy its layout or framing]`)
-        .join('\n');
-      effectivePrompt = `${refHeader}\n\n[GENERATE THIS SCENE — single continuous image, no grid, no split panels]:\n${effectivePrompt}`;
+      effectivePrompt = require('./promptTemplateService').resolvePromptContent(
+        db,
+        'image.reference_generation.user',
+        {
+          dramaId: drama_id,
+          taskId: opts.task_id,
+          locale: 'universal',
+          variables: {
+            reference_labels: refLines.join('\n'),
+            image_prompt: effectivePrompt,
+          },
+        }
+      );
     }
   }
 
@@ -1458,8 +1465,15 @@ async function callImageApi(db, log, opts) {
   const refCountForNeg = Array.isArray(opts.reference_image_urls) ? opts.reference_image_urls.filter(Boolean).length : 0;
   // Seedream/Volcengine 模型强制启用安全词负面提示，其他模型仅在多参考图时启用
   const isVolcOrSeedream = (protocol === 'volcengine' || /seedream|doubao/i.test(model));
-  const autoNegativePrompt = (refCountForNeg > 1 || isVolcOrSeedream) ? ANTI_SPLIT_NEGATIVE_PROMPT : '';
-  const userNegFragment = (user_negative_prompt && String(user_negative_prompt).trim()) || '';
+  const autoNegativePrompt = (refCountForNeg > 1 || isVolcOrSeedream)
+    ? require('./promptTemplateService').resolvePromptContent(db, 'image.negative.anti_split', {
+        dramaId: drama_id,
+        locale: 'universal',
+        taskId: opts.task_id,
+      })
+    : '';
+  const suppliedNegativePrompt = user_negative_prompt ?? opts.negative_prompt;
+  const userNegFragment = (suppliedNegativePrompt && String(suppliedNegativePrompt).trim()) || '';
   const mergedNegativePrompt = mergeNegativePromptFragments(autoNegativePrompt, userNegFragment);
 
   if (protocol === 'dashscope') {
@@ -1684,6 +1698,7 @@ function createAndGenerateImage(db, log, opts) {
         image_type,
         image_gen_id: imageGenId,
         user_negative_prompt: user_negative_prompt || undefined,
+        task_id: taskId,
       });
       const now2 = new Date().toISOString();
       if (result.error) {

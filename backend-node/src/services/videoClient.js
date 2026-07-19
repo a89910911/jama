@@ -1854,11 +1854,18 @@ async function probeViduReferenceImageSize(rawImgUrl, publicImgUrl, storage_loca
 }
 
 /** 图生视频时参考图比例与目标不一致：强调参考图仅作内容参考，按目标画幅生成（不改原图） */
-function viduMismatchAspectPromptSuffix(targetRatioLabel) {
+function viduMismatchAspectPromptSuffix(db, context, targetRatioLabel) {
   const r = targetRatioLabel || '16:9';
-  return (
-    `【画幅】参考图仅作角色、场景与风格参考，请勿沿用参考图的画幅比例；请按 ${r} 宽高比输出整段视频，构图与运镜可在该比例下自由发挥。` +
-    ` The reference image is for subject/scene/style only; output the full video in aspect ratio ${r}, not the reference frame shape.`
+  return require('./promptTemplateService').resolvePromptContent(
+    db,
+    'video.aspect_ratio_mismatch_suffix',
+    {
+      dramaId: context.drama_id,
+      storyboardId: context.storyboard_id,
+      taskId: context.task_id,
+      locale: 'universal',
+      variables: { target_ratio: r },
+    }
   );
 }
 
@@ -1984,7 +1991,7 @@ async function callViduVideoApi(config, log, opts) {
       }
 
       if (aspectMismatch && !usedLetterbox) {
-        const suffix = viduMismatchAspectPromptSuffix(ratio);
+        const suffix = viduMismatchAspectPromptSuffix(opts.db, opts, ratio);
         const sep = '\n\n';
         let combined = effectivePrompt ? `${effectivePrompt}${sep}${suffix}` : suffix;
         const maxLen = 5000;
@@ -3498,6 +3505,7 @@ async function callVideoApi(db, log, opts) {
 
   if (protocol === 'vidu') {
     return callViduVideoApi(config, log, {
+      db,
       prompt, model,
       duration: opts.duration,
       aspect_ratio,
@@ -3506,6 +3514,9 @@ async function callVideoApi(db, log, opts) {
       video_gen_id: opts.video_gen_id,
       files_base_url: opts.files_base_url,
       storage_local_path: opts.storage_local_path,
+      drama_id: opts.drama_id,
+      storyboard_id: opts.storyboard_id,
+      task_id: opts.task_id,
     });
   }
 

@@ -60,7 +60,7 @@ const taskService = require('./taskService');
 const uploadService = require('./uploadService');
 const storageLayout = require('./storageLayout');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 
 const LAST_FRAME_TYPES = new Set(['last', 'storyboard_last', 'tail', 'last_frame']);
 
@@ -189,12 +189,6 @@ async function buildQuadGridPrompt(db, log, cfg, storyboardId, model) {
 
   // 四个面板使用差异明显的相机角度，方便用户挑选最佳构图
   const QUAD_PANEL_ANGLES = ['平视', '仰拍', '俯拍', '侧面'];
-  const QUAD_PANEL_ANGLE_LABELS_EN = [
-    'eye-level shot',
-    'low-angle upward shot',
-    'high-angle downward shot (bird\'s eye)',
-    'side-angle profile shot',
-  ];
   const [sbFirst, sbKey1, sbKey2, sbLast] = QUAD_PANEL_ANGLES.map((a) => ({ ...sb, angle: a }));
 
   log.info('[四宫格] 开始生成4帧提示词（四种相机角度）', {
@@ -215,25 +209,19 @@ async function buildQuadGridPrompt(db, log, cfg, storyboardId, model) {
 
   const rawStyle = (cfg?.style?.default_style_en || cfg?.style?.default_style || '').toString().trim();
   const styleZhGrid = (cfg?.style?.default_style_zh || '').toString().trim();
-  const styleHeadGrid = [
-    styleZhGrid ? `【画风·最高优先级】${styleZhGrid}` : '',
-    rawStyle && rawStyle !== styleZhGrid ? `MANDATORY ART STYLE: ${rawStyle}.` : rawStyle ? `MANDATORY ART STYLE: ${rawStyle}.` : '',
-  ].filter(Boolean).join('\n');
-  const styleNote = !styleHeadGrid && rawStyle ? `. Art style: ${rawStyle}` : '';
-  const quadCore = `Create a 2x2 grid storyboard image with EXACTLY 4 equal-sized panels arranged in 2 rows and 2 columns (like a coordinate quadrant layout). Each panel occupies exactly one quadrant of the image. NO borders of any color (black, white, gray), NO dividing lines, NO frames between panels — the 4 panels must be seamlessly adjacent with no gaps or separators${styleNote}.
-
-Each panel uses a DIFFERENT camera angle to show the same scene from varied perspectives — this is intentional and required.
-
-TOP ROW (left to right):
-[Panel 1 - top-left quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[0]}, initial state]: ${first.prompt}
-[Panel 2 - top-right quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[1]}, key action moment]: ${key1.prompt}
-
-BOTTOM ROW (left to right):
-[Panel 3 - bottom-left quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[2]}, action continuation]: ${key2.prompt}
-[Panel 4 - bottom-right quadrant, ${QUAD_PANEL_ANGLE_LABELS_EN[3]}, final state]: ${last.prompt}
-
-CRITICAL LAYOUT RULES: The image MUST be divided into 4 equal quadrants in a 2x2 grid. Do NOT arrange panels in a single strip. Do NOT add any black or dark borders/frames around the panels. Each panel is self-contained with consistent character appearance and art style. The camera angle MUST visually differ between panels as specified above.`;
-  const quadPrompt = (styleHeadGrid ? `${styleHeadGrid}\n\n` : '') + quadCore;
+  const quadPrompt = promptTemplates.resolvePromptContent(db, 'image.quad_grid.layout', {
+    cfg,
+    storyboardId,
+    locale: 'universal',
+    variables: {
+      style_zh: styleZhGrid,
+      style_en: rawStyle,
+      panel_1: first.prompt,
+      panel_2: key1.prompt,
+      panel_3: key2.prompt,
+      panel_4: last.prompt,
+    },
+  });
   log.info('[四宫格] FINAL IMAGE PROMPT (发送给图片AI):\n' + quadPrompt);
   return quadPrompt;
 }
@@ -251,17 +239,6 @@ async function buildNineGridPrompt(db, log, cfg, storyboardId, model) {
 
   // 9 种差异明显的相机角度
   const NINE_PANEL_ANGLES = ['平视', '仰拍', '俯拍', '侧面左', '侧面右', '背面', '极端仰拍', '极端俯拍', '斜侧45度'];
-  const NINE_PANEL_ANGLE_LABELS_EN = [
-    'eye-level shot',
-    'low-angle upward shot',
-    'high-angle downward shot (bird\'s eye)',
-    'left profile side shot',
-    'right profile side shot',
-    'rear shot from behind the character',
-    'extreme low angle (worm\'s eye view)',
-    'extreme high angle (aerial top-down view)',
-    'diagonal 45-degree angle shot',
-  ];
   // 时间线分布：首帧 × 1、关键帧 × 7、尾帧 × 1
   const frameKinds = ['first', 'key', 'key', 'key', 'key', 'key', 'key', 'key', 'last'];
   const sbVariants = NINE_PANEL_ANGLES.map((a) => ({ ...sb, angle: a }));
@@ -277,32 +254,16 @@ async function buildNineGridPrompt(db, log, cfg, storyboardId, model) {
 
   const rawStyle = (cfg?.style?.default_style_en || cfg?.style?.default_style || '').toString().trim();
   const styleZhGrid = (cfg?.style?.default_style_zh || '').toString().trim();
-  const styleHeadGrid = [
-    styleZhGrid ? `【画风·最高优先级】${styleZhGrid}` : '',
-    rawStyle && rawStyle !== styleZhGrid ? `MANDATORY ART STYLE: ${rawStyle}.` : rawStyle ? `MANDATORY ART STYLE: ${rawStyle}.` : '',
-  ].filter(Boolean).join('\n');
-  const styleNote = !styleHeadGrid && rawStyle ? `. Art style: ${rawStyle}` : '';
-  const ROWS = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-  ];
-  const rowNames = ['TOP ROW', 'MIDDLE ROW', 'BOTTOM ROW'];
-  const colNames = ['left', 'center', 'right'];
-  const panelDescs = frames.map((f, i) => `[Panel ${i + 1} - ${colNames[i % 3]}, ${NINE_PANEL_ANGLE_LABELS_EN[i]}]: ${f.prompt}`);
-
-  const rowBlocks = ROWS.map((cols, r) =>
-    `${rowNames[r]} (left to right):\n` + cols.map((c) => panelDescs[c]).join('\n')
-  ).join('\n\n');
-
-  const nineCore = `Create a 3x3 grid storyboard image with EXACTLY 9 equal-sized panels arranged in 3 rows and 3 columns. Each panel occupies exactly one cell of the 3×3 grid. NO borders of any color (black, white, gray), NO dividing lines, NO frames between panels — all 9 panels must be seamlessly adjacent with no gaps or separators${styleNote}.
-
-Each panel uses a DIFFERENT camera angle to show the same scene from varied cinematic perspectives — this is intentional and required.
-
-${rowBlocks}
-
-CRITICAL LAYOUT RULES: The image MUST be divided into 9 equal cells in a 3×3 grid. Do NOT arrange panels in a single strip. Do NOT add any borders or frames. Each panel is self-contained with consistent character appearance and art style. The camera angle MUST visually differ between panels as specified above.`;
-  const ninePrompt = (styleHeadGrid ? `${styleHeadGrid}\n\n` : '') + nineCore;
+  const ninePrompt = promptTemplates.resolvePromptContent(db, 'image.nine_grid.layout', {
+    cfg,
+    storyboardId,
+    locale: 'universal',
+    variables: {
+      style_zh: styleZhGrid,
+      style_en: rawStyle,
+      ...Object.fromEntries(frames.map((frame, index) => [`panel_${index + 1}`, frame.prompt])),
+    },
+  });
   log.info('[九宫格] FINAL IMAGE PROMPT (发送给图片AI):\n' + ninePrompt);
   return ninePrompt;
 }
@@ -760,7 +721,17 @@ async function processImageGeneration(db, log, imageGenId) {
           }
 
           if (firstRef) {
-            const layoutLabel = 'Image LAYOUT_LOCK: 首帧构图与人物站位参考（CRITICAL: 必须保持与此图完全一致的左右站位、人物相对位置、相机取景、整体布局，仅演化姿态/表情/结果元素，严禁交换位置或重构画面）';
+            const layoutLabel = promptTemplates.resolvePromptContent(
+              db,
+              'image.reference.layout_lock_label',
+              {
+                cfg,
+                storyboardId: row.storyboard_id,
+                dramaId: row.drama_id,
+                taskId: row.task_id,
+                locale: 'universal',
+              }
+            );
             if (!reference_image_urls || reference_image_urls.length === 0) {
               reference_image_urls = [firstRef];
               reference_context_note = layoutLabel;
@@ -1187,12 +1158,17 @@ async function processImageGeneration(db, log, imageGenId) {
           log.info('[图生] Step3.5 文本AI优化 prompt 开始', { id: imageGenId, elapsed: elapsed() });
           const rawSt = (cfg?.style?.default_style_en || cfg?.style?.default_style || '').toString().trim();
           const styleZh = (cfg?.style?.default_style_zh || '').toString().trim();
-          const style = rawSt || styleZh || 'cinematic movie still, anamorphic lens, film grain, dramatic lighting, shallow depth of field, professional cinematography';
-          const styleBlockLines = [];
-          if (styleZh) styleBlockLines.push(`【画风·最高优先级】${styleZh}`);
-          if (rawSt && rawSt !== styleZh) styleBlockLines.push(`MANDATORY ART STYLE: ${rawSt}.`);
-          else if (rawSt && !styleZh) styleBlockLines.push(`MANDATORY ART STYLE: ${rawSt}.`);
-          else if (!styleZh && !rawSt) styleBlockLines.push(`MANDATORY ART STYLE: ${style}.`);
+          const style = rawSt || styleZh || promptTemplates.resolvePromptContent(
+            db,
+            'image.default_cinematic_style',
+            {
+              cfg,
+              storyboardId: row.storyboard_id,
+              dramaId: row.drama_id,
+              taskId: row.task_id,
+              locale: 'universal',
+            }
+          );
           const assetNames = (reference_context_note || '').split('\n')
             .map((l) => l.replace(/^Image \d+: [^"]*"([^"]+)".*/, '$1'))
             .filter(Boolean).join(', ');
@@ -1229,23 +1205,35 @@ async function processImageGeneration(db, log, imageGenId) {
             } catch (_) {}
           }
 
-          const userPromptLines = [
-            ...styleBlockLines,
-            `PROMPT: ${row.prompt}`,
-            sbDetail?.action     ? `ACTION: ${sbDetail.action}`        : null,
-            sbDetail?.dialogue   ? `DIALOGUE: ${sbDetail.dialogue}`    : null,
-            sbDetail?.result     ? `RESULT: ${sbDetail.result}`        : null,
-            sbDetail?.atmosphere ? `ATMOSPHERE: ${sbDetail.atmosphere}`: null,
-            sbDetail?.shot_type  ? `SHOT_TYPE: ${sbDetail.shot_type}`  : null,
-            `STYLE_TOKENS (repeat in output): ${style}`,
-            `ASSETS: ${assetNames || 'none'}`,
-            prevContinuityState  ? `PREV_CONTINUITY_STATE: ${JSON.stringify(prevContinuityState)}` : null,
-            `CONTEXT_PREV: ${prevDesc}`,
-            `CONTEXT_NEXT: ${nextDesc}`,
-            `REMINDER: Output a STATIC SINGLE-FRAME image prompt only. No camera motion, no transitions, no split panels.`,
-          ].filter(Boolean);
-          const userPrompt = userPromptLines.join('\n');
-          const systemPrompt = promptI18n.getImagePolishPrompt(cfg);
+          const userPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.image_polish.user', {
+            cfg,
+            storyboardId: row.storyboard_id,
+            dramaId: row.drama_id,
+            taskId: row.task_id,
+            variables: {
+              style_zh: styleZh,
+              style_en: rawSt,
+              image_prompt: row.prompt,
+              action: sbDetail?.action || '',
+              dialogue: sbDetail?.dialogue || '',
+              result: sbDetail?.result || '',
+              atmosphere: sbDetail?.atmosphere || '',
+              shot_type: sbDetail?.shot_type || '',
+              style_tokens: style,
+              assets: assetNames || 'none',
+              previous_continuity_state: prevContinuityState
+                ? JSON.stringify(prevContinuityState)
+                : '',
+              previous_context: prevDesc,
+              next_context: nextDesc,
+            },
+          });
+          const systemPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.image_polish.system', {
+            cfg,
+            storyboardId: row.storyboard_id,
+            dramaId: row.drama_id,
+            taskId: row.task_id,
+          });
           const polishedPrompt = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
             scene_key: 'image_polish',
             max_tokens: 300,
@@ -1277,10 +1265,22 @@ async function processImageGeneration(db, log, imageGenId) {
             // 异步提取本镜头连戏状态快照，存入 continuity_snapshot（不阻塞图生主流程）
             if (row.storyboard_id) {
               const sbIdForCont = Number(row.storyboard_id);
-              const snapshotPrompt = promptI18n.getContinuitySnapshotPrompt();
-              const snapshotUserPrompt = [`PROMPT: ${finalPrompt}`, `ASSETS: ${assetNames || 'none'}`].join('\n');
+              const snapshotPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.continuity_snapshot.system', {
+                cfg,
+                storyboardId: sbIdForCont,
+                taskId: row.task_id,
+              });
+              const snapshotUserPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.continuity_snapshot.user', {
+                cfg,
+                storyboardId: sbIdForCont,
+                taskId: row.task_id,
+                variables: {
+                  image_prompt: finalPrompt,
+                  assets: assetNames || 'none',
+                },
+              });
               aiClient.generateText(db, log, 'text', snapshotUserPrompt, snapshotPrompt, {
-                scene_key: 'image_polish',
+                scene_key: 'continuity_snapshot',
                 max_tokens: 200,
                 temperature: 0.1,
               }).then((snapshotJson) => {
@@ -1308,7 +1308,24 @@ async function processImageGeneration(db, log, imageGenId) {
     // ── Step 3.8: 单帧分镜注入防分割指令 ──────────────────────────────
     // 当有多张参考图时，部分模型（如 Doubao）会生成左右分栏/对比布局，加入负面约束抑制该行为
     if (isSingleStoryboard && reference_image_urls && reference_image_urls.length > 1) {
-      const antiSplitSuffix = ', single continuous scene, no split panels, no side-by-side layout, no collage';
+      const antiSplitTerms = promptTemplates.resolvePromptContent(db, 'image.negative.anti_split', {
+        cfg,
+        storyboardId: row.storyboard_id,
+        dramaId: row.drama_id,
+        taskId: row.task_id,
+      });
+      const antiSplitSuffix = promptTemplates.resolvePromptContent(
+        db,
+        'image.single_frame.anti_split_suffix',
+        {
+          cfg,
+          storyboardId: row.storyboard_id,
+          dramaId: row.drama_id,
+          taskId: row.task_id,
+          locale: 'universal',
+          variables: { negative_terms: antiSplitTerms },
+        }
+      );
       if (!finalPrompt.includes('no split')) {
         finalPrompt = finalPrompt.trimEnd() + antiSplitSuffix;
       }
@@ -1318,7 +1335,17 @@ async function processImageGeneration(db, log, imageGenId) {
     // 无论是否成功注入参考图，都给尾帧 prompt 追加强约束，防止模型脑补新布局
     const isLastFrameForLock = isLastFrameType(row.frame_type) && rowUseFirstFrameLayoutLock(row);
     if (isLastFrameForLock && row.storyboard_id) {
-      const layoutLockSuffix = '。【人物站位最高铁律】必须与本分镜的首帧图片保持100%一致的构图、人物左右站位（左/中/右位置、相对距离、朝向）、相机取景和空间布局，仅允许按result描述改变角色姿态、表情、细微动作和环境结果元素，严禁任何人物位置互换或画面重新构图。违反此规则视为生成失败。';
+      const layoutLockSuffix = promptTemplates.resolvePromptContent(
+        db,
+        'image.last_frame.layout_lock_suffix',
+        {
+          cfg,
+          storyboardId: row.storyboard_id,
+          dramaId: row.drama_id,
+          taskId: row.task_id,
+          locale: 'universal',
+        }
+      );
       if (!finalPrompt.includes('人物站位最高铁律') && !finalPrompt.includes('CHARACTER POSITION LOCK')) {
         finalPrompt = finalPrompt.trimEnd() + layoutLockSuffix;
       }
@@ -1329,7 +1356,16 @@ async function processImageGeneration(db, log, imageGenId) {
     const tApi = Date.now();
     // 单张分镜图时，把参考图标签（reference_context_note）传给 Gemini，
     // 在 callGeminiImageApi 里解析为 per-image 标签，交替插入 parts 结构
-    const apiSystemPrompt = (isSingleStoryboard && reference_context_note) ? reference_context_note : undefined;
+    const apiSystemPrompt = (isSingleStoryboard && reference_context_note)
+      ? promptTemplates.resolvePromptContent(db, 'image.reference_context.system', {
+          cfg,
+          storyboardId: row.storyboard_id,
+          dramaId: row.drama_id,
+          taskId: row.task_id,
+          locale: 'universal',
+          variables: { reference_context: reference_context_note },
+        })
+      : undefined;
 
     const isFrameIdentityLock =
       row.frame_type &&
@@ -1377,6 +1413,7 @@ async function processImageGeneration(db, log, imageGenId) {
       storage_local_path: storageLocalPath,
       system_prompt: apiSystemPrompt,
       negative_prompt: row.negative_prompt || undefined,
+      task_id: row.task_id || undefined,
       frame_identity_lock: isFrameIdentityLock,
     });
     log.info('[图生] Step4 图生 API 返回', { id: imageGenId, api_ms: Date.now() - tApi, has_error: !!result.error, elapsed: elapsed() });

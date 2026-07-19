@@ -1,5 +1,5 @@
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 
 function listByDramaId(db, dramaId) {
@@ -143,14 +143,17 @@ async function generatePropPromptOnly(db, log, cfg, propId, modelName, style) {
     };
   }
 
-  const descText = [
-    prop.name ? `道具名称：${prop.name}` : '',
-    prop.type ? `道具类型：${prop.type}` : '',
-    prop.description ? `道具描述：${prop.description}` : '',
-  ].filter(Boolean).join('\n') || prop.name || '';
-
-  const systemPrompt = promptI18n.getPropPolishPrompt(polishCfg);
-  const userPrompt = `请为以下道具生成**一段英文**图片提示词。\n**约束**：最终英文中不得出现人名、地名、组织名、台词或任何剧本专有信息（若下列「道具名称/描述」中含此类词，请改写为泛化物体描述）；只写已给出的可见外观信息，不要扩写未提及的细节。\n\n${descText}`;
+  const promptContext = { cfg: polishCfg, propId };
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.system', promptContext);
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.user', {
+    ...promptContext,
+    locale: 'universal',
+    variables: {
+      entity_name: prop.name || '',
+      entity_type: prop.type || '',
+      entity_description: prop.description || '',
+    },
+  });
 
   log.info('[道具提示词] 开始生成', { prop_id: propId, name: prop.name });
 
@@ -180,7 +183,7 @@ async function generatePropPromptOnly(db, log, cfg, propId, modelName, style) {
  * 从道具现有图片中反向提取外观描述，更新 description 字段。
  */
 async function extractPropFromImage(db, log, cfg, propId) {
-  const { generateTextWithVision, resolveEntityImageSource, EXTRACT_PROMPTS } = require('./aiClient');
+  const { generateTextWithVision, resolveEntityImageSource } = require('./aiClient');
 
   const prop = db.prepare(
     'SELECT id, name, type, image_url, local_path, extra_images, ref_image FROM props WHERE id = ? AND deleted_at IS NULL'
@@ -191,12 +194,22 @@ async function extractPropFromImage(db, log, cfg, propId) {
   if (!imgSrc) return { ok: false, error: '该道具暂无参考图片，请先上传图片' };
 
   const propLabel = prop.name || '道具';
-  const { system: systemPrompt, user: userFn } = EXTRACT_PROMPTS.prop;
-  const userPrompt = userFn(propLabel);
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.system', {
+    propId,
+    locale: 'universal',
+  });
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.user', {
+    propId,
+    locale: 'universal',
+    variables: { entity_name: propLabel },
+  });
 
   let description;
   try {
-    description = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, { max_tokens: 2000 });
+    description = await generateTextWithVision(db, log, 'text', userPrompt, systemPrompt, imgSrc, {
+      scene_key: 'vision_prop_extract',
+      max_tokens: 2000,
+    });
   } catch (err) {
     log.error('[extractPropFromImage] AI 调用失败', { propId, error: err.message });
     const errMsg = /image|vision|visual|multimodal/i.test(err.message)

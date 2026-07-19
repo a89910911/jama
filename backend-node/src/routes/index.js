@@ -19,7 +19,7 @@ const videoRoutes = require('./videos');
 const videoMergeRoutes = require('./videoMerges');
 const assetRoutes = require('./assets');
 const audioRoutes = require('./audio');
-const promptOverridesRoutes = require('./promptOverrides');
+const promptRoutes = require('./prompts');
 const sceneModelMapRoutes = require('./sceneModelMap');
 
 function setupRouter(cfg, db, log) {
@@ -46,7 +46,7 @@ function setupRouter(cfg, db, log) {
   const videoMerges = videoMergeRoutes(db, log);
   const assets = assetRoutes(db, log);
   const audio = audioRoutes(db, log, cfg);
-  const promptOverrides = promptOverridesRoutes.routes(db, log);
+  const prompts = promptRoutes.routes(db, log);
 
   // ---------- dramas ----------
   r.get('/dramas', drama.listDramas);
@@ -86,6 +86,11 @@ function setupRouter(cfg, db, log) {
   r.put('/dramas/:id/progress', drama.saveProgress);
   r.put('/dramas/:id/canvas-layout', drama.saveCanvasLayout);
   r.get('/dramas/:id/props', drama.listProps);
+  r.get('/dramas/:drama_id/prompts', prompts.listProject);
+  r.get('/dramas/:drama_id/prompts/:key', prompts.getProject);
+  r.put('/dramas/:drama_id/prompts/:key', prompts.updateProject);
+  r.delete('/dramas/:drama_id/prompts/:key', prompts.deleteProject);
+  r.post('/dramas/:drama_id/prompts/:key/preview', prompts.previewProject);
   r.get('/dramas/:id', drama.getDrama);
   r.put('/dramas/:id', drama.updateDrama);
   r.delete('/dramas/:id', drama.deleteDrama);
@@ -304,27 +309,22 @@ function setupRouter(cfg, db, log) {
   r.get('/settings/generation', settings.getGenerationSettings);
   r.put('/settings/generation', settings.updateGenerationSettings);
 
-  // ---------- prompt overrides ----------
-  r.get('/settings/prompts', promptOverrides.list);
-  r.put('/settings/prompts/:key', promptOverrides.update);
-  r.delete('/settings/prompts/:key', promptOverrides.reset);
+  // ---------- prompt templates ----------
+  r.get('/settings/prompts', prompts.listSystem);
+  r.get('/settings/prompts/:key', prompts.getSystem);
+  r.put('/settings/prompts/:key', prompts.updateSystem);
+  r.post('/settings/prompts/:key/reset-seed', prompts.resetSystem);
+  r.post('/settings/prompts/:key/preview', prompts.previewSystem);
+  // 兼容旧前端：DELETE 等价于恢复系统出厂默认
+  r.delete('/settings/prompts/:key', prompts.resetSystem);
 
   // ---------- scene model map ----------
   r.get('/scene-model-map', sceneModelMap.list);
+  r.get('/scene-model-map-definitions', sceneModelMap.definitions);
   r.post('/scene-model-map', sceneModelMap.create);
   r.get('/scene-model-map/:key', sceneModelMap.get);
   r.put('/scene-model-map/:key', sceneModelMap.update);
   r.delete('/scene-model-map/:key', sceneModelMap.delete);
-
-  // 启动时将已有的覆盖加载到 promptI18n 内存缓存
-  try {
-    const promptI18n = require('../services/promptI18n');
-    const promptOverridesService = require('../services/promptOverridesService');
-    const saved = promptOverridesService.listOverrides(db);
-    promptI18n.loadOverridesIntoCache(saved);
-  } catch (e) {
-    console.warn('Failed to load prompt overrides:', e.message);
-  }
 
   return r;
 }

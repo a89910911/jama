@@ -1,6 +1,9 @@
 import request from '@/utils/request'
 
 export const sceneModelMapAPI = {
+  definitions() {
+    return request.get('/scene-model-map-definitions')
+  },
   list() {
     return request.get('/scene-model-map')
   },

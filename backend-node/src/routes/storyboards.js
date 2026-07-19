@@ -5,10 +5,19 @@ const storyboardService = require('../services/storyboardService');
 const episodeStoryboardService = require('../services/episodeStoryboardService');
 const framePromptService = require('../services/framePromptService');
 const aiClient = require('../services/aiClient');
-const promptI18n = require('../services/promptI18n');
+const promptTemplates = require('../services/promptTemplateService');
 const angleService = require('../services/angleService');
 const { buildUniversalSegmentUserPromptBundle } = require('../services/universalSegmentPromptBundle');
 const { normalizeUniversalSegmentShotDurations } = require('../services/universalSegmentDurationNormalize');
+
+function resolveStoryboardPrompt(db, storyboardId, promptKey, variables = {}, cfg = null) {
+  const activeCfg = cfg || require('../config').loadConfig();
+  return promptTemplates.resolvePromptContent(db, promptKey, {
+    storyboardId,
+    cfg: activeCfg,
+    variables,
+  });
+}
 
 /** 润色接口：邻镜结构化摘要（含全能片段与其它提示词字段） */
 function formatNeighborShotPolishContext(row) {
@@ -49,7 +58,7 @@ function extractRetentionClausesFromVideoPrompts(draft, composed) {
     const pieces = full
       .replace(/\r\n/g, '\n')
       .trim()
-      .split(/。+/)
+      .split(/。+|\n+/)
       .map((x) => x.trim())
       .filter(Boolean);
     for (let piece of pieces) {
@@ -182,7 +191,7 @@ function buildClassicRequiredCoverageDigest(sbRow, linkedSceneText) {
     add('剧情段落', `「${String(sbRow.segment_title).trim()}」` + (sbRow.segment_index != null ? `（段序号 ${sbRow.segment_index}）` : ''));
   }
   if (!lines.length) return '(当前无非空结构化字段；请依据剧本与 AUTO_COMPOSED 润色)';
-  return ['下列维度在库中均有值——成稿须**全部覆盖**其语义（允许电影化改写，禁止删事实、改秒数、改对白原意）：', ...lines].join('\n');
+  return lines.join('\n');
 }
 
 function formatClassicVideoNeighborBlock(label, row) {
@@ -442,12 +451,7 @@ function routes(db, log) {
         const styleForTokens =
           styleEn ||
           styleZh ||
-          'cinematic movie still, anamorphic lens, film grain, dramatic lighting, shallow depth of field, professional cinematography';
-        const styleBlockLines = [];
-        if (styleZh) styleBlockLines.push(`【画风·最高优先级】${styleZh}`);
-        if (styleEn && styleEn !== styleZh) styleBlockLines.push(`MANDATORY ART STYLE: ${styleEn}.`);
-        else if (styleEn && !styleZh) styleBlockLines.push(`MANDATORY ART STYLE: ${styleEn}.`);
-        else if (!styleZh && !styleEn) styleBlockLines.push(`MANDATORY ART STYLE: ${styleForTokens}.`);
+          resolveStoryboardPrompt(db, sbId, 'image.default_cinematic_style');
 
         // 获取前后镜头上下文（含上一镜头连戏状态快照）
         let prevDesc = '(first shot)';
@@ -494,24 +498,28 @@ function routes(db, log) {
           assetNames = [...nameSet].join(', ');
         } catch (_) {}
 
-        const userPromptLines = [
-          ...styleBlockLines,
-          sb.image_prompt  ? `PROMPT: ${sb.image_prompt}`    : null,
-          sb.action        ? `ACTION: ${sb.action}`          : null,
-          sb.dialogue      ? `DIALOGUE: ${sb.dialogue}`      : null,
-          sb.result        ? `RESULT: ${sb.result}`          : null,
-          sb.atmosphere    ? `ATMOSPHERE: ${sb.atmosphere}`  : null,
-          sb.shot_type     ? `SHOT_TYPE: ${sb.shot_type}`    : null,
-          `STYLE_TOKENS (repeat in output): ${styleForTokens}`,
-          `ASSETS: ${assetNames || 'none'}`,
-          prevContinuityState ? `PREV_CONTINUITY_STATE: ${JSON.stringify(prevContinuityState)}` : null,
-          `CONTEXT_PREV: ${prevDesc}`,
-          `CONTEXT_NEXT: ${nextDesc}`,
-          `REMINDER: Output a STATIC SINGLE-FRAME image prompt only. No camera motion, no transitions, no split panels.`,
-        ].filter(Boolean);
-
         const polishedPrompt = await aiClient.generateText(
-          db, log, 'text', userPromptLines.join('\n'), promptI18n.getImagePolishPrompt(),
+          db,
+          log,
+          'text',
+          resolveStoryboardPrompt(db, sbId, 'storyboard.image_polish.user', {
+            style_zh: styleZh,
+            style_en: styleEn,
+            image_prompt: sb.image_prompt || '',
+            action: sb.action || '',
+            dialogue: sb.dialogue || '',
+            result: sb.result || '',
+            atmosphere: sb.atmosphere || '',
+            shot_type: sb.shot_type || '',
+            style_tokens: styleForTokens,
+            assets: assetNames || 'none',
+            previous_continuity_state: prevContinuityState
+              ? JSON.stringify(prevContinuityState)
+              : '',
+            previous_context: prevDesc,
+            next_context: nextDesc,
+          }),
+          resolveStoryboardPrompt(db, sbId, 'storyboard.image_polish.system'),
           { scene_key: 'image_polish', max_tokens: 300, temperature: 0.3 }
         );
 
@@ -527,10 +535,13 @@ function routes(db, log) {
         log.info('[分镜] polishPrompt 完成', { id: sbId, len: polished.length, has_prev_continuity: !!prevContinuityState });
 
         // 异步提取连戏状态快照并保存（不阻塞响应）
-        const snapshotPrompt = promptI18n.getContinuitySnapshotPrompt();
-        const snapshotUserPrompt = [`PROMPT: ${polished}`, `ASSETS: ${assetNames || 'none'}`].join('\n');
+        const snapshotPrompt = resolveStoryboardPrompt(db, sbId, 'storyboard.continuity_snapshot.system');
+        const snapshotUserPrompt = resolveStoryboardPrompt(db, sbId, 'storyboard.continuity_snapshot.user', {
+          image_prompt: polished,
+          assets: assetNames || 'none',
+        });
         aiClient.generateText(db, log, 'text', snapshotUserPrompt, snapshotPrompt, {
-          scene_key: 'image_polish', max_tokens: 200, temperature: 0.1,
+          scene_key: 'continuity_snapshot', max_tokens: 200, temperature: 0.1,
         }).then((snapshotJson) => {
           if (!snapshotJson?.trim()) return;
           const cleaned = snapshotJson.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -565,8 +576,8 @@ function routes(db, log) {
           log,
           'text',
           userPrompt,
-          promptI18n.getUniversalOmniSegmentPrompt(),
-          { scene_key: 'image_polish', max_tokens: 2400, temperature: 0.28 }
+          resolveStoryboardPrompt(db, sbId, 'omni.segment.system'),
+          { scene_key: 'omni_segment_generation', max_tokens: 2400, temperature: 0.28 }
         );
         if (!out || String(out).trim().length < 20) {
           return response.badRequest(res, 'AI 返回内容过短，请检查文本模型配置');
@@ -615,9 +626,9 @@ function routes(db, log) {
           log,
           'text',
           userPrompt,
-          promptI18n.getUniversalOmniSegmentPrompt(),
+          resolveStoryboardPrompt(db, sbId, 'omni.segment.system'),
           {
-            scene_key: 'image_polish',
+            scene_key: 'omni_segment_generation',
             max_tokens: 2400,
             temperature: 0.28,
             silence_timeout_ms: 180000,
@@ -699,26 +710,19 @@ function routes(db, log) {
       } catch (_) {}
 
       const polishPassStamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-      const polishUserPrompt = [
-        'TASK: POLISH_UNIVERSAL_OMNI_SEGMENT',
-        `POLISH_PASS_STAMP: ${polishPassStamp}`,
-        'POLISH_REFRESH（多次点击「润色」时强制）: 在严格遵守 MULTI_BEAT_OUTPUT、子分镜秒数之和=TOTAL_CLIP_SECONDS、IMAGE_SLOT_MAP、不编造剧本外情节的前提下，**本轮输出须与 CURRENT_OMNI_DRAFT 在中文表述上有明显差异**（换动词/语序、合并或拆分从句、加强或收紧运镜与情绪描写均可；**第3行仍须与 LINE3_REQUIRED 完全一致**）。除第3行外，**禁止**与草稿逐字相同或仅标点差异；若 M 与秒数分配不变，子分镜正文也须重写措辞。',
-        'DIALOGUE_RETENTION（硬性，与 system 全能润色一致）: BASE_OMNI_CONTRACT 内 STORYBOARD FIELDS 的 DIALOGUE、NARRATION、VIDEO_PROMPT 及 CURRENT_OMNI_DRAFT 中一切对白/旁白/引号句，成稿各「分镜k」行须**逐条以「」或明确旁白写出**，保留笑点、数字、剧名、奖项名等关键信息；禁止用「两人对话」「念词带过」等概括替代具体台词。总秒数与各 Tk 不变前提下提高信息密度：台词与反应优先，少写无推进的纯氛围叠句。',
-        'You are refining the CURRENT omni multi-beat prompt for a short drama vertical-video shot.',
-        `FULL_EPISODE_SCRIPT（本集完整剧本，用于信息对齐与连戏；不得引入剧本未写的情节）:\n${scriptText || '(本集剧本正文为空，请仅依据下方 STORYBOARD FIELDS 与邻镜信息)'}`,
-        '',
-        'NEIGHBOR_PREV（上一分镜：含其全能片段与其它提示词字段，供衔接）:',
-        formatNeighborShotPolishContext(prevRow),
-        '',
-        'NEIGHBOR_NEXT（下一分镜）:',
-        formatNeighborShotPolishContext(nextRow),
-        '',
-        'CURRENT_OMNI_DRAFT（用户当前全能片段文本，必须在此基础上增强而非另起无关故事）:',
-        draft,
-        '',
-        '--- BASE_OMNI_CONTRACT（与生成接口相同的约束与分镜字段块）---',
-        baseUser,
-      ].join('\n');
+      const polishUserPrompt = resolveStoryboardPrompt(
+        db,
+        sbId,
+        'omni.segment.polish.user',
+        {
+          polish_pass_stamp: polishPassStamp,
+          episode_script: scriptText,
+          previous_storyboard: formatNeighborShotPolishContext(prevRow),
+          next_storyboard: formatNeighborShotPolishContext(nextRow),
+          current_draft: draft,
+          base_omni_contract: baseUser,
+        }
+      );
 
       res.status(200);
       res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
@@ -737,9 +741,9 @@ function routes(db, log) {
           log,
           'text',
           polishUserPrompt,
-          promptI18n.getUniversalOmniPolishPrompt(),
+          resolveStoryboardPrompt(db, sbId, 'omni.segment.polish.system'),
           {
-            scene_key: 'image_polish',
+            scene_key: 'omni_segment_polish',
             max_tokens: 4096,
             temperature: 0.52,
             silence_timeout_ms: 180000,
@@ -810,7 +814,12 @@ function routes(db, log) {
         } catch (_) {}
       } catch (_) {}
 
-      const autoComposed = episodeStoryboardService.composeStoryboardVideoPrompt(sbRow, styleEn || styleZh, videoRatio);
+      const autoComposed = episodeStoryboardService.composeStoryboardVideoPrompt(
+        db,
+        sbRow,
+        styleEn || styleZh,
+        videoRatio
+      );
       const draftRaw =
         req.body && req.body.draft_video_prompt != null ? String(req.body.draft_video_prompt) : '';
       const draftTrim = draftRaw.trim();
@@ -937,45 +946,31 @@ function routes(db, log) {
       );
 
       const polishPassStamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-      const polishUserPrompt = [
-        'TASK: POLISH_CLASSIC_STORYBOARD_STILL_TO_VIDEO_PROMPT',
-        `POLISH_PASS_STAMP: ${polishPassStamp}`,
-        'POLISH_REFRESH: 用户可多次润色；事实与时长不变，但须明显换表述；禁止与 CURRENT_VIDEO_DRAFT 仅标点或个别虚词差异。',
-        'OUTPUT_GOAL: 单段、可直接送图生视频模型的专业提示词；首帧画面已由参考图锁定，文案负责动效、节奏、运镜意图、声画暗示与画风气质。',
-        '',
-        `PROJECT:\nDRAMA_TITLE: ${dramaTitle || '(unknown)'}\nEPISODE_TITLE: ${episodeTitle || '(unknown)'}`,
-        `SHOT_SEQUENCE: 当前镜号 ${sbRow.storyboard_number ?? '?'} / 本集共 ${shotTotalInEpisode || '?'} 镜`,
-        `VIDEO_RATIO: ${videoRatio}`,
-        '',
-        `FULL_EPISODE_SCRIPT（用于人物关系、因果与语气；勿编造剧本未出现的情节）:\n${scriptText || '(本集剧本正文为空)'}`,
-        '',
-        'NEIGHBOR_PREV（上一镜：用于入戏衔接、情绪与空间连贯）:',
-        formatClassicVideoNeighborBlock('PREV', prevRow),
-        '',
-        'NEIGHBOR_NEXT（下一镜：用于本镜收束与出口暗示，勿剧透下一镜未发生的具体事件）:',
-        formatClassicVideoNeighborBlock('NEXT', nextRow),
-        '',
-        'STORYBOARD_FIELDS（当前镜结构化事实）:',
-        fieldLines || '(empty)',
-        '',
-        'REQUIRED_COVERAGE_DIGEST（下列凡出现「- 维度：」行的，润色成稿必须全部体现其语义；可与邻镜/剧本融合叙述，禁止省略事实、禁止改对白原意、禁止改时长秒数）:',
-        buildClassicRequiredCoverageDigest(sbRow, linkedSceneText),
-        '',
-        `FIRST_FRAME_VISUAL_ANCHOR（分镜参考静帧对应的英文/中文图提示摘要；动效须与此一致，禁止改换装、改人脸特征、改场景时代）:\n${
-          firstFrameAnchor || '(无图侧文本；仅依据 STORYBOARD_FIELDS 与剧本推断画面)'
-        }`,
-        '',
-        `AUTO_COMPOSED_VIDEO_PROMPT（与程序字段拼装一致，作事实底线）:\n${autoComposed}`,
-        '',
-        `CURRENT_VIDEO_DRAFT（用户当前 video_prompt，优先在其上润色）:\n${currentDraft || '(empty — use AUTO_COMPOSED + FIELDS)'}`,
-        '',
-        'RETENTION_CLAUSES_FROM_SOURCE（由 CURRENT_VIDEO_DRAFT / AUTO_COMPOSED 按句号拆出的「标签分句」；每一条中的**全部信息点**须在成稿中出现——含：配乐侧写、音效层次、情绪强度数值、括号内**完整**英文镜头/景深/透视描述、=VideoRatio 画幅；允许调整语序与衔接词，**禁止**把多条合并后只剩笼统氛围描写而导致某类信息消失）:',
-        retentionClauses.length
-          ? retentionClauses.map((c, i) => `${i + 1}. ${c}`).join('\n')
-          : '(未解析到「场景：/配乐：/镜头角度：/=VideoRatio:」等标签分句；此时须把 CURRENT_VIDEO_DRAFT 全文信息等价写入成稿，禁止删减子句类别。)',
-        '',
-        `VISUAL_STYLE（须内化进成稿；中文气质描写 + 英文质感词均可）:\nSTYLE_ZH: ${styleZh || '(none)'}\nSTYLE_EN: ${styleEn || '(none)'}`,
-      ].join('\n');
+      const polishUserPrompt = resolveStoryboardPrompt(
+        db,
+        sbId,
+        'video.classic_polish.user',
+        {
+          polish_pass_stamp: polishPassStamp,
+          drama_title: dramaTitle,
+          episode_title: episodeTitle,
+          shot_sequence: `${sbRow.storyboard_number ?? '?'} / ${shotTotalInEpisode || '?'}`,
+          video_ratio: videoRatio,
+          episode_script: scriptText,
+          previous_storyboard: formatClassicVideoNeighborBlock('PREV', prevRow),
+          next_storyboard: formatClassicVideoNeighborBlock('NEXT', nextRow),
+          storyboard_fields: fieldLines || '(empty)',
+          required_coverage: buildClassicRequiredCoverageDigest(sbRow, linkedSceneText),
+          first_frame_anchor: firstFrameAnchor,
+          auto_composed_prompt: autoComposed,
+          current_draft: currentDraft,
+          retention_clauses: retentionClauses.length
+            ? retentionClauses.map((c, i) => `${i + 1}. ${c}`).join('\n')
+            : '(none)',
+          style_zh: styleZh,
+          style_en: styleEn,
+        }
+      );
 
       res.status(200);
       res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
@@ -994,9 +989,9 @@ function routes(db, log) {
           log,
           'text',
           polishUserPrompt,
-          promptI18n.getClassicVideoPromptPolishPrompt(),
+          resolveStoryboardPrompt(db, sbId, 'video.classic_polish.system'),
           {
-            scene_key: 'image_polish',
+            scene_key: 'classic_video_prompt_polish',
             max_tokens: 3600,
             temperature: 0.28,
             silence_timeout_ms: 180000,

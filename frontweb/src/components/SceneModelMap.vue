@@ -3,11 +3,11 @@
     <div class="page-header">
       <div class="header-left">
         <p class="page-desc">
-          配置不同业务场景使用的 AI 模型路由。当调用 generateText 时传入 scene_key，系统会优先使用此处配置的模型。
+          为程序已内置的业务场景选择文本模型。scene_key 由对应功能自动传入，用户不需要在创作页面手工填写；未配置时使用默认文本模型。
         </p>
       </div>
       <div class="header-right">
-        <el-button type="primary" @click="openAdd">
+        <el-button type="primary" :disabled="availableKeys.length === 0" @click="openAdd">
           <el-icon><Plus /></el-icon>
           添加业务场景配置
         </el-button>
@@ -74,21 +74,19 @@
           <el-select
             v-model="form.key"
             filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入场景键"
+            placeholder="选择程序已注册的业务场景"
             style="width: 100%"
             :disabled="!!editingKey"
             @change="onKeyChange"
           >
             <el-option
-              v-for="k in predefinedKeys"
+              v-for="k in availableKeys"
               :key="k.value"
               :label="k.label"
               :value="k.value"
             />
           </el-select>
-          <p class="field-tip">用于在代码中标识业务场景，选择后会自动设置对应的服务类型</p>
+          <p class="field-tip">这里只能选择程序已接入的场景；scene_key 会由对应功能自动传入。</p>
         </el-form-item>
 
         <el-form-item prop="service_type" label="服务类型">
@@ -184,43 +182,23 @@ const rules = {
   service_type: [{ required: true, message: '请选择服务类型', trigger: 'change' }]
 }
 
-// 预定义场景键及其对应的服务类型
-const predefinedKeys = [
-  { value: 'image_polish', label: 'image_polish - 分镜图提示词润色', service_type: 'text' },
-  // 目前程序里只内置了一个场景键：image_polish
-  // 以下为新增的场景键，已添加到对应的接口里
-  { value: 'role_image_polish', label: 'role_image_polish - 角色图提示词润色', service_type: 'text' },
-  { value: 'prop_image_polish', label: 'prop_image_polish - 道具图提示词润色', service_type: 'text' },
-  { value: 'scene_image_polish', label: 'scene_image_polish - 场景图提示词润色', service_type: 'text' },
-  { value: 'role_extraction', label: 'role_extraction - 角色提取', service_type: 'text' },
-  { value: 'prop_extraction', label: 'prop_extraction - 道具提取', service_type: 'text' },
-  { value: 'scene_extraction', label: 'scene_extraction - 场景提取', service_type: 'text' },
-  { value: 'storyboard_extraction', label: 'storyboard_extraction - 分镜生成', service_type: 'text' },
-  { value: 'identity_anchors', label: 'identity_anchors - 角色视觉锚点提炼', service_type: 'text' },
-  { value: 'frame_prompt', label: 'frame_prompt - 帧提示词生成', service_type: 'text' },
-  { value: 'novel_import', label: 'novel_import - 小说导入改写', service_type: 'text' },
-  { value: 'story_generation', label: 'story_generation - 故事生成', service_type: 'text' },
-  //  以下是其他服务类型...未实现
-  // 图片生成
-  // { value: 'role_image_gen', label: 'role_image_gen - 角色图片生成', service_type: 'image' },
-  // { value: 'prop_image_gen', label: 'prop_image_gen - 道具图片生成', service_type: 'image' },
-  // { value: 'scene_image_gen', label: 'scene_image_gen - 场景图片生成', service_type: 'image' },
-  // { value: 'storyboard_image_gen', label: 'storyboard_image_gen - 分镜图片生成', service_type: 'image' },
-  // { value: 'video_frame_gen', label: 'video_frame_gen - 视频帧生成', service_type: 'video' },// 首尾帧视频生成
-  // { value: 'video_full_gen', label: 'video_full_gen - 全能视频生成', service_type: 'video' },// 全能模式视频生成
-]
+const sceneDefinitions = ref([])
+const predefinedKeys = computed(() => sceneDefinitions.value.map((item) => ({
+  value: item.key,
+  label: `${item.key} - ${item.label}`,
+  service_type: item.service_type,
+  description: item.description,
+})))
+const availableKeys = computed(() => {
+  if (editingKey.value) return predefinedKeys.value
+  const configured = new Set(list.value.map((item) => item.key))
+  return predefinedKeys.value.filter((item) => !configured.has(item.value))
+})
 
 // 根据服务类型筛选配置
 const filteredConfigs = computed(() => {
   const currentServiceType = form.value.service_type
-  console.log('filteredConfigs computed, service_type:', currentServiceType, 'configs:', configs.value.length)
-  const filtered = configs.value.filter(c => {
-    const match = c.service_type === currentServiceType && c.is_active
-    console.log('  config:', c.name, 'service_type:', c.service_type, 'match:', match)
-    return match
-  })
-  console.log('  filtered result:', filtered.length)
-  return filtered
+  return configs.value.filter(c => c.service_type === currentServiceType && c.is_active)
 })
 
 // 获取选中配置的可用模型列表
@@ -252,7 +230,7 @@ function serviceTypeTagType(type) {
 
 // 获取场景键的 label
 function getSceneKeyLabel(key) {
-  const matched = predefinedKeys.find(k => k.value === key)
+  const matched = predefinedKeys.value.find(k => k.value === key)
   if (matched) {
     // 从 label 中提取描述部分（去掉 key 前缀）
     return matched.label.replace(matched.value + ' - ', '')
@@ -262,12 +240,10 @@ function getSceneKeyLabel(key) {
 
 // 场景键改变时自动设置服务类型
 function onKeyChange(key) {
-  console.log('onKeyChange called with key:', key)
-  const matched = predefinedKeys.find(k => k.value === key)
-  console.log('matched predefined key:', matched)
+  const matched = predefinedKeys.value.find(k => k.value === key)
   if (matched) {
     form.value.service_type = matched.service_type
-    console.log('service_type set to:', form.value.service_type)
+    form.value.description = matched.description || ''
   }
   // 重置配置和模型选择
   form.value.config_id = null
@@ -282,12 +258,13 @@ function onConfigChange(configId) {
 async function load() {
   loading.value = true
   try {
-    const [mapsData, configsData] = await Promise.all([
+    const [mapsData, configsData, definitionsData] = await Promise.all([
       sceneModelMapAPI.list(),
-      aiAPI.list()
+      aiAPI.list(),
+      sceneModelMapAPI.definitions(),
     ])
+    sceneDefinitions.value = definitionsData || []
     configs.value = configsData || []
-    console.log('Loaded configs:', configs.value.map(c => ({ id: c.id, name: c.name, service_type: c.service_type, is_active: c.is_active })))
     
     // 合并配置名称
     list.value = (mapsData || []).map(item => {
@@ -312,6 +289,12 @@ function openAdd() {
     service_type: 'text',
     config_id: null,
     model_override: ''
+  }
+  const first = availableKeys.value[0]
+  if (first) {
+    form.value.key = first.value
+    form.value.service_type = first.service_type
+    form.value.description = first.description || ''
   }
   dialogVisible.value = true
 }

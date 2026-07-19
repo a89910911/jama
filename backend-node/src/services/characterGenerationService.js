@@ -1,7 +1,7 @@
 
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
-const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 const characterLibraryService = require('./characterLibraryService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
@@ -13,8 +13,15 @@ const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 async function enrichIdentityAnchors(db, log, characterId, appearance) {
   if (!appearance || !String(appearance).trim()) return;
   try {
-    const systemPrompt = promptI18n.getIdentityAnchorsPrompt();
-    const userPrompt = `Character appearance description:\n${appearance}`;
+    const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.system', {
+      characterId,
+      locale: 'universal',
+    });
+    const userPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.user', {
+      characterId,
+      locale: 'universal',
+      variables: { character_appearance: appearance },
+    });
     const raw = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
       scene_key: 'identity_anchors',
       max_tokens: 800,
@@ -55,16 +62,27 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
   } catch (_) {}
 
   if (!outlineText) {
-    outlineText = promptI18n.formatUserPrompt(
-      effectiveCfg,
-      'drama_info_template',
-      dramaRow.title || '',
-      dramaRow.description || '',
-      dramaRow.genre || ''
-    );
+    outlineText = promptTemplates.resolvePromptContent(db, 'character.extraction.drama_info', {
+      cfg: effectiveCfg,
+      dramaId: req.drama_id,
+      taskId: taskID,
+      variables: {
+        drama_title: dramaRow.title || '',
+        drama_description: dramaRow.description || '',
+        drama_genre: dramaRow.genre || '',
+      },
+    });
   }
-  const userPrompt = promptI18n.formatUserPrompt(effectiveCfg, 'character_request', outlineText);
-  const systemPrompt = promptI18n.getCharacterExtractionPrompt(effectiveCfg);
+  const promptContext = {
+    cfg: effectiveCfg,
+    dramaId: req.drama_id,
+    taskId: taskID,
+  };
+  const userPrompt = promptTemplates.resolvePromptContent(db, 'character.extraction.user', {
+    ...promptContext,
+    variables: { script_content: outlineText },
+  });
+  const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.extraction.system', promptContext);
   const temperature = req.temperature != null ? req.temperature : 0.7;
 
   // 固定 6000 tokens：足够约 10-12 个角色（每角色约 400-500 tokens）

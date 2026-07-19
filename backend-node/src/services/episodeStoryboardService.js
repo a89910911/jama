@@ -2,6 +2,7 @@
 const taskService = require('./taskService');
 const aiClient = require('./aiClient');
 const promptI18n = require('./promptI18n');
+const promptTemplates = require('./promptTemplateService');
 const { syncStoryboardCharacters } = require('./imageService');
 const safeJson = require('../utils/safeJson');
 const { safeParseAIJSON, extractJsonCandidate, repairTruncatedJsonArray, extractFirstArray } = safeJson;
@@ -191,7 +192,7 @@ function buildCameraMotionChain(movement, shotType, durationSec) {
 }
 
 /** 全能分镜：模型未返回 universal_segment_text 时的灵境式高密度单行（视频时间轴 + 运镜链） */
-function buildFallbackUniversalSeedanceLine(sb, d, styleHint) {
+function buildFallbackUniversalSeedanceLine(templateContent, sb, d, styleHint) {
   const act = (d.action || '').replace(/\s+/g, ' ').trim().slice(0, 220);
   const res = (d.result || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   const emo = (d.emotion || sb.emotion || '').replace(/\s+/g, ' ').trim().slice(0, 24);
@@ -217,10 +218,20 @@ function buildFallbackUniversalSeedanceLine(sb, d, styleHint) {
   const sfx = `环境层-[与${loc}一致的环境声底与远处细节] 动作层-[与动作同步的物理接触声] 情绪层-[无旋律仅以空间混响与材质细微声烘托情绪张力]`;
   const styleTail = (styleHint && String(styleHint).trim()) || '电影感叙事光色';
   const dia = (d.dialogue || '').trim().replace(/"/g, "'");
-  let line = `主体：@人物1${emoParen}[朝向：依轴线面向戏中对象或画左/画右择一并保持统一] 正在 ${motionCore}（与上镜衔接：${link}） 叙事动态：${narrDyn} 空间：前景-[${fg}] 中景-[${mg}] 背景-[${bg}] 光影：${lightBlock} 镜头：${lensBlock}`;
-  if (dia) line += ` 台词：第1秒 @人物1："${dia.slice(0, 120)}"`;
-  line += ` 音效：${sfx} ${styleTail} [禁BGM][禁字幕]`;
-  return line.replace(/\r?\n/g, ' ');
+  return renderCapturedPrompt(templateContent, {
+    emotion_clause: emoParen,
+    motion_core: motionCore,
+    continuity_link: link,
+    narrative_motion: narrDyn,
+    foreground: fg,
+    midground: mg,
+    background: bg,
+    lighting_contract: lightBlock,
+    camera_contract: lensBlock,
+    dialogue_clause: dia ? `第1秒 @人物1："${dia.slice(0, 120)}"` : '',
+    sound_contract: sfx,
+    style_prompt: styleTail,
+  }).replace(/\r?\n/g, ' ');
 }
 
 function getStoryboardsForEpisode(db, episodeId) {
@@ -297,80 +308,67 @@ function extractInitialPose(action) {
   return result.replace(/[，。,.]\s*$/, '').trim();
 }
 
-function generateImagePrompt(sb, style) {
-  const parts = [];
-  // 场景位置与时间
-  if (sb.location) {
-    let locationDesc = sb.location;
-    if (sb.time) locationDesc += '，' + sb.time;
-    parts.push(locationDesc);
-  }
-  // 镜头视角：优先结构化三元组（中文标签），降级到旧文本
+function angleValueForTemplate(sb) {
   if (sb.angle_h && sb.angle_v && sb.angle_s) {
-    parts.push(angleService.toChineseLabel(sb.angle_h, sb.angle_v, sb.angle_s));
-  } else if (sb.angle || sb.shot_type) {
-    const { h, v, s } = angleService.parseFromLegacyText(sb.angle || '', sb.shot_type || '');
-    parts.push(angleService.toChineseLabel(h, v, s));
+    return `${sb.angle_s}/${sb.angle_v}/${sb.angle_h}`;
   }
-  // 画面动作（取动作的起始状态）
-  if (sb.action) {
-    const initialPose = extractInitialPose(sb.action);
-    if (initialPose) parts.push(initialPose);
-  }
-  // 情绪
-  if (sb.emotion) parts.push(sb.emotion);
-  // 风格（英文 prompt token，保持英文以兼容图片 AI）
-  const styleText = style && String(style).trim();
-  if (styleText) parts.push(styleText);
-  parts.push('首帧静止画面');
-  return parts.join('，');
+  return sb.angle ?? sb.camera_angle ?? '';
 }
 
-function generateVideoPrompt(sb, style, videoRatio) {
-  const parts = [];
-  // 场景与标题
-  if (sb.scene_description) {
-    parts.push('场景：' + sb.scene_description);
-  } else if (sb.location) {
-    const scene = sb.time ? sb.location + '，' + sb.time : sb.location;
-    parts.push('场景：' + scene);
-  }
-  if (sb.title) parts.push('镜头标题：' + sb.title);
-  // 动作与对白（核心叙事）
-  if (sb.action) parts.push('动作：' + sb.action);
-  if (sb.dialogue) parts.push('对话：' + sb.dialogue);
-  if (sb.narration) parts.push('解说旁白：' + sb.narration);
-  if (sb.result) parts.push('结果：' + sb.result);
-  // 镜头与运镜
-  const shotType = sb.shot_type || sb.camera_shot_type;
-  if (shotType) parts.push('景别：' + shotType);
-  // 结构化视角：中文标签 + 英文描述（兼顾中英文视频模型）
-  if (sb.angle_h && sb.angle_v && sb.angle_s) {
-    const chLabel = angleService.toChineseLabel(sb.angle_h, sb.angle_v, sb.angle_s);
-    const angleFragment = angleService.toPromptFragment(sb.angle_h, sb.angle_v, sb.angle_s);
-    parts.push(`镜头角度：${chLabel}（${angleFragment}）`);
-  } else {
-    const angle = sb.angle ?? sb.camera_angle;
-    if (angle) parts.push('镜头角度：' + angle);
-  }
-  const movement = sb.movement ?? sb.camera_movement;
-  if (movement) parts.push('运镜：' + movement);
-  // 氛围与情绪
-  if (sb.atmosphere) parts.push('氛围：' + sb.atmosphere);
-  if (sb.emotion) parts.push('情绪：' + sb.emotion);
-  if (sb.emotion_intensity != null && sb.emotion_intensity !== '') {
-    parts.push('情绪强度：' + String(sb.emotion_intensity));
-  }
-  // 声音
-  if (sb.bgm_prompt) parts.push('配乐：' + sb.bgm_prompt);
-  if (sb.sound_effect) parts.push('音效：' + sb.sound_effect);
-  // 时长
-  const durationSec = normalizeDuration(sb.duration) || 5;
-  parts.push('时长：' + durationSec + '秒');
-  // 风格（英文 token 保持英文以兼容视频 AI）与画面比例
-  if (style) parts.push('风格：' + style);
-  if (videoRatio) parts.push('=VideoRatio: ' + videoRatio);
-  return parts.length ? parts.join('。') : '视频场景';
+function storyboardImagePromptVariables(sb, style) {
+  return {
+    location: sb.location || '',
+    time: sb.time || '',
+    angle: angleValueForTemplate(sb),
+    initial_action: extractInitialPose(sb.action || ''),
+    emotion: sb.emotion || '',
+    style_prompt: style || '',
+  };
+}
+
+function storyboardVideoPromptVariables(sb, style, videoRatio) {
+  const scene = sb.scene_description
+    || [sb.location, sb.time].filter(Boolean).join('，');
+  return {
+    scene,
+    title: sb.title || '',
+    action: sb.action || '',
+    dialogue: sb.dialogue || '',
+    narration: sb.narration || '',
+    result: sb.result || '',
+    shot_type: sb.shot_type || sb.camera_shot_type || '',
+    angle: angleValueForTemplate(sb),
+    movement: sb.movement ?? sb.camera_movement ?? '',
+    atmosphere: sb.atmosphere || '',
+    emotion: sb.emotion || '',
+    emotion_intensity: sb.emotion_intensity ?? '',
+    bgm_prompt: sb.bgm_prompt || '',
+    sound_effect: sb.sound_effect || '',
+    duration_seconds: normalizeDuration(sb.duration) || 5,
+    style_prompt: style || '',
+    video_ratio: videoRatio || '',
+  };
+}
+
+function renderCapturedPrompt(content, variables) {
+  return String(content || '')
+    .replace(/\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, (_, name) => String(variables[name] ?? ''))
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => !/^[^：:\n]+[：:]\s*$/.test(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .replace(/^[，,\s]+|[，,\s]+$/g, '');
+}
+
+function composeStoryboardVideoPrompt(db, sb, style, videoRatio) {
+  return promptTemplates.resolvePromptContent(db, 'storyboard.video_prompt.compose', {
+    storyboardId: sb?.id,
+    episodeId: sb?.episode_id,
+    locale: 'universal',
+    variables: storyboardVideoPromptVariables(sb || {}, style, videoRatio),
+  });
 }
 
 /**
@@ -416,33 +414,14 @@ function deriveStoryboardFieldsFromAi(sb, style, videoRatio, opts = {}) {
     : { h: null, v: null, s: null };
   const description = `【镜头类型】${shotType}\n【运镜】${movement}\n【动作】${action}\n【对话】${dialogue}\n【解说】${narration}\n【结果】${result}\n【情绪】${emotion}`;
   const sbWithAngles = { ...sb, angle_h: angleH, angle_v: angleV, angle_s: angleS };
-  const imagePrompt = generateImagePrompt(sbWithAngles, style);
-  const videoPrompt = generateVideoPrompt(sbWithAngles, style, videoRatio);
+  const imagePromptVariables = storyboardImagePromptVariables(sbWithAngles, style);
+  const videoPromptVariables = storyboardVideoPromptVariables(sbWithAngles, style, videoRatio);
   const sceneId = sb.scene_id != null ? Number(sb.scene_id) : null;
   const charactersJson = Array.isArray(sb.characters) ? JSON.stringify(sb.characters) : (sb.characters ? JSON.stringify([].concat(sb.characters)) : '[]');
   const propIds = Array.isArray(sb.props) ? sb.props.map(Number).filter(Number.isFinite) : [];
   let universalSegmentText = '';
   if (sb.universal_segment_text != null && String(sb.universal_segment_text).trim()) {
     universalSegmentText = String(sb.universal_segment_text).trim().replace(/\r?\n/g, ' ');
-  }
-  if (universalOmni && !universalSegmentText) {
-    universalSegmentText = buildFallbackUniversalSeedanceLine(
-      sb,
-      {
-        shotNumber,
-        durationSec,
-        shotType,
-        movement,
-        angle,
-        action,
-        dialogue,
-        result,
-        emotion,
-        lightingStyle,
-        depthOfField,
-      },
-      style
-    );
   }
   const creationMode = universalOmni ? 'universal' : 'classic';
   if (!universalOmni) universalSegmentText = null;
@@ -457,13 +436,17 @@ function deriveStoryboardFieldsFromAi(sb, style, videoRatio, opts = {}) {
     narration,
     result,
     emotion,
+    atmosphere: sb.atmosphere || '',
     segmentIndex,
     segmentTitle,
     lightingStyle,
     depthOfField,
+    durationSec,
     description,
-    imagePrompt,
-    videoPrompt,
+    imagePrompt: '',
+    videoPrompt: '',
+    imagePromptVariables,
+    videoPromptVariables,
     sceneId,
     charactersJson,
     angleH,
@@ -473,6 +456,44 @@ function deriveStoryboardFieldsFromAi(sb, style, videoRatio, opts = {}) {
     creationMode,
     universalSegmentText,
   };
+}
+
+function applyStoryboardPromptTemplates(db, episodeId, derived, opts = {}) {
+  const imageTemplate = opts.composeTemplates?.image
+    || promptTemplates.resolvePrompt(db, 'storyboard.image_prompt.compose', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+    }).content;
+  const videoTemplate = opts.composeTemplates?.video
+    || promptTemplates.resolvePrompt(db, 'storyboard.video_prompt.compose', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+    }).content;
+  const omniFallbackTemplate = opts.composeTemplates?.omniFallback
+    || promptTemplates.resolvePrompt(db, 'omni.segment.fallback', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+    }).content;
+  derived.imagePrompt = renderCapturedPrompt(imageTemplate, derived.imagePromptVariables);
+  derived.videoPrompt = renderCapturedPrompt(videoTemplate, derived.videoPromptVariables);
+  if (derived.creationMode === 'universal' && !derived.universalSegmentText) {
+    derived.universalSegmentText = buildFallbackUniversalSeedanceLine(
+      omniFallbackTemplate,
+      {
+        location: derived.imagePromptVariables.location,
+        time: derived.imagePromptVariables.time,
+        atmosphere: derived.atmosphere,
+        emotion: derived.emotion,
+        duration: derived.durationSec,
+      },
+      derived,
+      derived.imagePromptVariables.style_prompt
+    );
+  }
+  return derived;
 }
 
 /** 用最终解析的分镜对象覆盖已存在的行（修正流式增量先入库时缺 narration 等字段的问题） */
@@ -532,7 +553,12 @@ function updateStoryboardRowFromDerived(db, existingId, episodeIdNum, d, sb, now
  * 返回插入后的 id，出错则返回 null（不抛异常）。
  */
 function insertOneStoryboard(db, episodeIdNum, sb, style, videoRatio, now, deriveOpts = {}) {
-  const d = deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts);
+  const d = applyStoryboardPromptTemplates(
+    db,
+    episodeIdNum,
+    deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts),
+    deriveOpts
+  );
   const shotNumber = d.shotNumber;
   try {
     db.prepare(
@@ -651,7 +677,12 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
         'SELECT * FROM storyboards WHERE episode_id = ? AND storyboard_number = ? AND deleted_at IS NULL'
       ).get(episodeIdNum, shotNumber);
       if (existing) {
-        const d = deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts);
+        const d = applyStoryboardPromptTemplates(
+          db,
+          episodeIdNum,
+          deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts),
+          deriveOpts
+        );
         updateStoryboardRowFromDerived(db, existing.id, episodeIdNum, d, sb, now);
         log.info('Storyboard merged from final parse after incremental save', {
           episode_id: episodeIdNum,
@@ -709,7 +740,12 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
       }
     }
 
-    const d = deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts);
+    const d = applyStoryboardPromptTemplates(
+      db,
+      episodeIdNum,
+      deriveStoryboardFieldsFromAi(sb, style, videoRatio, deriveOpts),
+      deriveOpts
+    );
 
     try {
       db.prepare(
@@ -793,13 +829,19 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
  * 关键：必须把所有已生成分镜的 shot_number + segment_title + title 全部列出，
  * 防止 AI 因不知道哪些情节已覆盖而重复生成相同内容。
  */
-function buildContinuationPrompt(originalUserPrompt, alreadySaved, lastShotNum, attempt, includeNarration, universalOmni = false) {
-  const narrLine = includeNarration
-    ? '\n- 每条新增分镜必须含非空字符串 narration（至少一句解说，与首次任务一致；禁止留空）'
-    : '';
-  const uniLine = universalOmni
-    ? '\n- 每条新增分镜必须含 creation_mode:"universal" 与非空 universal_segment_text（单行：须含「叙事动态」时间线+「镜头」运镜链至少两步如定镜/缓推轨/横移从遮挡后滑出；按 duration 秒写视频动势，禁止静帧式描写；与首轮要求一致）'
-    : '';
+function buildContinuationPrompt(
+  db,
+  cfg,
+  episodeId,
+  taskId,
+  originalUserPrompt,
+  alreadySaved,
+  lastShotNum,
+  attempt,
+  includeNarration,
+  universalOmni = false,
+  capturedTemplates = null
+) {
   // 全量已生成分镜摘要（每行一个，仅 shot_number + segment + title）
   const allSummary = alreadySaved.map((sb) => {
     const num = sb.shot_number ?? sb.storyboard_number ?? 0;
@@ -817,30 +859,49 @@ function buildContinuationPrompt(originalUserPrompt, alreadySaved, lastShotNum, 
     return `  {"shot_number": ${num}, "title": "${title}", "location": "${loc}", "action": "${action}"}`;
   }).join(',\n');
 
-  return `[续写指令 - 第${attempt}次续写]
-之前的分镜生成因长度限制在 shot_number ${lastShotNum} 处中断，已生成 ${alreadySaved.length} 个分镜。
-
-━━━ 已生成分镜完整列表（绝对不能重复以下内容）━━━
-${allSummary}
-━━━ 列表结束 ━━━
-
-以上所有情节均已覆盖，请勿重复。末尾几个分镜详情供衔接参考：
-[
-${lastCtx}
-]
-
-请从 shot_number ${lastShotNum + 1} 继续生成剩余分镜，直至剧本全部场景覆盖完毕。
-要求：
-- 仅返回新增分镜（JSON数组），shot_number 从 ${lastShotNum + 1} 开始递增
-- 格式与之前完全相同，字段保持一致${narrLine}${uniLine}
-- 严禁重复已生成列表中的任何情节或场景
-- 不要输出任何解释文字，直接输出 JSON
-
-原始剧本与任务说明：
-${originalUserPrompt}`;
+  const context = { cfg, episodeId, taskId };
+  const narrationRequirement = includeNarration
+    ? capturedTemplates?.continuationNarration
+      || promptTemplates.resolvePromptContent(db, 'storyboard.generation.continuation_narration', context)
+    : '';
+  const universalRequirement = universalOmni
+    ? capturedTemplates?.continuationUniversal
+      || promptTemplates.resolvePromptContent(db, 'storyboard.generation.continuation_universal', context)
+    : '';
+  const variables = {
+    attempt,
+    last_shot_number: lastShotNum,
+    generated_count: alreadySaved.length,
+    generated_summary: allSummary,
+    last_storyboards_context: lastCtx,
+    next_shot_number: lastShotNum + 1,
+    narration_requirement: narrationRequirement,
+    universal_requirement: universalRequirement,
+    original_user_prompt: originalUserPrompt,
+  };
+  return capturedTemplates?.continuation
+    ? renderCapturedPrompt(capturedTemplates.continuation, variables)
+    : promptTemplates.resolvePromptContent(db, 'storyboard.generation.continuation', {
+        ...context,
+        variables,
+      });
 }
 
-async function processStoryboardGeneration(db, log, cfg, taskId, episodeId, model, style, userPrompt, systemPrompt, includeNarration, universalOmni, targetClipDurationSec = null) {
+async function processStoryboardGeneration(
+  db,
+  log,
+  cfg,
+  taskId,
+  episodeId,
+  model,
+  style,
+  userPrompt,
+  systemPrompt,
+  includeNarration,
+  universalOmni,
+  targetClipDurationSec = null,
+  composeTemplates = null
+) {
   // 增量保存状态放在 try 外，catch 里可用于部分恢复
   const episodeIdNum = Number(episodeId);
   const streamSavedNums = new Set();
@@ -849,6 +910,8 @@ async function processStoryboardGeneration(db, log, cfg, taskId, episodeId, mode
   const deriveOpts = {
     universalOmni: !!universalOmni,
     targetClipDuration: targetClipDurationSec != null && Number(targetClipDurationSec) > 0 ? Number(targetClipDurationSec) : null,
+    taskId,
+    composeTemplates,
   };
   let streamThrottle = 0;
 
@@ -973,7 +1036,19 @@ async function processStoryboardGeneration(db, log, cfg, taskId, episodeId, mode
       taskService.updateTaskStatus(db, taskId, 'processing', 50 + contAttempt * 5,
         `已生成 ${storyboards.length} 个分镜，正在续写剩余部分（第${contAttempt}次）...`);
 
-      const contPrompt = buildContinuationPrompt(userPrompt, storyboards, lastShot, contAttempt, !!includeNarration, !!universalOmni);
+      const contPrompt = buildContinuationPrompt(
+        db,
+        cfg,
+        episodeId,
+        taskId,
+        userPrompt,
+        storyboards,
+        lastShot,
+        contAttempt,
+        !!includeNarration,
+        !!universalOmni,
+        composeTemplates
+      );
       logDebugStoryboardPrompts(log, `task-${taskId}-continuation-${contAttempt}`, contPrompt, systemPrompt);
       streamThrottle = 0; // 重置节流，让续写段落也能增量保存
 
@@ -1172,44 +1247,53 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
     propList = '[' + props.map((p) => `{"id": ${p.id}, "name": "${(p.name || '').replace(/"/g, '\\"')}"${p.type ? `, "type": "${p.type.replace(/"/g, '\\"')}"` : ''}}`).join(', ') + ']';
   }
 
-  const scriptLabel = promptI18n.formatUserPrompt(cfg, 'script_content_label');
-  const taskLabel = promptI18n.formatUserPrompt(cfg, 'task_label');
-  const taskInstruction = promptI18n.formatUserPrompt(cfg, 'task_instruction');
-  
   // 处理分镜数量和时长约束
   let extraConstraint = '';
-  // 宽松判断：只要有值（包括字符串形式的数字），就尝试转换并添加约束
-  if (storyboardCount) {
-    const countVal = Number(storyboardCount);
-    if (Number.isFinite(countVal) && countVal > 0) {
-      const countLabel = promptI18n.formatUserPrompt(cfg, 'storyboard_count_constraint', countVal);
-      if (countLabel) extraConstraint += `\n${countLabel}`;
-    }
-  }
   if (videoDuration) {
     const durationVal = Number(videoDuration);
     if (Number.isFinite(durationVal) && durationVal > 0) {
-      const durationLabel = promptI18n.formatUserPrompt(cfg, 'video_duration_constraint', durationVal);
+      const durationLabel = promptTemplates.resolvePromptContent(db, 'storyboard.generation.duration_constraint', {
+        cfg,
+        episodeId,
+        variables: { video_duration: durationVal },
+      });
       if (durationLabel) extraConstraint += `\n${durationLabel}`;
     }
   }
   // 当同时指定总时长和数量时，补充单镜 duration 说明（与项目「每段秒数」一致时勿用总÷镜压短）
   if (storyboardCount && videoDuration && effectiveShotDuration) {
-    const isEn = promptI18n.isEnglish(cfg);
     const clipFromProject = videoClipDuration && Number(videoClipDuration) > 0;
     const implied =
       impliedFromTotal && impliedFromTotal > 0 ? impliedFromTotal : Math.round(Number(videoDuration) / Number(storyboardCount));
     if (clipFromProject) {
-      const clip = Number(videoClipDuration);
-      if (isEn) {
-        extraConstraint += `\nEach shot "duration" field: prioritize **~${clip}s per shot** (project clip-length setting); ±1s OK. Total ~${Number(videoDuration)}s and ~${Number(storyboardCount)} shots are overall planning hints—do NOT force every shot to ~${implied}s (total÷count) when it conflicts with the project clip length.`;
-      } else {
-        extraConstraint += `\n每个镜头的 **duration** 请优先按项目「每段约 **${clip} 秒**」填写（可 ±1 秒微调）。全片总时长约 ${Number(videoDuration)} 秒、镜头数约 ${Number(storyboardCount)} 为整体规划参考，**禁止**为机械凑「总时长÷镜数」（约 ${implied}s）而把每镜普遍写成过短镜头；除非该镜对白与动作为实需的极短镜头。`;
-      }
-    } else if (isEn) {
-      extraConstraint += `\nEach shot target duration: approximately ${effectiveShotDuration}s (= total ${Number(videoDuration)}s ÷ ${Number(storyboardCount)} shots). Set each shot's duration field to this value, adjusting ±1s for dialogue/action length.`;
+      extraConstraint += '\n' + promptTemplates.resolvePromptContent(
+        db,
+        'storyboard.generation.project_clip_duration_constraint',
+        {
+          cfg,
+          episodeId,
+          variables: {
+            video_clip_duration: Number(videoClipDuration),
+            video_duration: Number(videoDuration),
+            storyboard_count: Number(storyboardCount),
+            implied_duration: implied,
+          },
+        }
+      );
     } else {
-      extraConstraint += `\n每镜头目标时长：约 ${effectiveShotDuration} 秒（= 总时长 ${Number(videoDuration)}s ÷ ${Number(storyboardCount)} 个镜头）。每个镜头的 duration 字段请设为此值，可根据对话/动作长短适当调整 ±1 秒。`;
+      extraConstraint += '\n' + promptTemplates.resolvePromptContent(
+        db,
+        'storyboard.generation.calculated_shot_duration_constraint',
+        {
+          cfg,
+          episodeId,
+          variables: {
+            shot_duration: effectiveShotDuration,
+            video_duration: Number(videoDuration),
+            storyboard_count: Number(storyboardCount),
+          },
+        }
+      );
     }
   }
 
@@ -1220,54 +1304,60 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
     effective_shot_duration: effectiveShotDuration,
   });
 
-  const charListLabel = promptI18n.formatUserPrompt(cfg, 'character_list_label');
-  const charConstraint = promptI18n.formatUserPrompt(cfg, 'character_constraint');
-  const sceneListLabel = promptI18n.formatUserPrompt(cfg, 'scene_list_label');
-  const sceneConstraint = promptI18n.formatUserPrompt(cfg, 'scene_constraint');
-  const propListLabel = promptI18n.formatUserPrompt(cfg, 'prop_list_label');
-  const propConstraint = promptI18n.formatUserPrompt(cfg, 'prop_constraint');
-  const suffix = promptI18n.getStoryboardUserPromptSuffix(cfg, effectiveShotDuration);
+  const suffix = promptTemplates.resolvePromptContent(db, 'storyboard.generation.requirements', {
+    cfg,
+    episodeId,
+    variables: { shot_duration: effectiveShotDuration || '' },
+  });
 
-  let userPrompt =
-    `${scriptLabel}\n${scriptContent}\n\n${taskLabel}\n${taskInstruction}${extraConstraint}\n\n${charListLabel}\n${characterList}\n\n${charConstraint}\n\n${sceneListLabel}\n${sceneList}\n\n${sceneConstraint}\n\n${propListLabel}\n${propList}\n\n${propConstraint}\n\n${suffix}`;
+  const baseUserPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.generation.user', {
+    cfg,
+    episodeId,
+    variables: {
+      characters: characterList,
+      scenes: sceneList,
+      props: propList,
+      script_content: scriptContent,
+      extra_constraints: extraConstraint.trim(),
+    },
+  });
+  const outputContract = promptTemplates.resolvePromptContent(db, 'storyboard.generation.output_contract', {
+    cfg,
+    episodeId,
+    locale: 'universal',
+  });
+  let userPrompt = `${baseUserPrompt}\n\n${suffix}\n\n${outputContract}`;
 
   const wantNarration = includeNarration === true || includeNarration === 1 || String(includeNarration).toLowerCase() === 'true';
-  if (wantNarration) {
-    userPrompt += promptI18n.getStoryboardNarrationExtraInstructions(cfg);
-  }
-
-  let systemPrompt = promptI18n.getStoryboardSystemPrompt(cfg);
+  let systemPrompt = promptTemplates.resolvePromptContent(db, 'storyboard.generation.system', {
+    cfg,
+    episodeId,
+  });
 
   // 当用户指定了分镜数量时，在系统提示词后追加最高优先级覆盖指令，
   // 使"目标数量"优先于默认的"一动作一镜头、禁止合并"原则
   if (storyboardCount && Number(storyboardCount) > 0) {
     const targetCount = Number(storyboardCount);
-    const isEn = systemPrompt.includes('[Role]');
-    if (isEn) {
-      systemPrompt += `\n\n[HIGHEST PRIORITY — USER SPECIFIED COUNT]
-The user requires exactly ${targetCount} shots (±10% tolerance is acceptable).
-This requirement OVERRIDES the "one action = one shot, no merging" rule above.
-You MUST merge related consecutive actions into fewer shots OR split key moments into more shots to reach this target.
-Do NOT produce a shot count far from ${targetCount} under any circumstance.`;
-    } else {
-      systemPrompt += `\n\n【最高优先级——用户指定分镜数量】
-用户要求生成恰好 ${targetCount} 个分镜（允许 ±10% 的偏差，即 ${Math.floor(targetCount * 0.9)}~${Math.ceil(targetCount * 1.1)} 个均可接受）。
-此要求优先级高于上述所有原则，包括"一动作一镜头、禁止合并"的规则。
-- 若动作较多、自然拆分超过目标数量，请将相关联的连续小动作合并为一个镜头
-- 若动作较少、自然拆分不足目标数量，请将重要场景或情绪转折拆分为多个镜头
-- 严禁生成数量与 ${targetCount} 相差悬殊的分镜方案`;
-    }
+    systemPrompt += '\n\n' + promptTemplates.resolvePromptContent(
+      db,
+      'storyboard.generation.count_constraint',
+      {
+        cfg,
+        episodeId,
+        variables: {
+          storyboard_count: targetCount,
+          min_storyboard_count: Math.floor(targetCount * 0.9),
+          max_storyboard_count: Math.ceil(targetCount * 1.1),
+        },
+      }
+    );
   }
 
   if (wantNarration) {
-    const isEn = systemPrompt.includes('[Role]');
-    if (isEn) {
-      systemPrompt += `\n\n[HIGHEST PRIORITY — NARRATION / VO MODE]
-The user enabled narrator voice-over for the whole episode. Every shot object MUST include non-empty "narration" (≥1 sentence). Shot 1 MUST have an opening VO hook (time/place/mood). Shots 1 and 2 MUST NOT both have empty narration. Empty "narration" is NOT allowed in this mode.`;
-    } else {
-      systemPrompt += `\n\n【最高优先级——解说旁白已开启】
-用户已开启全片解说：每个分镜的 narration 必须为非空字符串（至少一句）。第 1 镜必须有开场解说。第 1、2 镜禁止同时留空 narration。本模式下不允许 narration 为空。`;
-    }
+    systemPrompt += promptTemplates.resolvePromptContent(db, 'storyboard.generation.narration', {
+      cfg,
+      episodeId,
+    });
   }
 
   const wantUniversalOmni =
@@ -1275,10 +1365,77 @@ The user enabled narrator voice-over for the whole episode. Every shot object MU
     universalOmni === 1 ||
     String(universalOmni || '').toLowerCase() === 'true';
   if (wantUniversalOmni) {
-    systemPrompt += promptI18n.getStoryboardUniversalOmniModeSuffix(cfg);
+    systemPrompt += promptTemplates.resolvePromptContent(db, 'storyboard.generation.universal_mode', {
+      cfg,
+      episodeId,
+    });
   }
 
   const task = taskService.createTask(db, log, 'storyboard_generation', String(episodeId));
+  const composeTemplates = {
+    image: promptTemplates.resolvePrompt(db, 'storyboard.image_prompt.compose', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+      taskId: task.id,
+    }).content,
+    video: promptTemplates.resolvePrompt(db, 'storyboard.video_prompt.compose', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+      taskId: task.id,
+    }).content,
+    omniFallback: promptTemplates.resolvePrompt(db, 'omni.segment.fallback', {
+      episodeId,
+      locale: 'universal',
+      render: false,
+      taskId: task.id,
+    }).content,
+    continuation: promptTemplates.resolvePrompt(
+      db,
+      'storyboard.generation.continuation',
+      {
+        cfg,
+        episodeId,
+        render: false,
+        taskId: task.id,
+      }
+    ).content,
+    continuationNarration: promptTemplates.resolvePromptContent(
+      db,
+      'storyboard.generation.continuation_narration',
+      {
+        cfg,
+        episodeId,
+        taskId: task.id,
+      }
+    ),
+    continuationUniversal: promptTemplates.resolvePromptContent(
+      db,
+      'storyboard.generation.continuation_universal',
+      {
+        cfg,
+        episodeId,
+        taskId: task.id,
+      }
+    ),
+  };
+  promptTemplates.attachTaskPromptSnapshot(db, task.id, {
+    prompt_key: 'storyboard.generation.composed.system',
+    scope: 'effective',
+    locale: promptI18n.getLanguage(cfg),
+    version: 1,
+    content: systemPrompt,
+    captured_at: new Date().toISOString(),
+  });
+  promptTemplates.attachTaskPromptSnapshot(db, task.id, {
+    prompt_key: 'storyboard.generation.composed.user',
+    scope: 'effective',
+    locale: promptI18n.getLanguage(cfg),
+    version: 1,
+    content: userPrompt,
+    captured_at: new Date().toISOString(),
+  });
   log.info('Generating storyboard asynchronously', {
     task_id: task.id,
     episode_id: episodeId,
@@ -1310,7 +1467,8 @@ The user enabled narrator voice-over for the whole episode. Every shot object MU
       systemPrompt,
       wantNarration,
       wantUniversalOmni,
-      clipSec
+      clipSec,
+      composeTemplates
     );
   });
 
@@ -1376,7 +1534,7 @@ function rebuildVideoPromptForStoryboard(db, log, storyboardId) {
     character_voice_anchors: characterVoiceAnchors,
   };
 
-  const videoPrompt = generateVideoPrompt(sbForPrompt, finalStyle, videoRatio);
+  const videoPrompt = composeStoryboardVideoPrompt(db, sbForPrompt, finalStyle, videoRatio);
   const now = new Date().toISOString();
   db.prepare('UPDATE storyboards SET video_prompt = ?, updated_at = ? WHERE id = ?').run(videoPrompt, now, sbId);
 
@@ -1602,7 +1760,7 @@ module.exports = {
   getStoryboardsForEpisode,
   generateStoryboard,
   /** 与分镜入库时一致的「视频提示词」拼装（供经典模式润色等复用） */
-  composeStoryboardVideoPrompt: generateVideoPrompt,
+  composeStoryboardVideoPrompt,
   rebuildVideoPromptForStoryboard,
   splitStoryboardByAudio,
 };

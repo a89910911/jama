@@ -6,9 +6,17 @@
  * @param {{ universalSegmentOverride?: string | undefined }} opts 若传入则覆盖库中的 universal 写入 CURRENT_UNIVERSAL_SEGMENT
  * @returns {{ ok:true, userPrompt:string, durationLabel:string, durationSec:number, sbId:number, episodeId:number, storyboardNumber:number } | { ok:false, code:'not_found'|'bad_request', message:string }}
  */
+const promptTemplates = require('./promptTemplateService');
+
 function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
   const bodyIn = reqBody && typeof reqBody === 'object' ? reqBody : {};
   const forceWithoutReferenceImages = !!bodyIn.force_without_reference_images;
+  const resolveFragment = (promptKey, variables = {}) =>
+    promptTemplates.resolvePromptContent(db, promptKey, {
+      storyboardId: sbId,
+      locale: 'universal',
+      variables,
+    });
 
   const sb = db.prepare(
     `SELECT id, episode_id, storyboard_number, scene_id, title, description, location, time,
@@ -232,27 +240,15 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
 
   const charSlots = slots.filter((s) => s.kind === '角色');
   const sceneFirst = slots.length > 0 && slots[0].kind === '场景';
-  const charBindingBlock =
-    charSlots.length > 0
-      ? [
-          sceneFirst
-            ? 'CHARACTER_IMAGE_BINDING（@图片1 仅为场景/环境；人物从 @图片2 起依次对应下列姓名，勿把人绑在 @图片1）:'
-            : 'CHARACTER_IMAGE_BINDING（首张参考图非场景，以 IMAGE_SLOT_MAP 为准；人物与下列 @图片N 一一对应）:',
-          ...charSlots.map((s) =>
-            sceneFirst
-              ? `「${s.summary}」→ ${s.tag}（外貌/动作绑定 ${s.tag} ，示例：${s.tag} 的侧脸；禁止「@图片1 中的${s.summary}」）`
-              : `「${s.summary}」→ ${s.tag}（外貌/动作绑定 ${s.tag} ，示例：${s.tag} 的侧脸）`
-          ),
-        ].join('\n')
-      : slots.length === 0 && forceWithoutReferenceImages
-        ? [
-            'CHARACTER_IMAGE_BINDING（无图强制模式）:',
-            '- 尚无已解析的 @图片 槽位；ORDERED_CHARACTER_NAMES 仅用于剧情理解，禁止写成 @姓名 指代参考图。',
-            '- 若输出中出现 @图片N，仅表示与将来补图顺序对齐的占位，勿将具体外貌绑定到错误序号。',
-          ].join('\n')
-        : [
-            'CHARACTER_IMAGE_BINDING: 当前无「角色」参考槽位；若出现人物且 @图片1 为场景，勿将人物外貌写在 @图片1。',
-          ].join('\n');
+  const bindingLines = charSlots.map((s) => `「${s.summary}」 → ${s.tag}`).join('\n');
+  const charBindingBlock = charSlots.length > 0
+    ? resolveFragment(
+        sceneFirst
+          ? 'omni.segment.character_binding_scene_first'
+          : 'omni.segment.character_binding_primary',
+        { binding_lines: bindingLines }
+      )
+    : resolveFragment('omni.segment.character_binding_empty');
 
   if (slots.length === 0 && !forceWithoutReferenceImages) {
     return {
@@ -265,21 +261,17 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
   let imageSlotMapBlock;
   let line3Required;
   if (slots.length === 0) {
-    imageSlotMapBlock = [
-      'IMAGE_SLOT_MAP（无图强制模式：尚无已上传场景/角色/道具参考图；视频 API 当前无实际参考图槽位。若正文仍写 @图片N，仅表示与将来补图顺序对齐的占位，出片前须核对）:',
-      '（解析结果：无已绑定图像的槽位 — 优先依据剧本与分镜字段写清运镜、节奏与情绪；可不使用 @图片N，或自 @图片1 起预留占位，勿编造与剧本矛盾的细节。）',
-    ].join('\n');
-    line3Required =
-      '当前尚未上传参考图；以剧本与分镜字段书写整段内的运镜与时间轴；若写 @图片N 仅为后续补图预留占位，勿将具体人脸绑定到尚未确定序号的图片；勿编造与剧本矛盾的情节。';
+    imageSlotMapBlock = resolveFragment('omni.segment.image_slot_map_empty');
+    line3Required = resolveFragment('omni.segment.line3_no_reference');
   } else {
-    imageSlotMapBlock = [
-      'IMAGE_SLOT_MAP（全能模式提交视频时参考图顺序；正文仅可使用下列占位符，与 API 一致）:',
-      ...slots.map((s) => `${s.tag} = ${s.kind}「${s.summary}」`),
-    ].join('\n');
-    line3Required =
+    imageSlotMapBlock = resolveFragment('omni.segment.image_slot_map', {
+      slot_lines: slots.map((s) => `${s.tag} = ${s.kind}「${s.summary}」`).join('\n'),
+    });
+    line3Required = resolveFragment(
       slots[0].kind === '场景'
-        ? '环境、光影与陈设定性参考 @图片1。若 @图片1 为宫格或多画面拼图，禁止成片复刻其分格或并列布局，仅提取统一的室内空间与光线语义；须单镜头完整连续画面。'
-        : '本片段以首张参考图 @图片1 作为画面锚点展开。';
+        ? 'omni.segment.line3_scene_reference'
+        : 'omni.segment.line3_primary_reference'
+    );
   }
 
   const charCount = charNamesOrdered.length;
@@ -305,35 +297,13 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
 
   const genreHint = (dramaRow?.genre && String(dramaRow.genre).trim()) || '';
   const dramaTitle = (dramaRow?.title && String(dramaRow.title).trim()) || '';
-  const styleHintBlock = [
-    `STYLE_HINT:`,
-    chunk('DRAMA_TITLE', dramaTitle),
-    chunk('DRAMA_GENRE', genreHint),
-    chunk('STYLE_ZH', styleZh),
-    chunk('STYLE_EN', styleEn),
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const refContract = [
-    'REFERENCE_RULE:',
-    ...(slots.length === 0
-      ? [
-          '- 当前为无图强制模式：视频 API 尚无参考图；可不写 @图片N，若写则仅为补图前占位，出片前须与实际上传顺序一致。',
-          '- 禁止用 @场景、@姓名、@道具名 等形式指代参考图；将来有图时须一律改为 @图片N（与 MAP 一致）。',
-        ]
-      : [
-          '- 绑定到某张参考图时，只能写 IMAGE_SLOT_MAP 里列出的 @图片N（阿拉伯数字，如 @图片1、@图片2）。',
-          '- 禁止用 @场景、@姓名、@林薇、@道具名 等形式指代参考图；需要指图时一律 @图片N。',
-          '- 若 @图片1 为「场景」：只写环境/光影/陈设；人物外貌与动作按 CHARACTER_IMAGE_BINDING 从 @图片2 起。若首张参考图即角色，则以 MAP 为准。',
-          '- 场景参考若为四宫格/九宫格等拼图：见 SCENE_REFERENCE_LAYOUT；成片须单镜头连续画面，禁止模仿拼图布局。',
-        ]),
-    '- 每个 @图片N 与后随的中/英文字之间保留一个半角空格（后处理也会修正，但模型应直接写对）。',
-    '- ORDERED_CHARACTER_NAMES 仅供理解剧情，不得当作图占位符。',
-    `有图参考槽位数: ${slots.length}；绑定角色数(含无图): ${charCount}；绑定道具数(含无图): ${propCount}`,
-  ].join('\n');
-
-  const assetLine = `ORDERED_CHARACTER_NAMES（仅剧情理解）: ${charNames || 'none'}\nORDERED_PROP_NAMES: ${propNames.join(', ') || 'none'}`;
+  const refContract = slots.length === 0
+    ? resolveFragment('omni.segment.reference_rule_empty')
+    : resolveFragment('omni.segment.reference_rule', {
+        slot_count: slots.length,
+        character_count: charCount,
+        prop_count: propCount,
+      });
 
   if (lines.length === 0 && !sceneBlock && !charNames && !propNames.length) {
     return { ok: false, code: 'bad_request', message: '分镜中暂无可用信息，请先填写动作、对白、视频提示词或绑定场景/角色等' };
@@ -341,11 +311,7 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
 
   const hasSceneSlot = slots.some((s) => s.kind === '场景');
   const sceneLayoutBlock = hasSceneSlot
-    ? [
-        'SCENE_REFERENCE_LAYOUT（场景参考图可能是多宫格/多视角拼图，仅作内容与空间参考，成片禁止模仿拼图）:',
-        '- 场景槽位（通常为 @图片1）常见为四宫格、九宫格或带分割线的多视角场景图：只提取家具、装修、色调、空间关系与光影，不要在提示中引导模型生成「分屏、宫格、多画面并列、复刻参考图网格」。',
-        '- 每一个「分镜k： Tk秒:」所在行的正文里都应点明：单镜头连续画幅、无成片宫格分屏；参考拼图仅用于理解空间与光线。',
-      ].join('\n')
+    ? resolveFragment('omni.segment.scene_reference_layout')
     : '';
 
   let episodeScript = '';
@@ -380,16 +346,18 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
     const segChange = ix > 0 && currSeg && prevSeg && currSeg !== prevSeg;
     shotPacingBlock = [
       'SHOT_PACING_AND_POSITION:',
-      `TOTAL_CLIP_SECONDS: ${durationLabel}（本条数据库分镜 = 一次成片 API 的整段时长；下文 M 个子分镜仅为同一时间轴内节拍拆分）`,
-      `M_HEURISTIC_ONLY: 约 ${mHeuristic}（不得照抄为最终 M；须结合剧本高潮/对白密度/转场/机位与 movement 等自决 1～8 的整数 M）`,
+      `TOTAL_CLIP_SECONDS: ${durationLabel}`,
+      `M_HEURISTIC_ONLY: ${mHeuristic}`,
       `SHOT_ORDER: ${ix >= 0 ? ix + 1 : '?'} / ${totalShots}`,
       `SHOT_POSITION_TAG: ${posTag}`,
       chunk('SEGMENT_TITLE_PREV', prevSeg || null),
       chunk('SEGMENT_TITLE_CURRENT', currSeg || null),
       chunk('SEGMENT_TITLE_NEXT', nextSeg || null),
-      segChange
-        ? 'BOUNDARY_HINT: 段落标题相对上一镜已变化 → 转场/新叙事块概率高 → 可提高 M 或前几秒侧重空间/情绪铺垫再入冲突。'
-        : 'BOUNDARY_HINT: 同段落延续 → M 可保守；若 ACTION 内对白长、机位少，也可 M=1 但在单行内写满时间流动。',
+      resolveFragment(
+        segChange
+          ? 'omni.segment.boundary_changed'
+          : 'omni.segment.boundary_same'
+      ),
     ].join('\n');
   } catch (_) {
     shotPacingBlock = [
@@ -432,42 +400,28 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
     neighborDetailBlock = [fmtN(prevFull, 'NEIGHBOR_PREV_DETAIL'), '', fmtN(nextFull, 'NEIGHBOR_NEXT_DETAIL')].join('\n');
   } catch (_) {}
 
-  const multiBeatContract = [
-    'MULTI_BEAT_OUTPUT（一条成片 API 内的多节拍文案）:',
-    '- 总行数 = 3 + M。M 为你选择的子分镜条数（时间轴节拍），整数 1～8。',
-    '- 第1行：「画面风格和类型:」…',
-    `- 第2行：必须为「生成一个由以下M个分镜组成的视频。」（将 M 替换为你的整数；与下文实际「分镜1…分镜M」条数一致）。`,
-    '- 第3行：必须逐字等于 LINE3_REQUIRED（见下）。',
-    '- 第4行到第(3+M)行：依次为「分镜1： T1秒:」「分镜2： T2秒:」…「分镜M： TM秒:」；每行冒号后先写秒数再写该子时段内的动态影像与运镜描写。',
-    `- 约束：T1+T2+…+TM 必须严格等于 TOTAL_CLIP_SECONDS（数值与 ${durationLabel} 一致）；每个 Tk>0；子分镜序号连续无跳号。`,
-    '- 若 M=1：即仅一行「分镜1： TOTAL秒:」写满整段；若 M>1：每行只覆盖本子时段，前后行衔接成连续时间线，避免剧情跳跃或重复前一行已完成的动作。',
-    '- 禁止额外说明行、markdown、英文小标题；禁止把「子分镜」写成多次独立成片 API。',
-  ].join('\n');
-
-  const userPrompt = [
-    `TOTAL_CLIP_SECONDS: ${durationLabel}`,
-    `DURATION_SECONDS: ${durationLabel}`,
-    multiBeatContract,
-    shotPacingBlock,
-    neighborDetailBlock || null,
-    'LINE3_REQUIRED（第3行必须与下面整句完全一致，含标点）:',
-    line3Required,
-    `EPISODE_SCRIPT:\n${episodeScript || '(本集剧本为空；仅凭分镜与邻镜推断节奏，勿编造大段新剧情)'}`,
-    chunk('EPISODE_TABLE_TITLE', episodeTableTitle),
-    imageSlotMapBlock,
-    sceneLayoutBlock || null,
-    charBindingBlock,
-    styleHintBlock,
-    refContract,
-    assetLine,
-    sceneBlock || null,
-    `CONTEXT_PREV_SHORT: ${prevDesc}`,
-    `CONTEXT_NEXT_SHORT: ${nextDesc}`,
-    '--- STORYBOARD FIELDS ---',
-    ...lines,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const userPrompt = resolveFragment('omni.segment.user', {
+    duration_seconds: durationLabel,
+    shot_pacing: shotPacingBlock,
+    neighbor_details: neighborDetailBlock,
+    line3_required: line3Required,
+    episode_script: episodeScript,
+    episode_title: episodeTableTitle,
+    image_slot_map: imageSlotMapBlock,
+    scene_reference_layout: sceneLayoutBlock,
+    character_image_binding: charBindingBlock,
+    drama_title: dramaTitle,
+    drama_genre: genreHint,
+    style_zh: styleZh,
+    style_en: styleEn,
+    reference_rule: refContract,
+    character_names: charNames || 'none',
+    prop_names: propNames.join(', ') || 'none',
+    scene_context: sceneBlock,
+    previous_context: prevDesc,
+    next_context: nextDesc,
+    storyboard_fields: lines.join('\n') || '(none)',
+  });
 
   return {
     ok: true,

@@ -59,6 +59,15 @@ function updateTaskResult(db, taskId, result) {
 }
 
 function rowToTask(r) {
+  let promptSnapshot = [];
+  if (r.prompt_snapshot) {
+    try {
+      promptSnapshot = JSON.parse(r.prompt_snapshot);
+      if (!Array.isArray(promptSnapshot)) promptSnapshot = [];
+    } catch (_) {
+      promptSnapshot = [];
+    }
+  }
   return {
     id: r.id,
     type: r.type,
@@ -67,6 +76,7 @@ function rowToTask(r) {
     message: r.message,
     error: r.error,
     result: r.result,
+    prompt_snapshot: promptSnapshot,
     resource_id: r.resource_id,
     created_at: r.created_at,
     updated_at: r.updated_at,
