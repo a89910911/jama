@@ -30,6 +30,14 @@ function createTestDb() {
       updated_at TEXT,
       deleted_at TEXT
     );
+    CREATE TABLE codex_chat_messages (
+      id TEXT PRIMARY KEY,
+      task_id TEXT,
+      status TEXT,
+      content TEXT,
+      updated_at TEXT,
+      deleted_at TEXT
+    );
   `);
   return db;
 }
@@ -101,6 +109,29 @@ describe('taskService.failOrphanedAsyncTasksOnStartup', () => {
     assert.equal(taskService.getTask(db, 'task-stale-image').status, 'failed');
     assert.equal(image.status, 'failed');
     assert.equal(image.error_msg, taskService.ORPHAN_ASYNC_TASK_MSG);
+  });
+
+  it('fails the assistant message when a stale Codex chat task is interrupted', () => {
+    const db = createTestDb();
+    const old = '2020-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO async_tasks (id, type, status, progress, message, resource_id, created_at, updated_at)
+       VALUES ('task-stale-codex', 'codex_chat', 'processing', 20, 'working', 'chat:1', ?, ?)`
+    ).run(old, old);
+    db.prepare(
+      `INSERT INTO codex_chat_messages (id, task_id, status, content, updated_at)
+       VALUES ('message-stale-codex', 'task-stale-codex', 'processing', '', ?)`
+    ).run(old);
+
+    const count = taskService.failOrphanedAsyncTasksOnStartup(db, { warn() {}, info() {} });
+    const message = db.prepare(
+      'SELECT status, content FROM codex_chat_messages WHERE id = ?'
+    ).get('message-stale-codex');
+
+    assert.equal(count, 1);
+    assert.equal(message.status, 'failed');
+    assert.match(message.content, /生成中断/);
+    assert.match(message.content, /服务重启后任务中断/);
   });
 
   it('keeps resumable provider video tasks active for startup recovery', () => {

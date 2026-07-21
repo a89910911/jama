@@ -29,6 +29,7 @@
           <el-button v-if="!vendorLockEnabled" class="btn-wechat" title="扫码联系作者" @click="showWechat = true">
             <el-icon><ChatDotSquare /></el-icon>微信我
           </el-button>
+          <AccountSession />
           <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
@@ -360,6 +361,7 @@ import { uploadAPI } from '@/api/upload'
 import { aiAPI } from '@/api/ai'
 import { imagesAPI } from '@/api/images'
 import { taskAPI } from '@/api/task'
+import AccountSession from '@/components/AccountSession.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import { authState } from '@/stores/auth'
 

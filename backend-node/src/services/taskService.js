@@ -275,6 +275,22 @@ function failOrphanedAsyncTasksOnStartup(db, log, options = {}) {
         if (!String(err.message || '').includes('no such table')) throw err;
       }
     }
+    if (row.type === 'codex_chat') {
+      try {
+        db.prepare(
+          `UPDATE codex_chat_messages
+              SET status = 'failed',
+                  content = CASE
+                    WHEN content IS NULL OR TRIM(content) = '' THEN ?
+                    ELSE content
+                  END,
+                  updated_at = ?
+            WHERE task_id = ? AND status = 'processing' AND deleted_at IS NULL`
+        ).run(`生成中断：${ORPHAN_ASYNC_TASK_MSG}`, now, row.id);
+      } catch (err) {
+        if (!String(err.message || '').includes('no such table')) throw err;
+      }
+    }
     log.info('Orphaned async task marked failed', {
       task_id: row.id,
       type: row.type,

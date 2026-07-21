@@ -39,8 +39,13 @@ function getResourceTasks(db, log) {
 }
 
 function cancelTaskStatus(db, log) {
-  return (req, res) => {
+  return async (req, res) => {
     try {
+      const current = taskService.getTask(db, req.params.task_id);
+      if (current?.type === 'codex_chat') {
+        const codexChatService = require('../services/codexChatService');
+        await codexChatService.cancelTask(db, log, req.params.task_id);
+      }
       const result = taskService.cancelTask(db, log, req.params.task_id, req.body?.reason);
       if (!result.ok && result.reason === 'not_found') {
         return response.notFound(res, '任务不存在');

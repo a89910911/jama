@@ -33,6 +33,17 @@
           <el-icon><Grid /></el-icon>
           画布模式
         </el-button>
+        <CodexChatPanel
+          v-if="dramaId"
+          compact
+          :drama-id="dramaId"
+          :episode-id="codexChatEpisode?.id"
+          :episode-number="codexChatEpisode?.episode_number"
+          :episode-count="storyEpisodeCount"
+          :story-style="storyStyle"
+          :story-type="storyType"
+          @completed="onCodexChatCompleted"
+        />
         <div class="header-actions">
           <el-button v-if="dramaId" class="btn-project-prompts" @click="openProjectPrompts">
             <el-icon><Document /></el-icon>
@@ -2829,6 +2840,7 @@ import {
 import { splitStoryboardFrameHistory } from '@/utils/storyboardFrameHistory'
 import StylePickerButton from '@/components/StylePickerButton.vue'
 import UniversalSegmentOmniAtEditor from '@/components/UniversalSegmentOmniAtEditor.vue'
+import CodexChatPanel from '@/components/CodexChatPanel.vue'
 import {
   generationStyleOptions,
   getStylePromptEn,
@@ -2982,6 +2994,13 @@ const props = computed(() => store.props)
 const storyboards = computed(() => store.storyboards)
 const currentEpisode = computed(() => store.currentEpisode)
 const currentEpisodeId = computed(() => store.currentEpisode?.id ?? null)
+const codexChatEpisode = computed(() => {
+  const selectedId = selectedEpisodeId.value
+  if (selectedId == null) return currentEpisode.value || null
+  return (store.drama?.episodes || []).find((episode) => Number(episode.id) === Number(selectedId))
+    || currentEpisode.value
+    || null
+})
 const videoProgress = computed(() => store.videoProgress)
 const videoStatus = computed(() => store.videoStatus)
 
@@ -6661,6 +6680,16 @@ function formatVideoPromptForEdit(text) {
   return text
     .replace(/([。；])\s*(主体|运动|环境|运镜|美学|声音|时长)：/g, '$1\n$2：')
     .replace(/^\s+|\s+$/g, '')
+}
+
+async function onCodexChatCompleted(payload = {}) {
+  if (!payload.refresh_drama && payload.action === 'chat') return
+  const selectedId = selectedEpisodeId.value
+  await loadDrama()
+  if (selectedId != null && (store.drama?.episodes || []).some((ep) => Number(ep.id) === Number(selectedId))) {
+    selectedEpisodeId.value = selectedId
+    onEpisodeSelect(selectedId)
+  }
 }
 
 function buildStoryboardConfigPayload(sb) {

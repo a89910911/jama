@@ -26,6 +26,7 @@ const authRoutes = require('./auth');
 const authService = require('../services/authService');
 const aiRequestRoutes = require('./aiRequests');
 const aiRequestLogService = require('../services/aiRequestLogService');
+const codexChatRoutes = require('./codexChat');
 
 function setupRouter(cfg, db, log) {
   const r = express.Router();
@@ -55,6 +56,7 @@ function setupRouter(cfg, db, log) {
   const audio = audioRoutes(db, log, cfg);
   const prompts = promptRoutes.routes(db, log);
   const aiRequests = aiRequestRoutes(db, log);
+  const codexChat = codexChatRoutes(db, cfg, log);
 
   // ---------- authentication ----------
   // 登录是唯一公开 API；其余业务接口都必须具有有效登录会话。
@@ -122,6 +124,8 @@ function setupRouter(cfg, db, log) {
   r.delete('/dramas/:drama_id/ai-requests', aiRequests.clear);
   r.get('/dramas/:drama_id/ai-requests/:request_id', aiRequests.get);
   r.delete('/dramas/:drama_id/ai-requests/:request_id', aiRequests.remove);
+  r.get('/dramas/:drama_id/ai-chat/sessions', codexChat.listSessions);
+  r.post('/dramas/:drama_id/ai-chat/sessions', codexChat.createSession);
   r.get('/dramas/:id', drama.getDrama);
   r.put('/dramas/:id', drama.updateDrama);
   r.delete('/dramas/:id', drama.deleteDrama);
@@ -282,6 +286,12 @@ function setupRouter(cfg, db, log) {
   r.get('/tasks/:task_id', task.getTaskStatus);
   r.post('/tasks/:task_id/cancel', task.cancelTaskStatus);
   r.get('/tasks', task.getResourceTasks);
+
+  // ---------- Codex AI chat ----------
+  r.get('/codex/status', codexChat.status);
+  r.get('/ai-chat/sessions/:session_id/messages', codexChat.listMessages);
+  r.post('/ai-chat/sessions/:session_id/messages', codexChat.sendMessage);
+  r.get('/ai-chat/sessions/:session_id/events', codexChat.events);
 
   // ---------- scenes ----------
   r.get('/scenes/:scene_id', scenes.getOne);

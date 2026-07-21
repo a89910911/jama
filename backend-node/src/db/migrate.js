@@ -527,6 +527,72 @@ function ensureAllColumns(database) {
     { name: 'updated_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
   ]);
 
+  // --- codex_chat_sessions / codex_chat_messages ---
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS codex_chat_sessions (
+      id TEXT PRIMARY KEY,
+      drama_id INTEGER NOT NULL DEFAULT 0,
+      episode_id INTEGER,
+      user_id INTEGER,
+      codex_thread_id TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      last_message_at TEXT,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      deleted_at TEXT
+    )`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_codex_chat_sessions_drama_updated
+      ON codex_chat_sessions(drama_id, updated_at DESC)`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_codex_chat_sessions_episode_updated
+      ON codex_chat_sessions(episode_id, updated_at DESC)`);
+    database.exec(`CREATE TABLE IF NOT EXISTS codex_chat_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL DEFAULT 'user',
+      content_type TEXT NOT NULL DEFAULT 'text',
+      content TEXT NOT NULL DEFAULT '',
+      action_type TEXT,
+      status TEXT NOT NULL DEFAULT 'completed',
+      task_id TEXT,
+      codex_turn_id TEXT,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      deleted_at TEXT
+    )`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_codex_chat_messages_session_created
+      ON codex_chat_messages(session_id, created_at ASC)`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_codex_chat_messages_task
+      ON codex_chat_messages(task_id)`);
+  } catch (_) {}
+  ensureColumns(database, 'codex_chat_sessions', [
+    { name: 'drama_id',       type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'episode_id',     type: 'INTEGER' },
+    { name: 'user_id',        type: 'INTEGER' },
+    { name: 'codex_thread_id', type: 'TEXT' },
+    { name: 'title',          type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'status',         type: 'TEXT NOT NULL DEFAULT \'active\'' },
+    { name: 'last_message_at', type: 'TEXT' },
+    { name: 'created_at',     type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',     type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'deleted_at',     type: 'TEXT' },
+  ]);
+  ensureColumns(database, 'codex_chat_messages', [
+    { name: 'session_id',     type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'role',           type: 'TEXT NOT NULL DEFAULT \'user\'' },
+    { name: 'content_type',   type: 'TEXT NOT NULL DEFAULT \'text\'' },
+    { name: 'content',        type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'action_type',    type: 'TEXT' },
+    { name: 'status',         type: 'TEXT NOT NULL DEFAULT \'completed\'' },
+    { name: 'task_id',        type: 'TEXT' },
+    { name: 'codex_turn_id',  type: 'TEXT' },
+    { name: 'metadata',       type: 'TEXT' },
+    { name: 'created_at',     type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',     type: 'TEXT NOT NULL DEFAULT \'\'' },
+    { name: 'deleted_at',     type: 'TEXT' },
+  ]);
+
   // --- image_proxy_cache ---
   try {
     database.exec(`CREATE TABLE IF NOT EXISTS image_proxy_cache (

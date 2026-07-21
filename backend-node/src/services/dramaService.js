@@ -767,6 +767,39 @@ function saveEpisodes(db, log, dramaId, req) {
   return true;
 }
 
+/**
+ * 仅更新当前项目中的指定剧集，不触碰其他剧集。
+ * AI 对话的单集改写必须使用此方法，不能把单集提交给 saveEpisodes。
+ */
+function updateEpisodeScript(db, log, dramaId, episodeId, req = {}) {
+  const did = Number(dramaId);
+  const eid = Number(episodeId);
+  if (!Number.isFinite(did) || !Number.isFinite(eid)) return null;
+  const episode = db.prepare(
+    `SELECT id, drama_id, episode_number, title, script_content
+       FROM episodes
+      WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
+  ).get(eid, did);
+  if (!episode) return null;
+
+  const title = req.title !== undefined ? String(req.title || '').trim() : episode.title;
+  const scriptContent = req.script_content !== undefined
+    ? String(req.script_content || '')
+    : episode.script_content;
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE episodes
+        SET title = ?, script_content = ?, updated_at = ?
+      WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
+  ).run(title, scriptContent, now, eid, did);
+  db.prepare('UPDATE dramas SET updated_at = ? WHERE id = ?').run(now, did);
+  log?.info?.('Episode script updated', { drama_id: did, episode_id: eid });
+  return db.prepare(
+    `SELECT id, drama_id, episode_number, title, script_content, updated_at
+       FROM episodes WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
+  ).get(eid, did);
+}
+
 function saveProgress(db, log, dramaId, req) {
   const drama = getDramaById(db, Number(dramaId));
   if (!drama) return false;
@@ -940,6 +973,7 @@ module.exports = {
   getCharacters,
   saveCharacters,
   saveEpisodes,
+  updateEpisodeScript,
   saveProgress,
   saveCanvasLayout,
   finalizeEpisode,

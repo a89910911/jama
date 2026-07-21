@@ -28,9 +28,18 @@ const server = app.listen(port, host, () => {
   logger.info('Server is ready!');
 });
 
+let shuttingDown = false;
 function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info('Shutting down server...');
-  server.close(() => {
+  server.close(async () => {
+    try {
+      const { getCodexRuntime } = require('./integrations/codex/codexRuntimeManager');
+      await getCodexRuntime({ log: logger }).shutdown();
+    } catch (error) {
+      logger.warn('Codex runtime shutdown failed', { error: error.message });
+    }
     closeDb();
     logger.info('Server exited');
     process.exit(0);
