@@ -1,4 +1,18 @@
 // 分镜：create, update, delete；帧提示词 get/save
+const {
+  STORYBOARD_MIN_DURATION,
+  STORYBOARD_MAX_DURATION,
+} = require('./storyboardDurationPlanner');
+
+function validateStoryboardDuration(value) {
+  const duration = Number(value);
+  if (!Number.isInteger(duration) || duration < STORYBOARD_MIN_DURATION || duration > STORYBOARD_MAX_DURATION) {
+    const err = new RangeError(`分镜时长必须是 ${STORYBOARD_MIN_DURATION}～${STORYBOARD_MAX_DURATION} 之间的整数秒`);
+    err.code = 'STORYBOARD_DURATION_RANGE';
+    throw err;
+  }
+  return duration;
+}
 
 /**
  * 将分镜勾选的角色（dramas.characters 表 id）同步到 storyboard_characters（角色库 id），
@@ -70,7 +84,7 @@ function createStoryboard(db, log, req) {
     req.description ?? null,
     req.location ?? null,
     req.time ?? null,
-    req.duration ?? 0,
+    req.duration == null ? STORYBOARD_MIN_DURATION : validateStoryboardDuration(req.duration),
     req.dialogue ?? null,
     req.action ?? null,
     req.result ?? null,
@@ -103,7 +117,7 @@ function updateStoryboard(db, log, id, req) {
     if (key === 'characters') continue;
     if (req[key] !== undefined) {
       updates.push(key + ' = ?');
-      const val = req[key];
+      const val = key === 'duration' ? validateStoryboardDuration(req[key]) : req[key];
       params.push(val);
     }
   }
@@ -252,9 +266,17 @@ function insertBeforeStoryboard(db, log, targetId) {
 
   const now = new Date().toISOString();
   const info = db.prepare(
-    `INSERT INTO storyboards (episode_id, storyboard_number, segment_index, segment_title, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'pending', ?, ?)`
-  ).run(target.episode_id, target.storyboard_number, target.segment_index ?? null, target.segment_title ?? null, now, now);
+    `INSERT INTO storyboards (episode_id, storyboard_number, segment_index, segment_title, duration, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
+  ).run(
+    target.episode_id,
+    target.storyboard_number,
+    target.segment_index ?? null,
+    target.segment_title ?? null,
+    STORYBOARD_MIN_DURATION,
+    now,
+    now
+  );
 
   log.info('Storyboard inserted before', { new_id: info.lastInsertRowid, before_id: targetId });
   return getStoryboardById(db, info.lastInsertRowid);

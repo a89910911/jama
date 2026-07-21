@@ -304,7 +304,13 @@ function generateStoryboard(db, log) {
     try {
       // 显式处理 model 为空的情况，转为 undefined 以便 service 层触发默认逻辑
       const model = (body.model && String(body.model).trim()) ? body.model : undefined;
-      log.info('Generate storyboard request', { episode_id: req.params.episode_id, storyboard_count: body.storyboard_count, video_duration: body.video_duration });
+      log.info('Generate storyboard request', {
+        episode_id: req.params.episode_id,
+        storyboard_count: body.storyboard_count,
+        video_duration: body.video_duration,
+        storyboard_duration_mode: body.storyboard_duration_mode,
+        video_clip_duration: body.video_clip_duration,
+      });
       const resData = await dramaService.generateStoryboard(db, log, req.params.episode_id, {
         model: model,
         style: body.style,
@@ -313,10 +319,15 @@ function generateStoryboard(db, log) {
         aspect_ratio: body.aspect_ratio,
         include_narration: body.include_narration,
         universal_omni_storyboard: body.universal_omni_storyboard,
+        storyboard_duration_mode: body.storyboard_duration_mode,
+        video_clip_duration: body.video_clip_duration,
       });
       response.success(res, resData);
     } catch (err) {
       log.error('Generate storyboard failed', { error: err.message });
+      if (err.code === 'STORYBOARD_DURATION_BUDGET' || err.code === 'STORYBOARD_DURATION_RANGE') {
+        return response.badRequest(res, err.message);
+      }
       response.internalError(res, err.message || '生成分镜失败');
     }
   };

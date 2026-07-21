@@ -449,8 +449,8 @@ function getStoryboardUserPromptSuffix(cfg, shotDuration) {
     : null;
   if (lang === 'en') {
     const durationInstruction = durationHint
-      ? `approximately ${durationHint}s per shot (project setting), adjust ±1s based on dialogue length and action complexity`
-      : 'estimate per shot from dialogue length, action complexity, and emotion';
+      ? `exactly ${durationHint}s per shot (fixed project mode); split dialogue or actions that cannot fit naturally`
+      : 'assign an integer from 4 to 15 seconds from dialogue length, action complexity, and emotion; merge sub-4s beats and split over-15s beats';
     return `
 
 **dialogue field**: "Character: \"line\"". Multiple: "A: \"...\" B: \"...\"". Monologue: "(Monologue) content". No dialogue: "".
@@ -469,8 +469,8 @@ function getStoryboardUserPromptSuffix(cfg, shotDuration) {
     return '\n\n' + _sbUserOverride + _sbUserLocked;
   }
   const durationInstruction = durationHint
-    ? `每镜头约${durationHint}秒（项目配置），综合对话、动作、情绪可适当调整±1秒`
-    : '综合对话、动作、情绪估算每镜时长（秒）';
+    ? `固定为${durationHint}秒；无法自然容纳的对白或动作必须继续拆镜`
+    : '根据对白、动作、情绪分配4～15秒整数时长；不足4秒的相邻兼容节拍应合并，超过15秒必须拆镜';
   return `
 
 【分镜要素】每个分镜聚焦一个叙事节拍（可包含内部多切镜序列），描述要详尽具体：

@@ -56,16 +56,20 @@ export function useCanvasEpisodeGenerate(deps) {
     const gen = getDramaGenerationOptions(drama.value)
     const ep = getEpisode()
     const scriptLen = (ep?.script_content || '').trim().length
-    let videoDuration
-    if (meta.video_clip_duration) {
-      videoDuration = Number(meta.video_clip_duration)
-    } else if (scriptLen > 0) {
-      videoDuration = Math.max(10, Math.round(10 + (scriptLen / 600) * 60))
-    }
+    const durationMode = meta.storyboard_duration_mode === 'adaptive'
+      ? 'adaptive'
+      : meta.storyboard_duration_mode === 'fixed' || meta.video_clip_duration
+        ? 'fixed'
+        : 'adaptive'
+    const videoDuration = durationMode === 'fixed' && scriptLen > 0
+      ? Math.max(10, Math.round(10 + (scriptLen / 600) * 60))
+      : undefined
     return {
       style: gen.style || undefined,
       aspect_ratio: gen.aspectRatio,
       video_duration: videoDuration,
+      storyboard_duration_mode: durationMode,
+      video_clip_duration: durationMode === 'fixed' ? Number(meta.video_clip_duration) || 5 : undefined,
       include_narration: !!meta.storyboard_include_narration,
       universal_omni_storyboard: !!meta.storyboard_universal_omni,
     }

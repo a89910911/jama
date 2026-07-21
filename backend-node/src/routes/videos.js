@@ -2,6 +2,7 @@ const response = require('../response');
 const videoService = require('../services/videoService');
 const taskService = require('../services/taskService');
 const { normalizeAspectRatioForApi } = require('../services/videoClient');
+const { STORYBOARD_MIN_DURATION, STORYBOARD_MAX_DURATION } = require('../services/storyboardDurationPlanner');
 
 function routes(db, log) {
   return {
@@ -18,6 +19,17 @@ function routes(db, log) {
     create: (req, res) => {
       try {
         const body = req.body || {};
+        if (body.duration != null) {
+          const requestedDuration = Number(body.duration);
+          if (!Number.isInteger(requestedDuration)
+            || requestedDuration < STORYBOARD_MIN_DURATION
+            || requestedDuration > STORYBOARD_MAX_DURATION) {
+            return response.badRequest(
+              res,
+              `视频分镜时长必须是 ${STORYBOARD_MIN_DURATION}～${STORYBOARD_MAX_DURATION} 之间的整数秒`
+            );
+          }
+        }
         const task = taskService.createTask(db, log, 'video_generation', String(body.drama_id || ''));
         const now = new Date().toISOString();
         const dramaId = Number(body.drama_id) || 0;
@@ -33,7 +45,7 @@ function routes(db, log) {
           }
         }
         const model = body.model ?? null;
-        const duration = body.duration ?? null;
+        const duration = body.duration != null ? Math.round(Number(body.duration)) : null;
         // 画幅：请求体归一化（全角冒号等）后写入 DB；未传则从 drama.metadata 读取并同样归一化
         let aspectRatio = null;
         if (body.aspect_ratio != null && String(body.aspect_ratio).trim() !== '') {

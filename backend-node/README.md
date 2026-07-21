@@ -309,7 +309,7 @@ style:
 
 **字段约定：**
 - `deleted_at IS NULL` — 所有查询均过滤软删除记录
-- `metadata TEXT` — JSON 字符串，存储扩展属性（如 `aspect_ratio`、`video_clip_duration`）
+- `metadata TEXT` — JSON 字符串，存储扩展属性（如 `aspect_ratio`、`storyboard_duration_mode`、`video_clip_duration`）。`storyboard_duration_mode=adaptive` 时按内容在 4～15 秒内智能分配；`fixed` 时 `video_clip_duration` 表示固定单镜秒数。
 - `local_path TEXT` — 相对于 `storage/` 根目录的相对路径
 
 **数据库迁移：**

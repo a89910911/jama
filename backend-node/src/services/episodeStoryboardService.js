@@ -7,6 +7,17 @@ const safeJson = require('../utils/safeJson');
 const { safeParseAIJSON, extractJsonCandidate, repairTruncatedJsonArray, extractFirstArray } = safeJson;
 const loadConfig = require('../config').loadConfig;
 const angleService = require('./angleService');
+const {
+  STORYBOARD_MIN_DURATION,
+  clampStoryboardDuration,
+  normalizeDurationMode,
+  parseDialogueToEntries,
+  charSpeechWeight,
+  splitTextForDuration,
+  planStoryboardDurations,
+  buildDurationPromptConstraint,
+  validateDurationBudget,
+} = require('./storyboardDurationPlanner');
 
 /**
  * 分镜专用 generateText 包装：
@@ -163,7 +174,7 @@ function lightingStyleHintZh(code) {
 
 /** 按时长与已有运镜字段拼灵境式「运镜链」（至少两步，强调摄影机在动） */
 function buildCameraMotionChain(movement, shotType, durationSec) {
-  const dur = Math.max(1, Number(durationSec) || 5);
+  const dur = clampStoryboardDuration(durationSec, 5);
   const mv = String(movement || '').trim();
   const st = String(shotType || '').trim();
   const parts = [];
@@ -198,7 +209,7 @@ function buildFallbackUniversalSeedanceLine(templateContent, sb, d, styleHint) {
   const atm = (sb.atmosphere || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const shotBits = [d.shotType, d.angle].filter(Boolean).join('，').trim();
   const loc = [sb.location, sb.time].filter(Boolean).join('，').trim() || '叙事空间';
-  const dur = Math.max(1, Number(d.durationSec) || normalizeDuration(sb.duration) || 5);
+  const dur = clampStoryboardDuration(d.durationSec || normalizeDuration(sb.duration), 5);
   const lightZh = lightingStyleHintZh(d.lightingStyle);
   const dof = d.depthOfField === 'extreme_shallow' ? '浅景深前景虚化明显' : d.depthOfField === 'shallow' ? '浅景深背景柔化' : d.depthOfField === 'deep' ? '深焦前后景均清晰' : d.depthOfField === 'medium' ? '景深适中' : '景深随景别可感';
   const shotNum = Math.max(1, Number(d.shotNumber) || 1);
@@ -392,12 +403,13 @@ function deriveStoryboardFieldsFromAi(sb, style, videoRatio, opts = {}) {
   const segmentTitle = sb.segment_title ?? null;
   const lightingStyle = sb.lighting_style ?? null;
   const depthOfField = sb.depth_of_field ?? null;
-  let durationSec = normalizeDuration(sb.duration) || 5;
-  const targetClip = opts.targetClipDuration != null ? Number(opts.targetClipDuration) : 0;
-  if (Number.isFinite(targetClip) && targetClip > 0) {
-    durationSec = Math.max(durationSec, Math.round(targetClip));
+  const durationMode = normalizeDurationMode(opts.durationMode, opts.durationMode === 'fixed');
+  let durationSec = normalizeDuration(sb.duration) || STORYBOARD_MIN_DURATION;
+  if (durationMode === 'fixed') {
+    durationSec = clampStoryboardDuration(opts.fixedDuration, 5);
+  } else {
+    durationSec = clampStoryboardDuration(durationSec, STORYBOARD_MIN_DURATION);
   }
-  durationSec = Math.min(120, Math.max(1, Math.round(durationSec)));
   sb.duration = durationSec;
   if (!sb.location && sb.scene_description) {
     const sceneDesc = String(sb.scene_description).trim();
@@ -900,7 +912,7 @@ async function processStoryboardGeneration(
   systemPrompt,
   includeNarration,
   universalOmni,
-  targetClipDurationSec = null,
+  durationOptions = {},
   composeTemplates = null
 ) {
   // 增量保存状态放在 try 外，catch 里可用于部分恢复
@@ -910,7 +922,8 @@ async function processStoryboardGeneration(
   const streamVideoRatio = cfg?.style?.default_video_ratio || '16:9';
   const deriveOpts = {
     universalOmni: !!universalOmni,
-    targetClipDuration: targetClipDurationSec != null && Number(targetClipDurationSec) > 0 ? Number(targetClipDurationSec) : null,
+    durationMode: normalizeDurationMode(durationOptions.mode, durationOptions.mode === 'fixed'),
+    fixedDuration: clampStoryboardDuration(durationOptions.fixedDuration, 5),
     taskId,
     composeTemplates,
   };
@@ -1103,7 +1116,21 @@ async function processStoryboardGeneration(
     }
     // ── 续写结束 ────────────────────────────────────────────────────────────
 
-    const totalDuration = storyboards.reduce((sum, sb) => sum + (Number(sb.duration) || 0), 0);
+    const durationPlan = planStoryboardDurations(storyboards, {
+      mode: deriveOpts.durationMode,
+      fixedDuration: deriveOpts.fixedDuration,
+    });
+    storyboards = durationPlan.storyboards;
+    const totalDuration = durationPlan.totalDuration;
+    log.info('Storyboard duration plan applied', {
+      task_id: taskId,
+      mode: durationPlan.mode,
+      fixed_duration: durationPlan.mode === 'fixed' ? durationPlan.fixedDuration : null,
+      merged_count: durationPlan.mergedCount,
+      split_count: durationPlan.splitCount,
+      final_count: storyboards.length,
+      total_duration_seconds: totalDuration,
+    });
     if (parseMeta.truncated) {
       log.warn('Storyboard still truncated after max continuations', {
         task_id: taskId, final_count: storyboards.length, continuation_attempts: contAttempt,
@@ -1113,8 +1140,8 @@ async function processStoryboardGeneration(
 
     taskService.updateTaskStatus(db, taskId, 'processing', 70, '正在保存分镜头...');
 
-    // 传入 streamSavedNums：已增量保存的项目直接从 DB 读取，跳过重复 INSERT
-    const saved = saveStoryboards(db, log, episodeId, storyboards, cfg, style, streamSavedNums, deriveOpts);
+    // 最终规划可能合并、拆分并重编号；整体替换流式临时数据，避免残留旧镜号。
+    const saved = saveStoryboards(db, log, episodeId, storyboards, cfg, style, null, deriveOpts);
 
     // ── 分镜角色补全（字符串匹配，无 AI，极快）──────────────────────────────────
     taskService.updateTaskStatus(db, taskId, 'processing', 75, '正在校验分镜角色关联...');
@@ -1172,7 +1199,20 @@ async function processStoryboardGeneration(
   }
 }
 
-function generateStoryboard(db, log, episodeId, model, style, storyboardCount, videoDuration, aspectRatio, includeNarration, universalOmni) {
+function generateStoryboard(
+  db,
+  log,
+  episodeId,
+  model,
+  style,
+  storyboardCount,
+  videoDuration,
+  aspectRatio,
+  includeNarration,
+  universalOmni,
+  storyboardDurationMode,
+  requestedClipDuration
+) {
   const cfg = loadConfig();
   const episode = db.prepare(
     'SELECT id, script_content, description, drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL'
@@ -1189,30 +1229,44 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
   // 图片比例 + 每镜时长：优先用传入值，再从 drama.metadata 读，最后兜底全局配置
   let dramaAspectRatio = null;
   let videoClipDuration = null;
+  let metadataDurationMode = null;
   try {
     if (drama && drama.metadata) {
       const meta = typeof drama.metadata === 'string' ? JSON.parse(drama.metadata) : drama.metadata;
       if (meta && meta.aspect_ratio) dramaAspectRatio = meta.aspect_ratio;
       if (meta && meta.video_clip_duration) videoClipDuration = Number(meta.video_clip_duration) || null;
+      if (meta && meta.storyboard_duration_mode) metadataDurationMode = String(meta.storyboard_duration_mode);
     }
   } catch (_) {}
   const imageRatio = aspectRatio || dramaAspectRatio || cfg?.style?.default_video_ratio || '16:9';
 
-  // 计算单镜建议时长（秒）：
-  // 项目 metadata 中的 video_clip_duration（如 15 秒/段）优先于「总时长÷镜数」，
-  // 否则前端同时传总时长+镜数时会把每镜压成过短（与「每段秒数」配置矛盾）。
-  // 无项目配置时再使用总时长÷镜数；再否则 null。
+  const explicitClipDuration = Number(requestedClipDuration);
+  if (Number.isFinite(explicitClipDuration) && explicitClipDuration > 0) {
+    videoClipDuration = clampStoryboardDuration(explicitClipDuration, 5);
+  } else if (videoClipDuration) {
+    videoClipDuration = clampStoryboardDuration(videoClipDuration, 5);
+  }
+  const durationMode = normalizeDurationMode(
+    storyboardDurationMode || metadataDurationMode,
+    !!videoClipDuration
+  );
+  const durationBudget = validateDurationBudget(storyboardCount, videoDuration);
+  if (!durationBudget.valid) {
+    const err = new RangeError(
+      `${Math.round(Number(storyboardCount))}个分镜的总时长必须在 ${durationBudget.minTotal}～${durationBudget.maxTotal} 秒之间`
+    );
+    err.code = 'STORYBOARD_DURATION_BUDGET';
+    throw err;
+  }
+
+  // 固定模式使用项目目标时长；智能模式不再由“总时长÷镜数”机械反推单镜时长。
   let effectiveShotDuration = null;
   const impliedFromTotal =
     videoDuration && storyboardCount
       ? Math.round(Number(videoDuration) / Number(storyboardCount))
       : null;
-  if (videoClipDuration && Number(videoClipDuration) > 0) {
+  if (durationMode === 'fixed' && videoClipDuration && Number(videoClipDuration) > 0) {
     effectiveShotDuration = Number(videoClipDuration);
-  } else if (impliedFromTotal && impliedFromTotal > 0) {
-    effectiveShotDuration = impliedFromTotal;
-  } else {
-    effectiveShotDuration = null;
   }
 
   let scriptContent = (episode.script_content && String(episode.script_content).trim())
@@ -1261,47 +1315,32 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
       if (durationLabel) extraConstraint += `\n${durationLabel}`;
     }
   }
-  // 当同时指定总时长和数量时，补充单镜 duration 说明（与项目「每段秒数」一致时勿用总÷镜压短）
-  if (storyboardCount && videoDuration && effectiveShotDuration) {
-    const clipFromProject = videoClipDuration && Number(videoClipDuration) > 0;
+  // 固定模式下保留项目时长约束；智能模式由统一的 4～15 秒规则分配。
+  if (durationMode === 'fixed' && storyboardCount && videoDuration && effectiveShotDuration) {
     const implied =
       impliedFromTotal && impliedFromTotal > 0 ? impliedFromTotal : Math.round(Number(videoDuration) / Number(storyboardCount));
-    if (clipFromProject) {
-      extraConstraint += '\n' + promptTemplates.resolvePromptContent(
-        db,
-        'storyboard.generation.project_clip_duration_constraint',
-        {
-          cfg,
-          episodeId,
-          variables: {
-            video_clip_duration: Number(videoClipDuration),
-            video_duration: Number(videoDuration),
-            storyboard_count: Number(storyboardCount),
-            implied_duration: implied,
-          },
-        }
-      );
-    } else {
-      extraConstraint += '\n' + promptTemplates.resolvePromptContent(
-        db,
-        'storyboard.generation.calculated_shot_duration_constraint',
-        {
-          cfg,
-          episodeId,
-          variables: {
-            shot_duration: effectiveShotDuration,
-            video_duration: Number(videoDuration),
-            storyboard_count: Number(storyboardCount),
-          },
-        }
-      );
-    }
+    extraConstraint += '\n' + promptTemplates.resolvePromptContent(
+      db,
+      'storyboard.generation.project_clip_duration_constraint',
+      {
+        cfg,
+        episodeId,
+        variables: {
+          video_clip_duration: Number(videoClipDuration),
+          video_duration: Number(videoDuration),
+          storyboard_count: Number(storyboardCount),
+          implied_duration: implied,
+        },
+      }
+    );
   }
+  extraConstraint += `\n${buildDurationPromptConstraint(durationMode, videoClipDuration)}`;
 
   log.info('Storyboard generation params', {
     storyboard_count: storyboardCount,
     video_duration: videoDuration,
     video_clip_duration: videoClipDuration,
+    storyboard_duration_mode: durationMode,
     effective_shot_duration: effectiveShotDuration,
   });
 
@@ -1324,6 +1363,7 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
     episodeId,
     variables: { shot_duration: effectiveShotDuration || '' },
   });
+  systemPrompt += `\n\n${buildDurationPromptConstraint(durationMode, videoClipDuration)}`;
 
   // 当用户指定了分镜数量时，在系统提示词后追加最高优先级覆盖指令，
   // 使"目标数量"优先于默认的"一动作一镜头、禁止合并"原则
@@ -1439,8 +1479,6 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
     // 确保分镜图/视频提示词、场景提取提示词都使用项目设定的比例
     const runCfg = { ...cfg, style: { ...(cfg?.style || {}), default_video_ratio: imageRatio, default_image_ratio: imageRatio } };
     // 如果 model 为 null，则传 undefined，让 generateText 内部去兜底找默认配置
-    const clipSec =
-      videoClipDuration && Number(videoClipDuration) > 0 ? Number(videoClipDuration) : null;
     processStoryboardGeneration(
       db,
       log,
@@ -1453,7 +1491,7 @@ function generateStoryboard(db, log, episodeId, model, style, storyboardCount, v
       systemPrompt,
       wantNarration,
       wantUniversalOmni,
-      clipSec,
+      { mode: durationMode, fixedDuration: videoClipDuration },
       composeTemplates
     );
   });
@@ -1556,25 +1594,25 @@ function copyStoryboardAssetLinks(db, fromSbId, toSbId) {
 
 function durationForSplitSegment(type, text) {
   const w = charSpeechWeight(text);
-  if (type === 'narration') return Math.min(12, Math.max(6, Math.round(w + 2)));
-  return Math.min(10, Math.max(5, Math.round(w)));
+  if (type === 'narration') return clampStoryboardDuration(Math.ceil(w + 1), 5);
+  return clampStoryboardDuration(Math.ceil(w), 4);
 }
 
 function buildSplitPlansFromStoryboard(row) {
   const dialogueEntries = parseDialogueToEntries(row.dialogue);
   const narrationText = row.narration != null ? String(row.narration).trim() : '';
-  const segmentCount = dialogueEntries.length + (narrationText ? 1 : 0);
+  const dialogueSegments = dialogueEntries.flatMap(({ speaker, text }) =>
+    splitTextForDuration(text, 15).map((chunk) => ({ speaker, text: chunk }))
+  );
+  const narrationSegments = narrationText ? splitTextForDuration(narrationText, 15) : [];
+  const segmentCount = dialogueSegments.length + narrationSegments.length;
   if (segmentCount < 2) {
     throw new Error('当前分镜仅有一段对白或旁白，无需拆镜');
   }
-  if (dialogueEntries.length === 0 && narrationText) {
-    throw new Error('仅有旁白无法按对白拆镜');
-  }
-
   const allSpeakers = dialogueEntries.map((d) => d.speaker).filter(Boolean);
   const plans = [];
 
-  for (const { speaker, text } of dialogueEntries) {
+  for (const { speaker, text } of dialogueSegments) {
     const who = speaker || '角色';
     const others = allSpeakers.filter((n) => n && n !== who);
     const closed = others.length ? others.join('、') : '对方';
@@ -1595,7 +1633,7 @@ function buildSplitPlansFromStoryboard(row) {
     });
   }
 
-  if (narrationText) {
+  for (const narrationChunk of narrationSegments) {
     const focus =
       inferPrimaryOnScreenCharacter(
         { action: row.action, result: row.result, title: row.title, dialogue: row.dialogue },
@@ -1605,9 +1643,9 @@ function buildSplitPlansFromStoryboard(row) {
       type: 'narration',
       speaker: null,
       dialogue: null,
-      narration: narrationText,
+      narration: narrationChunk,
       title: `${(row.title || '分镜').trim()}·画外旁白`,
-      duration: durationForSplitSegment('narration', narrationText),
+      duration: durationForSplitSegment('narration', narrationChunk),
       action: `${focus}在画面中保持静止，双唇闭合，无口型，听画外纪录片旁白。`,
       result: `${focus}表情维持强硬自信，无唇动。`,
       shot_type: '近景',

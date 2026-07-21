@@ -84,6 +84,7 @@ const videoClient = require('./videoClient');
 const taskService = require('./taskService');
 const storageLayout = require('./storageLayout');
 const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
+const { clampStoryboardDuration } = require('./storyboardDurationPlanner');
 
 /** @returns {{ dir: string, relPrefix: string }} 与图片 uploads 一致的工程子目录规则 */
 function resolveVideosDir(storagePath, projectSubdir) {
@@ -467,15 +468,16 @@ async function processVideoGeneration(db, log, videoGenId) {
         if (!Array.isArray(reference_urls)) reference_urls = null;
       } catch (_) {}
     }
-    // 优先使用分镜自身的镜头时长（storyboard.duration），其次用 video_generations.duration
+    // 本次请求显式时长优先；未传时再回退到分镜自身时长。
     let effectiveDuration = row.duration || null;
-    if (row.storyboard_id) {
+    if (!effectiveDuration && row.storyboard_id) {
       const sb = db.prepare('SELECT duration FROM storyboards WHERE id = ?').get(row.storyboard_id);
       if (sb && sb.duration > 0) {
         effectiveDuration = sb.duration;
-        log.info('使用分镜镜头时长', { storyboard_id: row.storyboard_id, duration: effectiveDuration, video_gen_id: videoGenId });
+        log.info('请求未指定时长，使用分镜镜头时长', { storyboard_id: row.storyboard_id, duration: effectiveDuration, video_gen_id: videoGenId });
       }
     }
+    effectiveDuration = clampStoryboardDuration(effectiveDuration, 5);
     let aspectForVideo = row.aspect_ratio;
     if (aspectForVideo) {
       const n = videoClient.normalizeAspectRatioForApi(aspectForVideo);

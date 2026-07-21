@@ -20,7 +20,7 @@ function normalizeUniversalSegmentTextNewlines(text) {
 
 /** 根据总秒数决定子分镜数 M（约每 5 秒一拍，1–8） */
 function chooseBeatCount(durationSec) {
-  const dur = Math.max(1, Math.min(120, Math.round(Number(durationSec) || 5)));
+  const dur = Math.max(4, Math.min(15, Math.round(Number(durationSec) || 5)));
   return Math.min(8, Math.max(1, Math.round(dur / 5)));
 }
 
@@ -35,7 +35,7 @@ function splitDurationSeconds(dur, m) {
  * 分镜批量生成时模型未返回 universal_segment_text 时的多行兜底
  */
 function buildFallbackUniversalMultiBeatText(sb, d, styleHint) {
-  const dur = Math.max(1, Number(d.durationSec) || 5);
+  const dur = Math.max(4, Math.min(15, Math.round(Number(d.durationSec) || 5)));
   const M = chooseBeatCount(dur);
   const secs = splitDurationSeconds(dur, M);
   const loc = [sb?.location, sb?.time].filter(Boolean).join('，').trim() || '叙事空间';

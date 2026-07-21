@@ -281,16 +281,16 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
     try {
       const m = typeof dramaRow.metadata === 'string' ? JSON.parse(dramaRow.metadata) : dramaRow.metadata;
       const v = Number(m?.video_clip_duration);
-      if (Number.isFinite(v) && v > 0) projectClipSec = Math.min(120, Math.max(1, v));
+      if (Number.isFinite(v) && v > 0) projectClipSec = Math.min(15, Math.max(4, v));
     } catch (_) {}
   }
   const body = bodyIn;
   const bodyDurRaw = body.duration != null && body.duration !== '' ? Number(body.duration) : NaN;
   const sbDurRaw = sb.duration != null ? Number(sb.duration) : NaN;
   const durationSec = Number.isFinite(bodyDurRaw) && bodyDurRaw > 0
-    ? Math.min(120, Math.max(1, bodyDurRaw))
+    ? Math.min(15, Math.max(4, bodyDurRaw))
     : Number.isFinite(sbDurRaw) && sbDurRaw > 0
-      ? Math.min(120, Math.max(1, sbDurRaw))
+      ? Math.min(15, Math.max(4, sbDurRaw))
       : projectClipSec;
   const durationLabel = Number.isInteger(durationSec) ? String(durationSec) : String(Math.round(durationSec * 10) / 10);
 

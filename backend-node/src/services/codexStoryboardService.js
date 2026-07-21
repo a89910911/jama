@@ -1,6 +1,15 @@
 const { safeParseAIJSON } = require('../utils/safeJson');
 const promptTemplates = require('./promptTemplateService');
 const episodeStoryboardService = require('./episodeStoryboardService');
+const {
+  STORYBOARD_MIN_DURATION,
+  STORYBOARD_MAX_DURATION,
+  clampStoryboardDuration,
+  normalizeDurationMode,
+  planStoryboardDurations,
+  buildDurationPromptConstraint,
+  validateDurationBudget,
+} = require('./storyboardDurationPlanner');
 
 const STORYBOARD_ITEM_SCHEMA = {
   type: 'object',
@@ -52,7 +61,7 @@ const STORYBOARD_ITEM_SCHEMA = {
     atmosphere: { type: 'string' },
     emotion: { type: 'string' },
     emotion_intensity: { type: 'integer', minimum: -1, maximum: 3 },
-    duration: { type: 'number', minimum: 1, maximum: 120 },
+    duration: { type: 'number', minimum: STORYBOARD_MIN_DURATION, maximum: STORYBOARD_MAX_DURATION },
     bgm_prompt: { type: 'string' },
     sound_effect: { type: 'string' },
     characters: {
@@ -120,24 +129,33 @@ function estimateStoryboardPlan(episode, drama, body = {}) {
     600,
     Math.max(10, Math.round(10 + (scriptLength / 600) * 60))
   );
-  const clipDuration = Math.max(
-    2,
-    Math.min(60, Number(body.video_clip_duration || metadata.video_clip_duration) || 5)
+  const legacyClipDuration = Number(body.video_clip_duration || metadata.video_clip_duration);
+  const clipDuration = clampStoryboardDuration(legacyClipDuration, 5);
+  const durationMode = normalizeDurationMode(
+    body.storyboard_duration_mode || metadata.storyboard_duration_mode,
+    Number.isFinite(legacyClipDuration) && legacyClipDuration > 0
   );
   const requested = Number(body.storyboard_count);
   const explicitCount = Number.isInteger(requested) && requested > 0
     ? Math.min(200, requested)
     : parseExplicitCount(body.content);
   const storyboardCount = explicitCount
-    || Math.max(1, Math.min(200, Math.round(estimatedDuration / clipDuration)));
+    || Math.max(1, Math.min(200, Math.round(estimatedDuration / (durationMode === 'fixed' ? clipDuration : 8))));
   const requestedDuration = Number(body.video_duration);
   const videoDuration = Number.isFinite(requestedDuration) && requestedDuration > 0
     ? Math.min(600, Math.max(10, Math.round(requestedDuration)))
     : estimatedDuration;
+  const durationBudget = validateDurationBudget(storyboardCount, videoDuration);
+  if (explicitCount && Number.isFinite(requestedDuration) && requestedDuration > 0 && !durationBudget.valid) {
+    throw new Error(
+      `${storyboardCount}个分镜的总时长必须在 ${durationBudget.minTotal}～${durationBudget.maxTotal} 秒之间`
+    );
+  }
   return {
     storyboardCount,
     videoDuration,
     clipDuration,
+    durationMode,
     aspectRatio: clean(body.aspect_ratio || metadata.aspect_ratio || '16:9', 20),
   };
 }
@@ -195,19 +213,22 @@ function buildStoryboardGenerationPrompt(db, cfg, session, episode, body, taskId
       variables: { video_duration: plan.videoDuration },
     }
   );
-  const clipConstraint = promptTemplates.resolvePromptContent(
-    db,
-    'storyboard.generation.project_clip_duration_constraint',
-    {
-      ...context,
-      variables: {
-        video_clip_duration: plan.clipDuration,
-        video_duration: plan.videoDuration,
-        storyboard_count: plan.storyboardCount,
-        implied_duration: Math.max(1, Math.round(plan.videoDuration / plan.storyboardCount)),
-      },
-    }
-  );
+  const clipConstraint = plan.durationMode === 'fixed'
+    ? promptTemplates.resolvePromptContent(
+        db,
+        'storyboard.generation.project_clip_duration_constraint',
+        {
+          ...context,
+          variables: {
+            video_clip_duration: plan.clipDuration,
+            video_duration: plan.videoDuration,
+            storyboard_count: plan.storyboardCount,
+            implied_duration: Math.max(1, Math.round(plan.videoDuration / plan.storyboardCount)),
+          },
+        }
+      )
+    : '';
+  const durationModeConstraint = buildDurationPromptConstraint(plan.durationMode, plan.clipDuration);
   const userPrompt = promptTemplates.resolvePromptContent(
     db,
     'storyboard.generation.user',
@@ -218,7 +239,7 @@ function buildStoryboardGenerationPrompt(db, cfg, session, episode, body, taskId
         scenes: sceneList,
         props: propList,
         script_content: scriptContent,
-        extra_constraints: `${durationConstraint}\n${clipConstraint}`,
+        extra_constraints: `${durationConstraint}\n${clipConstraint}\n${durationModeConstraint}`,
       },
     }
   );
@@ -227,9 +248,10 @@ function buildStoryboardGenerationPrompt(db, cfg, session, episode, body, taskId
     'storyboard.generation.system',
     {
       ...context,
-      variables: { shot_duration: plan.clipDuration },
+      variables: { shot_duration: plan.durationMode === 'fixed' ? plan.clipDuration : '' },
     }
   );
+  systemPrompt += `\n\n${durationModeConstraint}`;
   systemPrompt += '\n\n' + promptTemplates.resolvePromptContent(
     db,
     'storyboard.generation.count_constraint',
@@ -312,7 +334,7 @@ function parseStoryboardResult(text, expectedCount) {
       atmosphere: clean(row.atmosphere),
       emotion: clean(row.emotion, 200),
       emotion_intensity: Math.max(-1, Math.min(3, Number(row.emotion_intensity) || 0)),
-      duration: Math.max(1, Math.min(120, Number(row.duration) || 5)),
+      duration: clampStoryboardDuration(row.duration, STORYBOARD_MIN_DURATION),
       bgm_prompt: clean(row.bgm_prompt),
       sound_effect: clean(row.sound_effect),
       characters: normalizeIds(row.characters),
@@ -351,12 +373,17 @@ function sanitizeStoryboardReferences(db, session, episode, storyboards) {
 }
 
 function persistGeneratedStoryboards(db, cfg, log, session, episode, parsed, plan) {
-  const rows = sanitizeStoryboardReferences(
+  const sanitizedRows = sanitizeStoryboardReferences(
     db,
     session,
     episode,
     parsed.storyboards
   );
+  const durationPlan = planStoryboardDurations(sanitizedRows, {
+    mode: plan.durationMode,
+    fixedDuration: plan.clipDuration,
+  });
+  const rows = durationPlan.storyboards;
   const runCfg = {
     ...cfg,
     style: {
@@ -374,7 +401,7 @@ function persistGeneratedStoryboards(db, cfg, log, session, episode, parsed, pla
       runCfg,
       null,
       null,
-      { targetClipDuration: plan.clipDuration }
+      { durationMode: plan.durationMode, fixedDuration: plan.clipDuration }
     );
     const insertCharacterLink = db.prepare(
       `INSERT OR IGNORE INTO storyboard_characters

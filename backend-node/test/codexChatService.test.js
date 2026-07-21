@@ -368,6 +368,7 @@ describe('Codex storyboard generation', () => {
       storyboardCount: 29,
       videoDuration: 145,
       clipDuration: 5,
+      durationMode: 'fixed',
       aspectRatio: '9:16',
     });
     assert.equal(

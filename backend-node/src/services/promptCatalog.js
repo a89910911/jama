@@ -1176,8 +1176,8 @@ This overrides default rules such as one action per shot and no merging.
     role: 'suffix',
     sceneKey: 'storyboard_extraction',
     contents: {
-      zh: '每个镜头的 duration 优先按项目“每段约 {{video_clip_duration}} 秒”填写（可 ±1 秒微调）。总时长 {{video_duration}} 秒、镜头数 {{storyboard_count}} 为整体规划参考；禁止机械采用总时长÷镜数的 {{implied_duration}} 秒而普遍压短镜头。',
-      en: 'Set each shot duration primarily from the project clip-length setting of about {{video_clip_duration}}s (±1s). Total {{video_duration}}s and {{storyboard_count}} shots are planning hints; do not mechanically force every shot to the implied {{implied_duration}}s.',
+      zh: '当前为固定时长模式：每个镜头的 duration 必须填写 {{video_clip_duration}} 秒。总时长 {{video_duration}} 秒、镜头数 {{storyboard_count}} 仅作整体规划参考；无法在单镜内自然完成的对白或动作必须拆镜，不得删改台词，也不得机械采用总时长÷镜数的 {{implied_duration}} 秒。',
+      en: 'Fixed-duration mode: every shot duration must be {{video_clip_duration}}s. Total {{video_duration}}s and {{storyboard_count}} shots are planning hints; split dialogue or action that cannot fit naturally, preserve every line verbatim, and do not use the implied {{implied_duration}}s.',
     },
     variables: ['video_clip_duration', 'video_duration', 'storyboard_count', 'implied_duration'],
     required: ['video_clip_duration', 'video_duration', 'storyboard_count', 'implied_duration'],

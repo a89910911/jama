@@ -254,6 +254,7 @@ function routes(db, log) {
         response.created(res, sb);
       } catch (err) {
         log.error('storyboards create', { error: err.message });
+        if (err.code === 'STORYBOARD_DURATION_RANGE') return response.badRequest(res, err.message);
         response.internalError(res, err.message);
       }
     },
@@ -264,6 +265,7 @@ function routes(db, log) {
         response.created(res, sb);
       } catch (err) {
         log.error('storyboards insertBefore', { error: err.message });
+        if (err.code === 'STORYBOARD_DURATION_RANGE') return response.badRequest(res, err.message);
         response.internalError(res, err.message);
       }
     },
@@ -284,6 +286,7 @@ function routes(db, log) {
         response.success(res, sb);
       } catch (err) {
         log.error('storyboards update', { error: err.message });
+        if (err.code === 'STORYBOARD_DURATION_RANGE') return response.badRequest(res, err.message);
         response.internalError(res, err.message);
       }
     },
@@ -397,7 +400,14 @@ function routes(db, log) {
           log,
           req.params.episode_id,
           req.query.model,
-          req.query.style
+          req.query.style,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          req.query.storyboard_duration_mode,
+          req.query.video_clip_duration
         );
         response.success(res, { task_id: taskId, status: 'pending', message: '分镜头生成任务已创建，正在后台处理...' });
       } catch (err) {
