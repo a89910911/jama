@@ -1,8 +1,13 @@
 <template>
   <div class="app">
     <router-view />
+    <ImageHoverPreview />
   </div>
 </template>
+
+<script setup>
+import ImageHoverPreview from '@/components/ImageHoverPreview.vue'
+</script>
 
 <style>
 * {

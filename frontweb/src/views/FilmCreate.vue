@@ -128,10 +128,11 @@
             </div>
             <div
               class="nav-sub-item"
-              :title="sb.title || '分镜 ' + (i + 1)"
+              :title="`${sb.title || '分镜 ' + (i + 1)}（${storyboardTimeRanges[i].label}）`"
               @click="scrollToAnchor('sb-' + sb.id)"
             >
-              {{ i + 1 }}. {{ sb.title || '分镜' }}
+              <span class="nav-sub-item-name">{{ i + 1 }}. {{ sb.title || '分镜' }}</span>
+              <span class="nav-sub-item-time">（{{ storyboardTimeRanges[i].label }}）</span>
             </div>
           </template>
         </div>
@@ -2844,6 +2845,7 @@ import {
   STORYBOARD_MOVEMENT_OPTION_GROUPS,
 } from '@/utils/storyboardMovement'
 import { splitStoryboardFrameHistory } from '@/utils/storyboardFrameHistory'
+import { buildStoryboardTimeRanges } from '@/utils/storyboardTimeRange'
 import StylePickerButton from '@/components/StylePickerButton.vue'
 import UniversalSegmentOmniAtEditor from '@/components/UniversalSegmentOmniAtEditor.vue'
 import CodexChatPanel from '@/components/CodexChatPanel.vue'
@@ -3617,6 +3619,13 @@ const sbTitle = ref({})
 const sbLocation = ref({})
 const sbTime = ref({})
 const sbDuration = ref({})
+const storyboardTimeRanges = computed(() =>
+  buildStoryboardTimeRanges(
+    storyboards.value,
+    (storyboard) => sbDuration.value[storyboard.id] ?? storyboard.duration,
+    5
+  )
+)
 const sbAction = ref({})
 const sbResult = ref({})
 const sbAtmosphere = ref({})
@@ -9202,16 +9211,25 @@ html.light .nav-sub-toggle:hover { color: #374151; }
 }
 html.light .nav-sub-list { background: rgba(99,102,241,0.03); }
 .nav-sub-item {
+  display: flex;
+  align-items: center;
   padding: 4px 10px 4px 26px;
   font-size: 11.5px;
   color: #52525b;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: color 0.15s, background 0.15s;
   border-radius: 4px;
   margin: 0 4px;
+}
+.nav-sub-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-sub-item-time {
+  flex: none;
+  white-space: nowrap;
 }
 html.light .nav-sub-item { color: #9ca3af; }
 .nav-sub-item:hover { color: #d4d4d8; background: rgba(255,255,255,0.04); }
