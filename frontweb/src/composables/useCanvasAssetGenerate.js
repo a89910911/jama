@@ -4,14 +4,15 @@ import { sceneAPI } from '@/api/scenes'
 import { propAPI } from '@/api/props'
 import { assetImageUrl } from '@/utils/mediaUrl'
 import { CANVAS_NODE_STATUS_LABELS } from '@/composables/useCanvasNodeStatus'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 
 async function pollTask(taskId, onTick, maxAttempts = 450, interval = 2000) {
   if (!taskId) return { status: 'completed' }
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, interval))
-    onTick?.()
     try {
       const t = await taskAPI.get(taskId)
+      onTick?.(t)
       if (t.status === 'completed') return { status: 'completed', result: t.result }
       if (t.status === 'failed') {
         return { status: 'failed', error: t.error?.message || t.error || '任务失败' }
@@ -38,7 +39,24 @@ async function pollUntilHasImage(findEntity, maxAttempts = 120, interval = 2000)
 export async function generateAssetReferenceImage(ctx, { kind, entity, nodeId }) {
   const nodeStatus = ctx?.nodeStatus
   const drama = ctx?.drama?.value
-  nodeStatus?.set(nodeId, { step: 'ref_image', message: CANVAS_NODE_STATUS_LABELS.ref_image })
+  const progressStartedAt = Date.now()
+  let previousProgress = 0
+  const updateProgress = (task) => {
+    const progress = resolveGenerationProgress(task, {
+      kind: 'image',
+      previousProgress,
+      startedAt: progressStartedAt,
+      message: CANVAS_NODE_STATUS_LABELS.ref_image,
+    })
+    previousProgress = progress.percentage
+    nodeStatus?.set(nodeId, {
+      step: 'ref_image',
+      message: progress.message,
+      progress: progress.percentage,
+      progressEstimated: progress.estimated,
+    })
+  }
+  updateProgress({ status: 'processing', progress: 0 })
 
   try {
     let res
@@ -52,7 +70,10 @@ export async function generateAssetReferenceImage(ctx, { kind, entity, nodeId })
 
     const taskId = res?.image_generation?.task_id ?? res?.task_id
     if (taskId) {
-      const polled = await pollTask(taskId, () => ctx?.refreshDrama?.(true))
+      const polled = await pollTask(taskId, (task) => {
+        updateProgress(task)
+        ctx?.refreshDrama?.(true)
+      })
       if (polled.status !== 'completed') throw new Error(polled.error || '生成失败')
     } else {
       await ctx?.refreshDrama?.(true)

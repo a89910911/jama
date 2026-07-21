@@ -98,7 +98,11 @@
 
         <div v-if="generating" class="generating-tip">
           <el-icon class="is-loading"><Loading /></el-icon>
-          <span>正在生成，请稍候...</span>
+          <GenerationProgressBar
+            :percentage="activeProgress.percentage"
+            :message="activeProgress.message"
+            :estimated="activeProgress.estimated"
+          />
         </div>
 
         <div class="result-grid">
@@ -119,7 +123,13 @@
               />
               <div v-else-if="item.status === 'pending' || item.status === 'processing'" class="media-loading">
                 <el-icon class="is-loading"><Loading /></el-icon>
-                <span>{{ item.status === 'processing' ? '生成中...' : '排队中...' }}</span>
+                <GenerationProgressBar
+                  class="result-progress"
+                  compact
+                  :percentage="item.progress"
+                  :message="item.progressMessage || (item.status === 'processing' ? '生成中…' : '排队中…')"
+                  :estimated="item.progressEstimated"
+                />
               </div>
               <div v-else-if="item.status === 'failed'" class="media-error">
                 <el-icon><CircleClose /></el-icon>
@@ -145,13 +155,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Picture, MagicStick, Loading, CircleClose } from '@element-plus/icons-vue'
 import { imagesAPI } from '@/api/images'
 import { videosAPI } from '@/api/videos'
 import { uploadAPI } from '@/api/upload'
 import { generationSettingsAPI } from '@/api/prompts'
+import { taskAPI } from '@/api/task'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
+import { applyGenerationProgress, parseGenerationTaskResult } from '@/utils/generationProgress'
 
 const mode = ref('image')
 const prompt = ref('')
@@ -166,6 +179,16 @@ const refImageLocalPath = ref(null)
 const refImageInput = ref(null)
 /** 与后端视频异步超时一致（分钟 → 毫秒） */
 const videoPollMaxMs = ref(30 * 60 * 1000)
+const activeProgress = computed(() => {
+  const item = results.value.find((entry) => ['pending', 'processing'].includes(entry.status))
+  return item
+    ? {
+        percentage: item.progress || 1,
+        message: item.progressMessage || '正在生成，请稍候…',
+        estimated: !!item.progressEstimated,
+      }
+    : { percentage: 0, message: '', estimated: false }
+})
 
 onMounted(async () => {
   try {
@@ -230,6 +253,10 @@ async function generate() {
     status: 'processing',
     url: null,
     error: null,
+    progress: 1,
+    progressMessage: mode.value === 'video' ? '正在提交视频生成任务…' : '正在提交图片生成任务…',
+    progressEstimated: true,
+    progressStartedAt: Date.now(),
   }
   results.value.unshift(newItem)
   try {
@@ -244,6 +271,8 @@ async function generate() {
       } else if (res?.image_url || res?.local_path) {
         newItem.url = res.image_url || ('/static/' + res.local_path)
         newItem.status = 'completed'
+        newItem.progress = 100
+        newItem.progressEstimated = false
       }
     } else {
       const body = {
@@ -278,10 +307,10 @@ async function pollImageTask(taskId, item, maxMs = 180000) {
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 3000))
     try {
-      const res = await imagesAPI.getTask ? imagesAPI.getTask(taskId) : null
-      if (!res) break
+      const res = await taskAPI.get(taskId)
+      applyGenerationProgress(item, res, { kind: 'image' })
       if (res.status === 'completed' && res.result) {
-        const r = res.result
+        const r = parseGenerationTaskResult(res.result)
         item.url = r.image_url ? r.image_url : (r.local_path ? '/static/' + r.local_path : null)
         item.status = 'completed'
         return
@@ -300,13 +329,13 @@ async function pollImageTask(taskId, item, maxMs = 180000) {
 async function pollVideoTask(taskId, item) {
   const maxMs = videoPollMaxMs.value
   const start = Date.now()
-  const { taskAPI } = await import('@/api/task')
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 4000))
     try {
       const res = await taskAPI.get(taskId)
+      applyGenerationProgress(item, res, { kind: 'video' })
       if (res?.status === 'completed' && res?.result) {
-        const r = res.result
+        const r = parseGenerationTaskResult(res.result)
         const vgId = r.video_generation_id
         if (vgId) {
           const vRes = await videosAPI.get(vgId)
@@ -499,6 +528,10 @@ async function pollVideoTask(taskId, item) {
   margin-bottom: 12px;
 }
 
+.generating-tip :deep(.generation-progress) {
+  width: min(440px, 100%);
+}
+
 .result-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -541,6 +574,10 @@ async function pollVideoTask(taskId, item) {
   gap: 6px;
   color: #6b7280;
   font-size: 12px;
+}
+
+.result-progress {
+  width: calc(100% - 24px);
 }
 
 .media-error {

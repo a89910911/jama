@@ -2,12 +2,21 @@
   <div v-if="status" class="node-status-overlay" :class="'step-' + status.step">
     <span class="spinner" />
     <span class="msg">{{ status.message }}</span>
+    <GenerationProgressBar
+      v-if="status.progress != null"
+      class="node-progress"
+      compact
+      :percentage="status.progress"
+      :estimated="status.progressEstimated"
+      :show-percentage="true"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useCanvasContext } from '@/composables/useCanvasContext'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 
 const props = defineProps({
   nodeId: { type: String, required: true },
@@ -58,6 +67,17 @@ const status = computed(() => {
   text-align: center;
   padding: 0 8px;
   line-height: 1.3;
+}
+.node-progress {
+  width: calc(100% - 22px);
+  max-width: 145px;
+}
+:deep(.node-progress .generation-progress-head) {
+  justify-content: flex-end;
+  color: #e4e4e7;
+}
+:deep(.node-progress .generation-progress-number) {
+  color: #c7d2fe;
 }
 @keyframes spin {
   to { transform: rotate(360deg); }

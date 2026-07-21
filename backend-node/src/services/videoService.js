@@ -254,6 +254,9 @@ async function finalizeSuccessfulVideo(
   contentType = 'video/mp4'
 ) {
   const now = new Date().toISOString();
+  if (row.task_id) {
+    taskService.updateTaskStatus(db, row.task_id, 'processing', 95, '视频已生成，正在保存到本地…');
+  }
   let localPath = null;
   try {
     const cfg = require('../config').loadConfig();
@@ -319,6 +322,7 @@ async function pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspec
     1,
     Math.ceil((generationTimeoutMinutes * 60 * 1000) / POLL_INTERVAL_MS)
   );
+  let lastProgress = 20;
   const pollResult = await videoClient.pollVideoTask(
     db,
     log,
@@ -326,7 +330,18 @@ async function pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspec
     providerTaskId,
     config,
     pollMaxAttempts,
-    POLL_INTERVAL_MS
+    POLL_INTERVAL_MS,
+    ({ progress, message }) => {
+      if (!row.task_id) return;
+      lastProgress = Math.max(lastProgress, Math.min(92, Number(progress) || lastProgress));
+      taskService.updateTaskStatus(
+        db,
+        row.task_id,
+        'processing',
+        lastProgress,
+        message || '正在生成视频…'
+      );
+    }
   );
   const now = new Date().toISOString();
   if (Buffer.isBuffer(pollResult.video_buffer) && pollResult.video_buffer.length > 0) {
@@ -449,6 +464,9 @@ async function processVideoGeneration(db, log, videoGenId) {
   const now = new Date().toISOString();
   try {
     db.prepare('UPDATE video_generations SET status = ?, updated_at = ? WHERE id = ?').run('processing', now, videoGenId);
+    if (row.task_id) {
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 5, '正在准备视频生成参数…');
+    }
     const loadConfig = require('../config').loadConfig;
     const cfg = loadConfig();
     const filesBaseUrl = (cfg.storage && cfg.storage.base_url) ? String(cfg.storage.base_url).replace(/\/$/, '') : '';
@@ -511,6 +529,9 @@ async function processVideoGeneration(db, log, videoGenId) {
           : `正在上传 ${reference_urls.length} 张参考图到图床…`
       );
     }
+    if (row.task_id) {
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 12, '正在提交视频生成任务…');
+    }
     const result = await videoClient.callVideoApi(db, log, {
       prompt: row.prompt,
       model: row.model,
@@ -555,6 +576,9 @@ async function processVideoGeneration(db, log, videoGenId) {
       db.prepare(
         'UPDATE video_generations SET status = ?, provider_task_id = ?, updated_at = ? WHERE id = ?'
       ).run('processing', result.task_id, now2, videoGenId);
+      if (row.task_id) {
+        taskService.updateTaskStatus(db, row.task_id, 'processing', 20, '视频任务已提交，等待厂商生成…');
+      }
       await pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspect, result.task_id, config);
       return;
     }

@@ -186,6 +186,13 @@
               <el-button size="small" type="primary" :loading="editCharLibraryForm.imgGenerating" @click="doGenerateLibImg(editCharLibraryForm, (editCharLibraryForm.name + (editCharLibraryForm.description ? ', ' + editCharLibraryForm.description : '')), characterLibraryAPI, loadCharLibraryList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar
+            v-if="editCharLibraryForm.imgGenerating"
+            class="dialog-gen-progress"
+            :percentage="editCharLibraryForm.progress"
+            :message="editCharLibraryForm.progressMessage"
+            :estimated="editCharLibraryForm.progressEstimated"
+          />
           <input ref="charLibFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editCharLibraryForm, characterLibraryAPI, loadCharLibraryList)" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editCharLibraryForm.name" placeholder="角色名称" /></el-form-item>
@@ -240,6 +247,13 @@
               <el-button size="small" type="primary" :loading="editSceneLibraryForm.imgGenerating" @click="doGenerateLibImg(editSceneLibraryForm, ([editSceneLibraryForm.location, editSceneLibraryForm.time, editSceneLibraryForm.description].filter(Boolean).join(', ')), sceneLibraryAPI, loadSceneLibraryList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar
+            v-if="editSceneLibraryForm.imgGenerating"
+            class="dialog-gen-progress"
+            :percentage="editSceneLibraryForm.progress"
+            :message="editSceneLibraryForm.progressMessage"
+            :estimated="editSceneLibraryForm.progressEstimated"
+          />
           <input ref="sceneLibFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editSceneLibraryForm, sceneLibraryAPI, loadSceneLibraryList)" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editSceneLibraryForm.location" placeholder="场景地点" /></el-form-item>
@@ -295,6 +309,13 @@
               <el-button size="small" type="primary" :loading="editPropLibraryForm.imgGenerating" @click="doGenerateLibImg(editPropLibraryForm, (editPropLibraryForm.name + (editPropLibraryForm.description ? ', ' + editPropLibraryForm.description : '')), propLibraryAPI, loadPropLibraryList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar
+            v-if="editPropLibraryForm.imgGenerating"
+            class="dialog-gen-progress"
+            :percentage="editPropLibraryForm.progress"
+            :message="editPropLibraryForm.progressMessage"
+            :estimated="editPropLibraryForm.progressEstimated"
+          />
           <input ref="propLibFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editPropLibraryForm, propLibraryAPI, loadPropLibraryList)" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editPropLibraryForm.name" placeholder="道具名称" /></el-form-item>
@@ -363,7 +384,9 @@ import { imagesAPI } from '@/api/images'
 import { taskAPI } from '@/api/task'
 import AccountSession from '@/components/AccountSession.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 import { authState } from '@/stores/auth'
+import { applyGenerationProgress, parseGenerationTaskResult } from '@/utils/generationProgress'
 
 const router = useRouter()
 const { isDark, toggle: toggleTheme } = useTheme()
@@ -397,6 +420,10 @@ async function doUploadLibImg(event, form, api, reloadFn) {
 async function doGenerateLibImg(form, prompt, api, reloadFn) {
   if (!prompt?.trim()) { ElMessage.warning('请先填写名称或描述'); return }
   form.imgGenerating = true
+  form.progress = 1
+  form.progressMessage = '正在提交图片生成任务…'
+  form.progressEstimated = true
+  form.progressStartedAt = Date.now()
   try {
     const res = await imagesAPI.create({ prompt: prompt.trim(), drama_id: null })
     const imgData = res?.data ?? res
@@ -407,11 +434,12 @@ async function doGenerateLibImg(form, prompt, api, reloadFn) {
       await new Promise(r => setTimeout(r, 1500))
       const tr = await taskAPI.get(taskId)
       task = tr?.data ?? tr
+      applyGenerationProgress(form, task, { kind: 'image' })
       if (task.status === 'completed') break
       if (task.status === 'failed') throw new Error(task.error || '生成失败')
     }
     if (!task || task.status !== 'completed') throw new Error('生成超时')
-    const result = task.result
+    const result = parseGenerationTaskResult(task.result)
     const imageUrl = result?.image_url
     const localPath = result?.local_path ?? null
     if (!imageUrl && !localPath) throw new Error('未获取到图片地址')
@@ -1242,6 +1270,7 @@ html.light .btn-import {
 
 /* 编辑弹框内图片区 */
 .lib-img-editor { display: flex; align-items: center; gap: 14px; }
+.dialog-gen-progress { width: min(420px, 100%); margin-top: 10px; }
 .lib-img-thumb { width: 88px; height: 88px; border-radius: 8px; overflow: hidden; cursor: zoom-in; background: var(--bg-inner, #1c1c1e); border: 1px solid var(--border-color, #27272a); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .lib-img-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .lib-img-empty { color: var(--text-faint, #52525b); font-size: 26px; }

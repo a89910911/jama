@@ -64,6 +64,7 @@ import { useCanvasContext } from '@/composables/useCanvasContext'
 import { CANVAS_NODE_STATUS_LABELS } from '@/composables/useCanvasNodeStatus'
 import { runImageStep, runVideoStep, runAudioStep } from '@/composables/useCanvasWorkflowRunner'
 import { findStoryboardInDrama, getDramaGenerationOptions } from '@/utils/canvasWorkflow'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 
 const props = defineProps({
   nodeId: { type: String, default: '' },
@@ -104,14 +105,32 @@ async function runStep(step) {
   if (!drama || !sbId) return
   busy.value = true
   const statusMsg = CANVAS_NODE_STATUS_LABELS[step] || '处理中…'
-  ctx?.nodeStatus?.set(props.nodeId, { step, message: statusMsg })
-  ctx?.nodeStatus?.set(sbNodeId.value, { step, message: statusMsg })
+  const startedAt = Date.now()
+  let previousProgress = 0
+  const updateProgress = (task) => {
+    const progress = resolveGenerationProgress(task, {
+      kind: step,
+      previousProgress,
+      startedAt,
+      message: statusMsg,
+    })
+    previousProgress = progress.percentage
+    const payload = {
+      step,
+      message: progress.message,
+      progress: progress.percentage,
+      progressEstimated: progress.estimated,
+    }
+    ctx?.nodeStatus?.set(props.nodeId, payload)
+    ctx?.nodeStatus?.set(sbNodeId.value, payload)
+  }
+  updateProgress({ status: 'processing', progress: 0 })
   try {
     const found = findStoryboardInDrama(drama, sbId)
     const sb = found?.storyboard || props.storyboard
     const genOpts = ctx?.getGenerationOptions?.() || getDramaGenerationOptions(drama)
-    if (step === 'image') await runImageStep(drama, sb, genOpts)
-    else if (step === 'video') await runVideoStep(drama, sb, genOpts)
+    if (step === 'image') await runImageStep(drama, sb, genOpts, { onProgress: updateProgress })
+    else if (step === 'video') await runVideoStep(drama, sb, genOpts, { onProgress: updateProgress })
     else if (step === 'audio') {
       const res = await runAudioStep(sb)
       if (res?.skipped) {

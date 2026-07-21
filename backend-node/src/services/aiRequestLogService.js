@@ -317,8 +317,12 @@ function normalizeFilters(query = {}) {
 }
 
 function buildWhere(dramaId, filters) {
-  const clauses = ['l.drama_id = ?'];
-  const params = [Number(dramaId)];
+  const clauses = [];
+  const params = [];
+  if (dramaId !== null) {
+    clauses.push('l.drama_id = ?');
+    params.push(Number(dramaId));
+  }
   if (filters.service_type) {
     clauses.push('l.service_type = ?');
     params.push(filters.service_type);
@@ -347,7 +351,7 @@ function buildWhere(dramaId, filters) {
     clauses.push('l.created_at <= ?');
     params.push(new Date(filters.date_to).toISOString());
   }
-  return { sql: clauses.join(' AND '), params };
+  return { sql: clauses.length ? clauses.join(' AND ') : '1 = 1', params };
 }
 
 function extractPreview(payload) {
@@ -374,6 +378,7 @@ function rowToListItem(row) {
     id: row.id,
     request_uuid: row.request_uuid,
     drama_id: row.drama_id,
+    drama_title: row.drama_title || '',
     user_id: row.user_id,
     username: row.username || '',
     service_type: row.service_type,
@@ -403,9 +408,10 @@ function list(db, dramaId, query = {}) {
     `SELECT COUNT(*) AS count FROM ai_request_logs l WHERE ${where.sql}`
   ).get(...where.params).count;
   const rows = db.prepare(
-    `SELECT l.*, u.username
+    `SELECT l.*, u.username, d.title AS drama_title
        FROM ai_request_logs l
        LEFT JOIN user_accounts u ON u.id = l.user_id
+       LEFT JOIN dramas d ON d.id = l.drama_id
       WHERE ${where.sql}
       ORDER BY l.created_at DESC, l.id DESC
       LIMIT ? OFFSET ?`
@@ -422,12 +428,15 @@ function list(db, dramaId, query = {}) {
 }
 
 function getOne(db, dramaId, id) {
+  const scopeClause = dramaId === null ? '' : ' AND l.drama_id = ?';
+  const params = dramaId === null ? [Number(id)] : [Number(id), Number(dramaId)];
   const row = db.prepare(
-    `SELECT l.*, u.username
+    `SELECT l.*, u.username, d.title AS drama_title
        FROM ai_request_logs l
        LEFT JOIN user_accounts u ON u.id = l.user_id
-      WHERE l.id = ? AND l.drama_id = ?`
-  ).get(Number(id), Number(dramaId));
+       LEFT JOIN dramas d ON d.id = l.drama_id
+      WHERE l.id = ?${scopeClause}`
+  ).get(...params);
   if (!row) return null;
   return {
     ...rowToListItem(row),
@@ -437,6 +446,9 @@ function getOne(db, dramaId, id) {
 }
 
 function stats(db, dramaId) {
+  const scope = dramaId === null
+    ? { sql: '1 = 1', params: [] }
+    : { sql: 'drama_id = ?', params: [Number(dramaId)] };
   const summary = db.prepare(
     `SELECT
        COUNT(*) AS total,
@@ -446,14 +458,14 @@ function stats(db, dramaId) {
        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
        CAST(AVG(CASE WHEN status != 'processing' THEN duration_ms END) AS INTEGER) AS avg_duration_ms
      FROM ai_request_logs
-     WHERE drama_id = ?`
-  ).get(new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), Number(dramaId));
+     WHERE ${scope.sql}`
+  ).get(new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), ...scope.params);
   const serviceRows = db.prepare(
     `SELECT service_type, COUNT(*) AS count
        FROM ai_request_logs
-      WHERE drama_id = ?
+      WHERE ${scope.sql}
       GROUP BY service_type`
-  ).all(Number(dramaId));
+  ).all(...scope.params);
   return {
     total: Number(summary.total || 0),
     succeeded: Number(summary.succeeded || 0),
@@ -468,15 +480,23 @@ function stats(db, dramaId) {
 }
 
 function remove(db, dramaId, id) {
-  return db.prepare(
-    'DELETE FROM ai_request_logs WHERE id = ? AND drama_id = ?'
-  ).run(Number(id), Number(dramaId)).changes > 0;
+  if (dramaId === null) {
+    return db.prepare('DELETE FROM ai_request_logs WHERE id = ?').run(Number(id)).changes > 0;
+  }
+  return db.prepare('DELETE FROM ai_request_logs WHERE id = ? AND drama_id = ?')
+    .run(Number(id), Number(dramaId)).changes > 0;
 }
 
 function clear(db, dramaId, query = {}) {
   const status = ['processing', 'succeeded', 'failed'].includes(String(query.status))
     ? String(query.status)
     : '';
+  if (dramaId === null) {
+    if (status) {
+      return db.prepare('DELETE FROM ai_request_logs WHERE status = ?').run(status).changes;
+    }
+    return db.prepare('DELETE FROM ai_request_logs').run().changes;
+  }
   if (status) {
     return db.prepare(
       'DELETE FROM ai_request_logs WHERE drama_id = ? AND status = ?'

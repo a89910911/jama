@@ -100,7 +100,13 @@
         </el-button>
       </div>
 
-      <div v-if="workflowProgress" class="workflow-progress">{{ workflowProgress }}</div>
+      <div v-if="workflowProgress" class="workflow-progress">
+        <GenerationProgressBar
+          :percentage="workflowProgressPercent ?? 1"
+          :message="workflowProgress"
+          :estimated="workflowProgressEstimated"
+        />
+      </div>
 
       <div class="generate-bar">
         <span class="gen-label">本集生成</span>
@@ -140,7 +146,15 @@
         </el-button>
         <span class="gen-hint" title="完整创作流水线">剧本 → 提取角色/场景/道具 → 分镜 → 生图 → 视频</span>
       </div>
-      <div v-if="episodeGenProgress" class="workflow-progress episode-gen">{{ episodeGenProgress }}</div>
+      <div v-if="episodeGenProgress" class="workflow-progress episode-gen">
+        <GenerationProgressBar
+          v-if="episodeGenPercentage != null"
+          :percentage="episodeGenPercentage"
+          :message="episodeGenProgress"
+          :estimated="episodeGenProgressEstimated"
+        />
+        <span v-else>{{ episodeGenProgress }}</span>
+      </div>
     </header>
 
     <div v-loading="loading" class="canvas-shell">
@@ -280,6 +294,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import { DataAnalysis, Download, List, Moon, Plus, Sunny, Grid } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BrandLogo from '@/components/BrandLogo.vue'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -295,6 +310,7 @@ import { useCanvasCrud } from '@/composables/useCanvasCrud'
 import { useCanvasEpisodeGenerate } from '@/composables/useCanvasEpisodeGenerate'
 import { useCanvasScript, scriptNodeId } from '@/composables/useCanvasScript'
 import { createCanvasNodeStatusStore } from '@/composables/useCanvasNodeStatus'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 import {
   applyCanvasHighlight,
   buildDramaCanvasGraph,
@@ -349,6 +365,8 @@ const selectedStoryboardIds = ref([])
 const pipelineSteps = ref(['image', 'video', 'audio'])
 const workflowRunning = ref(false)
 const workflowProgress = ref('')
+const workflowProgressPercent = ref(null)
+const workflowProgressEstimated = ref(false)
 const exportingStoryboardVideos = ref(false)
 const layoutSaveState = ref('idle')
 const layoutDirty = ref(false)
@@ -673,6 +691,8 @@ const {
 const {
   episodeGenerating,
   episodeGenProgress,
+  episodeGenPercentage,
+  episodeGenProgressEstimated,
   aiGenerateStoryboards,
   batchGenerateImages,
   batchGenerateVideos,
@@ -824,6 +844,10 @@ async function onRunActiveGroup() {
 
   workflowRunning.value = true
   workflowProgress.value = '准备执行…'
+  workflowProgressPercent.value = 1
+  workflowProgressEstimated.value = true
+  let workflowTaskStartedAt = Date.now()
+  let workflowTaskProgress = 0
   try {
     const summary = await runWorkflowGroup(drama.value, {
       ...group,
@@ -836,7 +860,23 @@ async function onRunActiveGroup() {
         return findStoryboardInDrama(drama.value, storyboardId)?.storyboard
       },
       onStepStart: ({ storyboardId, step }) => {
+        workflowTaskStartedAt = Date.now()
+        workflowTaskProgress = 0
+        workflowProgressPercent.value = 1
+        workflowProgressEstimated.value = true
         workflowProgress.value = `分镜 #${storyboardId}：${step === 'image' ? '生图' : step === 'video' ? '生视频' : '配音'}…`
+      },
+      onStepProgress: ({ step, task }) => {
+        const progress = resolveGenerationProgress(task, {
+          kind: step,
+          previousProgress: workflowTaskProgress,
+          startedAt: workflowTaskStartedAt,
+          message: workflowProgress.value,
+        })
+        workflowTaskProgress = progress.percentage
+        workflowProgressPercent.value = progress.percentage
+        workflowProgressEstimated.value = progress.estimated
+        if (task?.message) workflowProgress.value = task.message
       },
       onStoryboardError: ({ storyboardId, error }) => {
         ElMessage.error(`分镜 #${storyboardId} 失败：${error?.message || error}`)
@@ -855,6 +895,8 @@ async function onRunActiveGroup() {
   } finally {
     workflowRunning.value = false
     workflowProgress.value = ''
+    workflowProgressPercent.value = null
+    workflowProgressEstimated.value = false
   }
 }
 
@@ -1018,6 +1060,10 @@ onBeforeUnmount(() => {
   padding: 0 20px 8px;
   font-size: 12px;
   color: #60a5fa;
+}
+
+.workflow-progress :deep(.generation-progress) {
+  max-width: 520px;
 }
 
 .workflow-progress.episode-gen {

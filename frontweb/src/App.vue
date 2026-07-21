@@ -2,11 +2,13 @@
   <div class="app">
     <router-view />
     <ImageHoverPreview />
+    <GenerationProgressCenter />
   </div>
 </template>
 
 <script setup>
 import ImageHoverPreview from '@/components/ImageHoverPreview.vue'
+import GenerationProgressCenter from '@/components/GenerationProgressCenter.vue'
 </script>
 
 <style>

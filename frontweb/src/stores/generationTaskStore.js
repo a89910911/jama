@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { taskAPI } from '@/api/task'
 import { imagesAPI } from '@/api/images'
 import { videosAPI } from '@/api/videos'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 
 /** 资源类型常量 */
 export const GEN_RESOURCE = {
@@ -108,6 +109,9 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
       _setTask(key, {
         ...existing,
         status,
+        progress: status === 'completed' ? 100 : existing.progress,
+        progressEstimated: false,
+        message: status === 'completed' ? '生成完成' : existing.message,
         error: error || '',
         finishedAt: Date.now(),
       })
@@ -119,13 +123,48 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
   function markRunning(meta) {
     const key = taskKey(meta)
     if (!key || key.includes('undefined') || key.includes('null')) return key
+    const existing = tasks.value.get(key)
+    const startedAt = existing?.startedAt || meta.startedAt || Date.now()
+    const progress = resolveGenerationProgress(meta, {
+      resourceType: meta.resourceType,
+      previousProgress: existing?.progress,
+      startedAt,
+      message: meta.message,
+    })
     _setTask(key, {
+      ...existing,
       ...meta,
       key,
       status: 'running',
-      startedAt: Date.now(),
+      startedAt,
+      progress: progress.percentage,
+      progressEstimated: progress.estimated,
+      message: progress.message,
     })
     return key
+  }
+
+  function syncRemoteProgress(taskId, remote, fallbackKey) {
+    const keys = taskId ? _findKeysByTaskId(taskId) : []
+    if (!keys.length && fallbackKey) keys.push(fallbackKey)
+    for (const key of keys) {
+      const existing = tasks.value.get(key)
+      if (!existing) continue
+      const progress = resolveGenerationProgress(remote, {
+        resourceType: existing.resourceType,
+        previousProgress: existing.progress,
+        startedAt: existing.startedAt,
+        message: existing.message,
+      })
+      _setTask(key, {
+        ...existing,
+        progress: progress.percentage,
+        progressEstimated: progress.estimated,
+        message: progress.message,
+        remoteStatus: remote?.status || '',
+        remoteUpdatedAt: remote?.updated_at || '',
+      })
+    }
   }
 
   function markDone(meta) {
@@ -212,6 +251,7 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
       if (t.taskId) {
         try {
           const remote = await taskAPI.get(t.taskId)
+          syncRemoteProgress(t.taskId, remote, t.key)
           if (remote.status === 'completed') {
             markDone(t)
             continue
@@ -276,6 +316,7 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
         attempts++
         try {
           const t = await taskAPI.get(taskId)
+          syncRemoteProgress(taskId, t, key)
           if (isOrphanedProcessingTask(t)) {
             const errMsg = ORPHAN_TASK_MSG
             markFailed(key, errMsg)
@@ -347,6 +388,7 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
 
     try {
       const t = await taskAPI.get(taskId)
+      syncRemoteProgress(taskId, t, taskKey(meta))
       if (isOrphanedProcessingTask(t)) {
         markFailed({ ...meta, taskId }, ORPHAN_TASK_MSG)
         return { status: 'failed', error: ORPHAN_TASK_MSG }
@@ -377,6 +419,7 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
     if (recoveredTaskIds.value.has(taskId)) {
       try {
         const t = await taskAPI.get(taskId)
+        syncRemoteProgress(taskId, t, taskKey(meta))
         if (t.status === 'completed') markDone({ ...meta, taskId })
         else if (t.status === 'failed') markFailed({ ...meta, taskId }, taskFailMessage(t))
         else if (!isActiveTaskStatus(t.status)) markDone({ ...meta, taskId })

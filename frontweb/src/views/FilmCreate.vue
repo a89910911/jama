@@ -7579,8 +7579,8 @@ function pollTask(taskId, onDone, meta = {}) {
 
 /** 一键生成视频：暂停时等待，返回 { paused: true } 表示被暂停中断 */
 function pollTaskWithPause(taskId, onDone, meta = {}) {
-  const resolvedMeta = resolvePollMeta(meta)
-  const trackInStore = resolvedMeta.resourceType !== 'unknown' && resolvedMeta.resourceId != null
+  let resolvedMeta = resolvePollMeta(meta)
+  let trackInStore = resolvedMeta.resourceType !== 'unknown' && resolvedMeta.resourceId != null
   if (trackInStore && taskId) {
     genStore.markRunning({ ...resolvedMeta, taskId })
   }
@@ -7606,6 +7606,35 @@ function pollTaskWithPause(taskId, onDone, meta = {}) {
       attempts++
       try {
         const t = await taskAPI.get(taskId)
+        if (!trackInStore) {
+          const inferredType = {
+            image_generation: GEN_RESOURCE.SB_IMAGE,
+            character_image: GEN_RESOURCE.CHAR_IMAGE,
+            batch_character_image: GEN_RESOURCE.CHAR_IMAGE,
+            prop_image_generation: GEN_RESOURCE.PROP_IMAGE,
+            video_generation: GEN_RESOURCE.SB_VIDEO,
+            video_merge: GEN_RESOURCE.EPISODE_MERGE,
+          }[t.type]
+          if (inferredType) {
+            const isVideo = inferredType === GEN_RESOURCE.SB_VIDEO || inferredType === GEN_RESOURCE.EPISODE_MERGE
+            resolvedMeta = resolvePollMeta({
+              ...meta,
+              resourceType: inferredType,
+              resourceId: meta.resourceId ?? taskId,
+              label: meta.label || (isVideo ? '视频生成任务' : '图片生成任务'),
+            })
+            trackInStore = true
+          }
+        }
+        if (trackInStore) {
+          genStore.markRunning({
+            ...resolvedMeta,
+            taskId,
+            status: t.status,
+            progress: t.progress,
+            message: t.message,
+          })
+        }
         if (pipelineAbortRequested.value) {
           finishStore('failed', '全流程已取消')
           reject(Object.assign(new Error('全流程已取消'), { pipelineAborted: true }))

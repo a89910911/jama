@@ -4925,7 +4925,16 @@ async function pollHolyCrabVideoOnce(config, handle, requestImpl = holyCrabReque
 /**
  * ??????????????????/ChatFire ? ???? DashScope?
  */
-async function pollVideoTaskInternal(db, log, videoGenId, taskId, config, maxAttempts = 300, intervalMs = 10000) {
+async function pollVideoTaskInternal(
+  db,
+  log,
+  videoGenId,
+  taskId,
+  config,
+  maxAttempts = 300,
+  intervalMs = 10000,
+  onProgress = null
+) {
   const provider = (config.provider || '').toLowerCase();
   const protocol = resolveVideoProtocol(config);
   const falHandle = decodeFalQueueHandle(taskId);
@@ -4991,8 +5000,25 @@ async function pollVideoTaskInternal(db, log, videoGenId, taskId, config, maxAtt
     protocol,
     poll_url: initialPollUrl,
   });
+  const reportProgress = (payload) => {
+    if (typeof onProgress !== 'function') return;
+    try {
+      onProgress(payload);
+    } catch (error) {
+      log.warn('[poll] progress callback failed', { video_gen_id: videoGenId, error: error.message });
+    }
+  };
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, intervalMs));
+    const estimatedProgress = Math.min(
+      90,
+      Math.round(20 + 70 * (1 - Math.exp(-(attempt + 1) / 30)))
+    );
+    reportProgress({
+      progress: estimatedProgress,
+      estimated: true,
+      message: `正在生成视频（预计进度，已查询 ${attempt + 1} 次）…`,
+    });
     try {
       if (isHolyCrab) {
         const result = await pollHolyCrabVideoOnce(
@@ -5125,6 +5151,25 @@ async function pollVideoTaskInternal(db, log, videoGenId, taskId, config, maxAtt
           body_head: raw.slice(0, 800),
         });
         continue;
+      }
+
+      const rawProviderProgress =
+        data?.progress ??
+        data?.data?.progress ??
+        data?.output?.progress ??
+        data?.result?.progress;
+      if (rawProviderProgress != null && rawProviderProgress !== '') {
+        const parsedProgress = Number(rawProviderProgress);
+        if (Number.isFinite(parsedProgress)) {
+          const providerPercent = parsedProgress > 0 && parsedProgress <= 1
+            ? parsedProgress * 100
+            : parsedProgress;
+          reportProgress({
+            progress: Math.min(92, Math.max(20, Math.round(20 + providerPercent * 0.72))),
+            estimated: false,
+            message: `厂商正在生成视频（${Math.max(0, Math.min(100, Math.round(providerPercent)))}%）…`,
+          });
+        }
       }
 
       if (isFal) {
@@ -5397,7 +5442,8 @@ async function pollVideoTask(
   taskId,
   config,
   maxAttempts = 300,
-  intervalMs = 10000
+  intervalMs = 10000,
+  onProgress = null
 ) {
   try {
     const result = await pollVideoTaskInternal(
@@ -5407,7 +5453,8 @@ async function pollVideoTask(
       taskId,
       config,
       maxAttempts,
-      intervalMs
+      intervalMs,
+      onProgress
     );
     aiRequestLogService.finishLatestRelated(db, 'video_generation', videoGenId, result || {});
     return result;

@@ -12,6 +12,46 @@ function parseDramaId(req, res) {
 
 module.exports = function aiRequestRoutes(db, log) {
   return {
+    systemList(req, res) {
+      try {
+        response.success(res, aiRequestLogService.list(db, null, req.query));
+      } catch (error) {
+        log.error('List system AI request logs failed', { error: error.message });
+        response.internalError(res, 'AI 任务记录加载失败');
+      }
+    },
+
+    systemStats(req, res) {
+      try {
+        response.success(res, aiRequestLogService.stats(db, null));
+      } catch (error) {
+        log.error('System AI request stats failed', { error: error.message });
+        response.internalError(res, 'AI 任务记录统计失败');
+      }
+    },
+
+    systemGet(req, res) {
+      const item = aiRequestLogService.getOne(db, null, req.params.request_id);
+      if (!item) return response.notFound(res, 'AI 任务记录不存在');
+      response.success(res, item);
+    },
+
+    systemRemove(req, res) {
+      const removed = aiRequestLogService.remove(db, null, req.params.request_id);
+      if (!removed) return response.notFound(res, 'AI 任务记录不存在');
+      response.success(res, { deleted: 1 });
+    },
+
+    systemClear(req, res) {
+      try {
+        const deleted = aiRequestLogService.clear(db, null, req.query);
+        response.success(res, { deleted });
+      } catch (error) {
+        log.error('Clear system AI request logs failed', { error: error.message });
+        response.internalError(res, 'AI 任务记录清理失败');
+      }
+    },
+
     list(req, res) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;

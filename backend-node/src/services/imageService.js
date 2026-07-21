@@ -570,7 +570,7 @@ async function processImageGeneration(db, log, imageGenId) {
   try {
     db.prepare('UPDATE image_generations SET status = ?, updated_at = ? WHERE id = ?').run('processing', now, imageGenId);
     if (row.task_id) {
-      taskService.updateTaskStatus(db, row.task_id, 'processing', 5, '正在生成图片...');
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 10, '正在准备图片生成参数…');
       stopTaskHeartbeat = taskService.startTaskHeartbeat(db, log, row.task_id);
     }
     const imageServiceType = row.storyboard_id ? 'storyboard_image' : 'image';
@@ -1397,6 +1397,9 @@ async function processImageGeneration(db, log, imageGenId) {
       });
     }
 
+    if (row.task_id) {
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 20, '正在提交图片生成请求…');
+    }
     const result = await imageClient.callImageApi(db, log, {
       prompt: finalPrompt,
       model: row.model,
@@ -1434,6 +1437,9 @@ async function processImageGeneration(db, log, imageGenId) {
     }
 
     // ── Step 5: 保存图片到本地 ───────────────────────────────────────
+    if (row.task_id) {
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 85, '图片已生成，正在保存到本地…');
+    }
     log.info('[图生] Step5 保存到本地 →', { id: imageGenId, elapsed: elapsed() });
     const tSave = Date.now();
     let localPath = null;

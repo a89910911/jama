@@ -187,6 +187,7 @@ import {
 } from '@/utils/canvasEntityIds'
 import { runImageStep, runVideoStep, runAudioStep } from '@/composables/useCanvasWorkflowRunner'
 import { findStoryboardInDrama, getDramaGenerationOptions } from '@/utils/canvasWorkflow'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 
 const props = defineProps({
   storyboard: { type: Object, required: true },
@@ -381,15 +382,33 @@ async function runStep(step) {
 
   busyStep.value = step
   const statusMsg = CANVAS_NODE_STATUS_LABELS[step] || '处理中…'
-  ctx?.nodeStatus?.set(sbNodeId.value, { step, message: statusMsg })
-  if (step === 'image') ctx?.nodeStatus?.set(`sbimg:${sbId}`, { step, message: statusMsg })
-  if (step === 'video') ctx?.nodeStatus?.set(`sbvid:${sbId}`, { step, message: statusMsg })
+  const startedAt = Date.now()
+  let previousProgress = 0
+  const updateProgress = (task) => {
+    const progress = resolveGenerationProgress(task, {
+      kind: step,
+      previousProgress,
+      startedAt,
+      message: statusMsg,
+    })
+    previousProgress = progress.percentage
+    const payload = {
+      step,
+      message: progress.message,
+      progress: progress.percentage,
+      progressEstimated: progress.estimated,
+    }
+    ctx?.nodeStatus?.set(sbNodeId.value, payload)
+    if (step === 'image') ctx?.nodeStatus?.set(`sbimg:${sbId}`, payload)
+    if (step === 'video') ctx?.nodeStatus?.set(`sbvid:${sbId}`, payload)
+  }
+  updateProgress({ status: 'processing', progress: 0 })
   try {
     const found = findStoryboardInDrama(drama, sbId)
     const sb = found?.storyboard || props.storyboard
     const genOpts = ctx?.getGenerationOptions?.() || getDramaGenerationOptions(drama)
-    if (step === 'image') await runImageStep(drama, sb, genOpts)
-    else if (step === 'video') await runVideoStep(drama, sb, genOpts)
+    if (step === 'image') await runImageStep(drama, sb, genOpts, { onProgress: updateProgress })
+    else if (step === 'video') await runVideoStep(drama, sb, genOpts, { onProgress: updateProgress })
     else if (step === 'audio') {
       const res = await runAudioStep(sb)
       if (res?.skipped) {

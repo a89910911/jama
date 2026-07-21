@@ -350,6 +350,7 @@
               <el-button size="small" type="primary" :loading="editDramaCharForm.imgGenerating" @click="generateDramaCharImg">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editDramaCharForm.imgGenerating" class="dialog-gen-progress" :percentage="editDramaCharForm.progress" :message="editDramaCharForm.progressMessage" :estimated="editDramaCharForm.progressEstimated" />
           <input ref="dramaCharFileRef" type="file" accept="image/*" style="display:none" @change="uploadDramaCharImg" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editDramaCharForm.name" /></el-form-item>
@@ -384,6 +385,7 @@
               <el-button size="small" type="primary" :loading="editDramaSceneForm.imgGenerating" @click="generateDramaSceneImg">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editDramaSceneForm.imgGenerating" class="dialog-gen-progress" :percentage="editDramaSceneForm.progress" :message="editDramaSceneForm.progressMessage" :estimated="editDramaSceneForm.progressEstimated" />
           <input ref="dramaSceneFileRef" type="file" accept="image/*" style="display:none" @change="uploadDramaSceneImg" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editDramaSceneForm.location" /></el-form-item>
@@ -411,6 +413,7 @@
               <el-button size="small" type="primary" :loading="editDramaPropForm.imgGenerating" @click="generateDramaPropImg">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editDramaPropForm.imgGenerating" class="dialog-gen-progress" :percentage="editDramaPropForm.progress" :message="editDramaPropForm.progressMessage" :estimated="editDramaPropForm.progressEstimated" />
           <input ref="dramaPropFileRef" type="file" accept="image/*" style="display:none" @change="uploadDramaPropImg" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editDramaPropForm.name" /></el-form-item>
@@ -438,6 +441,7 @@
               <el-button size="small" type="primary" :loading="editCharForm.imgGenerating" @click="doGenerateLibImg(editCharForm, (editCharForm.name + (editCharForm.description ? ', ' + editCharForm.description : '')), characterLibraryAPI, loadCharList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editCharForm.imgGenerating" class="dialog-gen-progress" :percentage="editCharForm.progress" :message="editCharForm.progressMessage" :estimated="editCharForm.progressEstimated" />
           <input ref="charFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editCharForm, characterLibraryAPI, loadCharList)" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editCharForm.name" /></el-form-item>
@@ -465,6 +469,7 @@
               <el-button size="small" type="primary" :loading="editSceneForm.imgGenerating" @click="doGenerateLibImg(editSceneForm, ([editSceneForm.location, editSceneForm.time, editSceneForm.description].filter(Boolean).join(', ')), sceneLibraryAPI, loadSceneList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editSceneForm.imgGenerating" class="dialog-gen-progress" :percentage="editSceneForm.progress" :message="editSceneForm.progressMessage" :estimated="editSceneForm.progressEstimated" />
           <input ref="sceneFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editSceneForm, sceneLibraryAPI, loadSceneList)" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editSceneForm.location" /></el-form-item>
@@ -493,6 +498,7 @@
               <el-button size="small" type="primary" :loading="editPropForm.imgGenerating" @click="doGenerateLibImg(editPropForm, (editPropForm.name + (editPropForm.description ? ', ' + editPropForm.description : '')), propLibraryAPI, loadPropList)">AI 生成</el-button>
             </div>
           </div>
+          <GenerationProgressBar v-if="editPropForm.imgGenerating" class="dialog-gen-progress" :percentage="editPropForm.progress" :message="editPropForm.progressMessage" :estimated="editPropForm.progressEstimated" />
           <input ref="propFileRef" type="file" accept="image/*" style="display:none" @change="e => doUploadLibImg(e, editPropForm, propLibraryAPI, loadPropList)" />
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="editPropForm.name" /></el-form-item>
@@ -568,6 +574,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, Grid, DataAnalysis } from '@element-plus/icons-vue'
 import EpisodeBatchImportDialog from '@/components/EpisodeBatchImportDialog.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 import { useTheme } from '@/composables/useTheme'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
@@ -580,6 +587,7 @@ import { characterAPI } from '@/api/characters'
 import { sceneAPI } from '@/api/scenes'
 import { propAPI } from '@/api/props'
 import { stylePromptMetadataForSave, backfillDramaStylePromptMetadataIfNeeded } from '@/constants/styleOptions'
+import { applyGenerationProgress, parseGenerationTaskResult } from '@/utils/generationProgress'
 
 const route = useRoute()
 const { isDark, toggle: toggleTheme } = useTheme()
@@ -607,6 +615,13 @@ const editDramaSceneSaving  = ref(false)
 const editDramaPropVisible = ref(false)
 const editDramaPropForm    = ref(null)
 const editDramaPropSaving  = ref(false)
+
+function startImageProgress(form) {
+  form.progress = 1
+  form.progressMessage = '正在提交图片生成任务…'
+  form.progressEstimated = true
+  form.progressStartedAt = Date.now()
+}
 const episodeBatchImportDialogRef = ref(null)
 
 // 共享：上传图片到库条目
@@ -633,6 +648,7 @@ async function doUploadLibImg(event, form, api, reloadFn) {
 async function doGenerateLibImg(form, prompt, api, reloadFn) {
   if (!prompt?.trim()) { ElMessage.warning('请先填写名称或描述'); return }
   form.imgGenerating = true
+  startImageProgress(form)
   try {
     const res = await imagesAPI.create({ prompt: prompt.trim(), drama_id: dramaId || null })
     const imgData = res?.data ?? res
@@ -643,11 +659,12 @@ async function doGenerateLibImg(form, prompt, api, reloadFn) {
       await new Promise(r => setTimeout(r, 1500))
       const tr = await taskAPI.get(taskId)
       task = tr?.data ?? tr
+      applyGenerationProgress(form, task, { kind: 'image' })
       if (task.status === 'completed') break
       if (task.status === 'failed') throw new Error(task.error || '生成失败')
     }
     if (!task || task.status !== 'completed') throw new Error('生成超时')
-    const result = task.result
+    const result = parseGenerationTaskResult(task.result)
     const imageUrl = result?.image_url
     const localPath = result?.local_path ?? null
     if (!imageUrl && !localPath) throw new Error('未获取到图片地址')
@@ -712,6 +729,7 @@ async function generateDramaCharImg() {
   const form = editDramaCharForm.value
   if (!form?.id) return
   form.imgGenerating = true
+  startImageProgress(form)
   try {
     const res = await characterAPI.generateImage(form.id, null, null)
     const data = res?.data ?? res
@@ -722,12 +740,14 @@ async function generateDramaCharImg() {
       await new Promise(r => setTimeout(r, 1500))
       const tr = await taskAPI.get(taskId)
       task = tr?.data ?? tr
+      applyGenerationProgress(form, task, { kind: 'image' })
       if (task.status === 'completed') break
       if (task.status === 'failed') throw new Error(task.error || '生成失败')
     }
     if (!task || task.status !== 'completed') throw new Error('生成超时')
-    form.image_url = task.result?.image_url || ''
-    form.local_path = task.result?.local_path ?? null
+    const result = parseGenerationTaskResult(task.result)
+    form.image_url = result.image_url || ''
+    form.local_path = result.local_path ?? null
     loadDrama()
     ElMessage.success('AI 图片已生成')
   } catch (e) { ElMessage.error(e.message || '生成失败') }
@@ -784,6 +804,7 @@ async function generateDramaSceneImg() {
   const prompt = [form.location, form.time, form.description].filter(Boolean).join(', ')
   if (!prompt) { ElMessage.warning('请先填写地点或描述'); return }
   form.imgGenerating = true
+  startImageProgress(form)
   try {
     const res = await sceneAPI.generateImage({ scene_id: form.id, drama_id: dramaId, prompt })
     const data = res?.data ?? res
@@ -794,12 +815,14 @@ async function generateDramaSceneImg() {
       await new Promise(r => setTimeout(r, 1500))
       const tr = await taskAPI.get(taskId)
       task = tr?.data ?? tr
+      applyGenerationProgress(form, task, { kind: 'image' })
       if (task.status === 'completed') break
       if (task.status === 'failed') throw new Error(task.error || '生成失败')
     }
     if (!task || task.status !== 'completed') throw new Error('生成超时')
-    form.image_url = task.result?.image_url || ''
-    form.local_path = task.result?.local_path ?? null
+    const result = parseGenerationTaskResult(task.result)
+    form.image_url = result.image_url || ''
+    form.local_path = result.local_path ?? null
     loadDrama()
     ElMessage.success('AI 图片已生成')
   } catch (e) { ElMessage.error(e.message || '生成失败') }
@@ -854,6 +877,7 @@ async function generateDramaPropImg() {
   const form = editDramaPropForm.value
   if (!form?.id) return
   form.imgGenerating = true
+  startImageProgress(form)
   try {
     const res = await propAPI.generateImage(form.id, null, null)
     const data = res?.data ?? res
@@ -864,12 +888,14 @@ async function generateDramaPropImg() {
       await new Promise(r => setTimeout(r, 1500))
       const tr = await taskAPI.get(taskId)
       task = tr?.data ?? tr
+      applyGenerationProgress(form, task, { kind: 'image' })
       if (task.status === 'completed') break
       if (task.status === 'failed') throw new Error(task.error || '生成失败')
     }
     if (!task || task.status !== 'completed') throw new Error('生成超时')
-    form.image_url = task.result?.image_url || ''
-    form.local_path = task.result?.local_path ?? null
+    const result = parseGenerationTaskResult(task.result)
+    form.image_url = result.image_url || ''
+    form.local_path = result.local_path ?? null
     loadDrama()
     ElMessage.success('AI 图片已生成')
   } catch (e) { ElMessage.error(e.message || '生成失败') }
@@ -1522,6 +1548,7 @@ html.light .res-tab--drama.active::after { background: #7c3aed; }
 
 /* 编辑弹框内图片区 */
 .lib-img-editor { display: flex; align-items: center; gap: 14px; }
+.dialog-gen-progress { width: min(420px, 100%); margin-top: 10px; }
 .lib-img-thumb { width: 88px; height: 88px; border-radius: 8px; overflow: hidden; cursor: zoom-in; background: var(--bg-inner, #1c1c1e); border: 1px solid var(--border-color, #27272a); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .lib-img-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .lib-img-empty { color: var(--text-faint, #52525b); font-size: 26px; }

@@ -1,6 +1,6 @@
 <template>
-  <div class="ai-records-page">
-    <header class="page-header">
+  <div class="ai-records-page" :class="{ 'ai-records-page--embedded': embedded }">
+    <header v-if="!embedded" class="page-header">
       <div class="header-inner">
         <button class="brand-button" type="button" aria-label="返回项目列表" @click="goList">
           <BrandLogo />
@@ -8,11 +8,11 @@
         <span class="header-divider" />
         <div class="heading">
           <div class="heading-line">
-            <h1>AI 记录</h1>
+            <h1>{{ systemScope ? 'AI 任务记录' : 'AI 记录' }}</h1>
             <span class="live-dot" :class="{ active: stats.processing > 0 }" />
             <span class="live-label">{{ stats.processing > 0 ? `${stats.processing} 个请求进行中` : '记录已同步' }}</span>
           </div>
-          <p>{{ projectTitle || `项目 #${projectId}` }} · 查看文本、图片、视频和语音的完整调用轨迹</p>
+          <p>{{ scopeDescription }}</p>
         </div>
         <div class="header-actions">
           <el-button :loading="loading" @click="refreshAll">
@@ -21,7 +21,7 @@
           </el-button>
           <el-button @click="goBack">
             <el-icon><ArrowLeft /></el-icon>
-            返回项目
+            {{ systemScope ? '返回 AI 配置' : '返回项目' }}
           </el-button>
         </div>
       </div>
@@ -66,7 +66,7 @@
       <section class="records-panel">
         <div class="panel-heading">
           <div>
-            <h2>请求明细</h2>
+            <h2>{{ systemScope ? '系统请求明细' : '请求明细' }}</h2>
             <p>请求中的密钥、令牌与大体积 Base64 内容会自动脱敏。</p>
           </div>
           <el-button
@@ -117,7 +117,7 @@
           :data="items"
           row-key="id"
           class="records-table"
-          empty-text="当前项目还没有 AI 请求记录"
+          :empty-text="systemScope ? '当前系统还没有 AI 任务记录' : '当前项目还没有 AI 请求记录'"
           @row-dblclick="openDetail"
         >
           <el-table-column label="时间" width="158">
@@ -125,6 +125,14 @@
               <div class="time-cell">
                 <strong>{{ formatDate(row.created_at) }}</strong>
                 <span>#{{ row.id }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="systemScope" label="所属项目" min-width="150">
+            <template #default="{ row }">
+              <div class="project-cell">
+                <strong>{{ row.drama_title || (row.drama_id ? `项目 #${row.drama_id}` : '未关联项目') }}</strong>
+                <span>{{ row.drama_id ? `#${row.drama_id}` : '系统任务' }}</span>
               </div>
             </template>
           </el-table-column>
@@ -231,6 +239,7 @@
         </div>
 
         <div class="detail-meta">
+          <div v-if="systemScope"><span>所属项目</span><strong>{{ detail.drama_title || (detail.drama_id ? `项目 #${detail.drama_id}` : '未关联项目') }}</strong></div>
           <div><span>发起时间</span><strong>{{ formatFullDate(detail.created_at) }}</strong></div>
           <div><span>完成时间</span><strong>{{ formatFullDate(detail.completed_at) || '—' }}</strong></div>
           <div><span>耗时</span><strong>{{ detail.status === 'processing' ? '进行中' : formatDuration(detail.duration_ms) }}</strong></div>
@@ -289,6 +298,12 @@ import BrandLogo from '@/components/BrandLogo.vue'
 import { aiRequestsAPI } from '@/api/aiRequests'
 import { dramaAPI } from '@/api/drama'
 
+const props = defineProps({
+  scope: { type: String, default: 'project' },
+  dramaId: { type: [Number, String], default: null },
+  embedded: { type: Boolean, default: false },
+})
+
 const route = useRoute()
 const router = useRouter()
 const projectTitle = ref('')
@@ -302,7 +317,12 @@ const detail = ref(null)
 const detailTab = ref('request')
 let refreshTimer = null
 
-const projectId = computed(() => Number(route.params.id))
+const systemScope = computed(() => props.scope === 'system')
+const projectId = computed(() => Number(props.dramaId || route.params.id || 0))
+const scopeDescription = computed(() => systemScope.value
+  ? '当前系统 · 查看所有项目及系统任务的文本、图片、视频和语音调用轨迹'
+  : `${projectTitle.value || `项目 #${projectId.value}`} · 查看文本、图片、视频和语音的完整调用轨迹`
+)
 const filters = reactive({
   keyword: '',
   service_type: '',
@@ -462,10 +482,12 @@ function buildQuery() {
 }
 
 async function loadList() {
-  if (!projectId.value) return
+  if (!systemScope.value && !projectId.value) return
   loading.value = true
   try {
-    const data = await aiRequestsAPI.list(projectId.value, buildQuery())
+    const data = systemScope.value
+      ? await aiRequestsAPI.systemList(buildQuery())
+      : await aiRequestsAPI.list(projectId.value, buildQuery())
     items.value = data?.items || []
     Object.assign(pagination, data?.pagination || {})
   } finally {
@@ -474,8 +496,10 @@ async function loadList() {
 }
 
 async function loadStats() {
-  if (!projectId.value) return
-  const data = await aiRequestsAPI.stats(projectId.value)
+  if (!systemScope.value && !projectId.value) return
+  const data = systemScope.value
+    ? await aiRequestsAPI.systemStats()
+    : await aiRequestsAPI.stats(projectId.value)
   Object.assign(stats, data || {})
 }
 
@@ -506,7 +530,9 @@ async function openDetail(row) {
   detailTab.value = 'request'
   detail.value = null
   try {
-    detail.value = await aiRequestsAPI.get(projectId.value, row.id)
+    detail.value = systemScope.value
+      ? await aiRequestsAPI.systemGet(row.id)
+      : await aiRequestsAPI.get(projectId.value, row.id)
   } catch (_) {
     detailVisible.value = false
   } finally {
@@ -521,7 +547,8 @@ async function deleteOne(row) {
       '删除 AI 记录',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
-    await aiRequestsAPI.delete(projectId.value, row.id)
+    if (systemScope.value) await aiRequestsAPI.systemDelete(row.id)
+    else await aiRequestsAPI.delete(projectId.value, row.id)
     ElMessage.success('记录已删除')
     await refreshAll()
   } catch (error) {
@@ -532,12 +559,14 @@ async function deleteOne(row) {
 async function clearFailed() {
   try {
     await ElMessageBox.confirm(
-      `确认清理当前项目的 ${stats.failed} 条失败记录？`,
+      `确认清理${systemScope.value ? '当前系统' : '当前项目'}的 ${stats.failed} 条失败记录？`,
       '清理失败记录',
       { type: 'warning', confirmButtonText: '清理', cancelButtonText: '取消' }
     )
     clearing.value = true
-    const result = await aiRequestsAPI.clear(projectId.value, 'failed')
+    const result = systemScope.value
+      ? await aiRequestsAPI.systemClear('failed')
+      : await aiRequestsAPI.clear(projectId.value, 'failed')
     ElMessage.success(`已清理 ${result?.deleted || 0} 条记录`)
     pagination.page = 1
     await refreshAll()
@@ -553,6 +582,10 @@ function goList() {
 }
 
 function goBack() {
+  if (systemScope.value) {
+    router.push({ name: 'ai-config', query: { tab: 'configs' } })
+    return
+  }
   const value = Array.isArray(route.query.returnTo) ? route.query.returnTo[0] : route.query.returnTo
   const target = typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
     ? value
@@ -561,6 +594,10 @@ function goBack() {
 }
 
 async function loadProject() {
+  if (systemScope.value) {
+    projectTitle.value = ''
+    return
+  }
   try {
     const data = await dramaAPI.get(projectId.value)
     projectTitle.value = data?.title || `项目 #${projectId.value}`
@@ -576,7 +613,7 @@ function startRefreshTimer() {
   }, 8000)
 }
 
-watch(projectId, async () => {
+watch([systemScope, projectId], async () => {
   pagination.page = 1
   await Promise.all([loadProject(), refreshAll()])
 }, { immediate: true })
@@ -775,6 +812,7 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
 }
 .records-table :deep(td.el-table__cell) { padding: 12px 0; }
 .time-cell,
+.project-cell,
 .scene-cell,
 .model-cell {
   display: flex;
@@ -783,6 +821,7 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
   gap: 4px;
 }
 .time-cell strong,
+.project-cell strong,
 .scene-cell strong,
 .model-cell strong {
   overflow: hidden;
@@ -793,6 +832,7 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
   white-space: nowrap;
 }
 .time-cell span,
+.project-cell span,
 .scene-cell span,
 .model-cell span {
   overflow: hidden;
@@ -983,6 +1023,14 @@ html.light .ai-records-page {
     radial-gradient(circle at 92% 0%, rgba(92, 111, 177, .08), transparent 32%),
     var(--record-page);
 }
+.ai-records-page.ai-records-page--embedded {
+  min-height: 0;
+  background: transparent;
+}
+.ai-records-page--embedded .content {
+  width: 100%;
+  padding: 0;
+}
 .page-header {
   border-bottom-color: var(--record-border);
   background: color-mix(in srgb, var(--record-page) 92%, transparent);
@@ -1072,12 +1120,14 @@ html.light .records-panel { box-shadow: 0 16px 44px rgba(38, 50, 68, .09); }
   font-size: 13px;
 }
 .time-cell strong,
+.project-cell strong,
 .scene-cell strong,
 .model-cell strong {
   color: var(--record-primary);
   font-size: 13px;
 }
 .time-cell span,
+.project-cell span,
 .scene-cell span,
 .model-cell span {
   color: var(--record-muted);

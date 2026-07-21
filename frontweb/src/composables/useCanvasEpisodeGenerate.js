@@ -8,6 +8,7 @@ import { getDramaGenerationOptions } from '@/utils/canvasWorkflow'
 import { runImageStep, runVideoStep } from '@/composables/useCanvasWorkflowRunner'
 import { hasStoryboardImage, hasStoryboardVideo } from '@/utils/storyboardMedia'
 import { CANVAS_NODE_STATUS_LABELS } from '@/composables/useCanvasNodeStatus'
+import { resolveGenerationProgress } from '@/utils/generationProgress'
 
 async function pollTask(taskId, onTick, maxAttempts = 450, interval = 2000) {
   if (!taskId) return { status: 'completed' }
@@ -40,6 +41,8 @@ export function useCanvasEpisodeGenerate(deps) {
 
   const episodeGenerating = ref(false)
   const episodeGenProgress = ref('')
+  const episodeGenPercentage = ref(null)
+  const episodeGenProgressEstimated = ref(false)
 
   function getEpisode() {
     const epId = filterEpisodeId.value
@@ -75,11 +78,33 @@ export function useCanvasEpisodeGenerate(deps) {
     }
   }
 
-  function setSbBusy(sb, step, message) {
+  function setSbBusy(sb, step, message, progress = null) {
     const sbNodeId = `sb:${sb.id}`
-    nodeStatus?.set(sbNodeId, { step, message })
-    if (step === 'image') nodeStatus?.set(`sbimg:${sb.id}`, { step, message })
-    if (step === 'video') nodeStatus?.set(`sbvid:${sb.id}`, { step, message })
+    const payload = {
+      step,
+      message,
+      progress: progress?.percentage ?? null,
+      progressEstimated: !!progress?.estimated,
+    }
+    nodeStatus?.set(sbNodeId, payload)
+    if (step === 'image') nodeStatus?.set(`sbimg:${sb.id}`, payload)
+    if (step === 'video') nodeStatus?.set(`sbvid:${sb.id}`, payload)
+  }
+
+  function updateBatchTaskProgress(sb, step, task, index, total, startedAt, previousProgress) {
+    const progress = resolveGenerationProgress(task, {
+      kind: step,
+      previousProgress,
+      startedAt,
+      message: step === 'image' ? CANVAS_NODE_STATUS_LABELS.image : CANVAS_NODE_STATUS_LABELS.video,
+    })
+    setSbBusy(sb, step, progress.message, progress)
+    episodeGenPercentage.value = Math.min(
+      99,
+      Math.round(((index + progress.percentage / 100) / Math.max(1, total)) * 100)
+    )
+    episodeGenProgressEstimated.value = progress.estimated
+    return progress.percentage
   }
 
   function clearSbBusy(sb) {
@@ -124,6 +149,7 @@ export function useCanvasEpisodeGenerate(deps) {
 
     episodeGenerating.value = true
     episodeGenProgress.value = 'AI 正在根据剧本解析分镜…'
+    episodeGenPercentage.value = null
     for (const sb of existing) {
       setSbBusy(sb, 'generate_sb', CANVAS_NODE_STATUS_LABELS.generate_sb)
     }
@@ -151,6 +177,8 @@ export function useCanvasEpisodeGenerate(deps) {
       clearEpisodeSbBusy()
       episodeGenerating.value = false
       episodeGenProgress.value = ''
+      episodeGenPercentage.value = null
+      episodeGenProgressEstimated.value = false
     }
   }
 
@@ -179,16 +207,26 @@ export function useCanvasEpisodeGenerate(deps) {
     }
 
     episodeGenerating.value = true
+    episodeGenPercentage.value = 0
     let ok = 0
     let failed = 0
     try {
       for (let i = 0; i < todo.length; i++) {
         const sb = todo[i]
+        const taskStartedAt = Date.now()
+        let taskProgress = 0
         episodeGenProgress.value = `批量生图 ${i + 1}/${todo.length}：分镜 #${sb.storyboard_number ?? sb.id}`
-        setSbBusy(sb, 'image', `${CANVAS_NODE_STATUS_LABELS.image} ${i + 1}/${todo.length}`)
+        setSbBusy(sb, 'image', `${CANVAS_NODE_STATUS_LABELS.image} ${i + 1}/${todo.length}`, { percentage: 1, estimated: true })
         try {
-          await runImageStep(drama.value, sb, getGenOpts())
+          await runImageStep(drama.value, sb, getGenOpts(), {
+            onProgress: (task) => {
+              taskProgress = updateBatchTaskProgress(
+                sb, 'image', task, i, todo.length, taskStartedAt, taskProgress
+              )
+            },
+          })
           ok++
+          episodeGenPercentage.value = Math.round(((i + 1) / todo.length) * 100)
           await refreshCanvas(true)
         } catch (e) {
           failed++
@@ -202,6 +240,8 @@ export function useCanvasEpisodeGenerate(deps) {
     } finally {
       episodeGenerating.value = false
       episodeGenProgress.value = ''
+      episodeGenPercentage.value = null
+      episodeGenProgressEstimated.value = false
     }
   }
 
@@ -228,16 +268,26 @@ export function useCanvasEpisodeGenerate(deps) {
     }
 
     episodeGenerating.value = true
+    episodeGenPercentage.value = 0
     let ok = 0
     let failed = 0
     try {
       for (let i = 0; i < todo.length; i++) {
         const sb = todo[i]
+        const taskStartedAt = Date.now()
+        let taskProgress = 0
         episodeGenProgress.value = `批量生视频 ${i + 1}/${todo.length}：分镜 #${sb.storyboard_number ?? sb.id}`
-        setSbBusy(sb, 'video', `${CANVAS_NODE_STATUS_LABELS.video} ${i + 1}/${todo.length}`)
+        setSbBusy(sb, 'video', `${CANVAS_NODE_STATUS_LABELS.video} ${i + 1}/${todo.length}`, { percentage: 1, estimated: true })
         try {
-          await runVideoStep(drama.value, sb, getGenOpts())
+          await runVideoStep(drama.value, sb, getGenOpts(), {
+            onProgress: (task) => {
+              taskProgress = updateBatchTaskProgress(
+                sb, 'video', task, i, todo.length, taskStartedAt, taskProgress
+              )
+            },
+          })
           ok++
+          episodeGenPercentage.value = Math.round(((i + 1) / todo.length) * 100)
           await refreshCanvas(true)
         } catch (e) {
           failed++
@@ -251,12 +301,16 @@ export function useCanvasEpisodeGenerate(deps) {
     } finally {
       episodeGenerating.value = false
       episodeGenProgress.value = ''
+      episodeGenPercentage.value = null
+      episodeGenProgressEstimated.value = false
     }
   }
 
   return {
     episodeGenerating,
     episodeGenProgress,
+    episodeGenPercentage,
+    episodeGenProgressEstimated,
     aiGenerateStoryboards,
     batchGenerateImages,
     batchGenerateVideos,

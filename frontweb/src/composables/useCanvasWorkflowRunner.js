@@ -19,6 +19,7 @@ async function pollTaskSimple(taskId, options = {}) {
     await new Promise((r) => setTimeout(r, interval))
     try {
       const t = await taskAPI.get(taskId)
+      options.onProgress?.(t)
       if (t.status === 'completed') return { status: 'completed', result: t.result }
       if (t.status === 'failed') {
         return { status: 'failed', error: t.error?.message || t.error || '任务失败' }
@@ -30,7 +31,7 @@ async function pollTaskSimple(taskId, options = {}) {
   return { status: 'timeout', error: '任务超时' }
 }
 
-export async function runImageStep(drama, sb, genOpts) {
+export async function runImageStep(drama, sb, genOpts, hooks = {}) {
   const prompt = sb.polished_prompt || sb.image_prompt || sb.description || sb.action || ''
   if (!prompt.trim()) throw new Error(`分镜 #${sb.storyboard_number ?? sb.id} 缺少图片提示词`)
   const res = await imagesAPI.create({
@@ -41,12 +42,12 @@ export async function runImageStep(drama, sb, genOpts) {
     aspect_ratio: genOpts.aspectRatio,
   })
   if (res?.task_id) {
-    const polled = await pollTaskSimple(res.task_id)
+    const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
     if (polled.status !== 'completed') throw new Error(polled.error || '分镜图生成失败')
   }
 }
 
-export async function runVideoStep(drama, sb, genOpts) {
+export async function runVideoStep(drama, sb, genOpts, hooks = {}) {
   const useFirstLast = dramaUsesFirstLastFrame(drama)
   const imagesBySbId = genOpts?.imagesBySbId || {}
   const { first, last } = sbVideoFirstLastUrls(sb, imagesBySbId, useFirstLast)
@@ -70,7 +71,7 @@ export async function runVideoStep(drama, sb, genOpts) {
     duration: sb.duration || undefined,
   })
   if (res?.task_id) {
-    const polled = await pollTaskSimple(res.task_id)
+    const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
     if (polled.status !== 'completed') throw new Error(polled.error || '视频生成失败')
   }
 }
@@ -105,12 +106,16 @@ export async function runStoryboardPipeline(drama, storyboardId, pipeline, hooks
     hooks.onStepStart?.({ storyboardId, step, sb })
     try {
       if (step === 'image') {
-        await runImageStep(drama, sb, genOpts)
+        await runImageStep(drama, sb, genOpts, {
+          onProgress: (task) => hooks.onStepProgress?.({ storyboardId, step, sb, task }),
+        })
         if (hooks.reloadStoryboard) {
           sb = (await hooks.reloadStoryboard(storyboardId)) || sb
         }
       } else if (step === 'video') {
-        await runVideoStep(drama, sb, genOpts)
+        await runVideoStep(drama, sb, genOpts, {
+          onProgress: (task) => hooks.onStepProgress?.({ storyboardId, step, sb, task }),
+        })
         if (hooks.reloadStoryboard) {
           sb = (await hooks.reloadStoryboard(storyboardId)) || sb
         }

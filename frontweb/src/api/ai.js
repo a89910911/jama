@@ -30,6 +30,17 @@ export const aiAPI = {
   modelArkAsset(body) {
     return request.post('/ai-configs/model-ark-asset', body)
   },
+  /** HolyCrab 素材管理（列表、详情、URL 导入和删除） */
+  holyCrabAsset(body) {
+    return request.post('/ai-configs/holycrab-assets', body)
+  },
+  /** 上传本地文件到 HolyCrab 素材库 */
+  uploadHolyCrabAsset(form) {
+    return request.post('/ai-configs/holycrab-assets/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600000,
+    })
+  },
   getVendorLock() {
     return request.get('/ai-configs/vendor-lock')
   },

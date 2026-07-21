@@ -128,3 +128,71 @@ test('keeps submitted video requests processing and finalizes by related generat
   assert.equal(item.response_payload.video_url, 'https://example.com/video.mp4');
   db.close();
 });
+
+test('system scope includes every project and unassigned tasks while project scope stays isolated', () => {
+  const db = createDb();
+  db.prepare('INSERT INTO dramas (id, title) VALUES (?, ?)').run(8, '另一个项目');
+
+  const projectRecord = aiRequestLogService.start(db, {
+    drama_id: 7,
+    service_type: 'text',
+    operation: 'story_generation',
+    request: { prompt: '项目七' },
+  });
+  aiRequestLogService.succeed(db, projectRecord, { content: '完成' });
+
+  const otherProjectRecord = aiRequestLogService.start(db, {
+    drama_id: 8,
+    service_type: 'image',
+    operation: 'image_generation',
+    request: { prompt: '项目八' },
+  });
+  aiRequestLogService.fail(db, otherProjectRecord, new Error('生成失败'));
+
+  const systemRecord = aiRequestLogService.start(db, {
+    service_type: 'video',
+    operation: 'connection_test',
+    request: { prompt: '系统任务' },
+  });
+
+  const projectPage = aiRequestLogService.list(db, 7);
+  assert.equal(projectPage.pagination.total, 1);
+  assert.equal(projectPage.items[0].id, projectRecord.id);
+  assert.equal(projectPage.items[0].drama_title, '测试项目');
+
+  const systemPage = aiRequestLogService.list(db, null);
+  assert.equal(systemPage.pagination.total, 3);
+  assert.deepEqual(
+    new Set(systemPage.items.map((item) => item.id)),
+    new Set([projectRecord.id, otherProjectRecord.id, systemRecord.id])
+  );
+  assert.equal(
+    systemPage.items.find((item) => item.id === otherProjectRecord.id).drama_title,
+    '另一个项目'
+  );
+  assert.equal(
+    systemPage.items.find((item) => item.id === systemRecord.id).drama_id,
+    null
+  );
+
+  const systemStats = aiRequestLogService.stats(db, null);
+  assert.equal(systemStats.total, 3);
+  assert.equal(systemStats.succeeded, 1);
+  assert.equal(systemStats.failed, 1);
+  assert.equal(systemStats.processing, 1);
+
+  const failedPage = aiRequestLogService.list(db, null, { status: 'failed' });
+  assert.equal(failedPage.pagination.total, 1);
+  assert.equal(failedPage.items[0].id, otherProjectRecord.id);
+
+  const systemDetail = aiRequestLogService.getOne(db, null, otherProjectRecord.id);
+  assert.equal(systemDetail.drama_id, 8);
+  assert.equal(systemDetail.drama_title, '另一个项目');
+  assert.equal(aiRequestLogService.getOne(db, 7, otherProjectRecord.id), null);
+
+  assert.equal(aiRequestLogService.clear(db, null, { status: 'failed' }), 1);
+  assert.equal(aiRequestLogService.remove(db, null, systemRecord.id), true);
+  assert.equal(aiRequestLogService.list(db, null).pagination.total, 1);
+  assert.equal(aiRequestLogService.list(db, 7).pagination.total, 1);
+  db.close();
+});

@@ -96,6 +96,14 @@
               <span v-else-if="message.status === 'failed'" class="codex-failed">生成失败</span>
               <span v-else-if="message.status === 'cancelled'" class="codex-cancelled">已停止</span>
             </div>
+            <GenerationProgressBar
+              v-if="message.status === 'processing' && message.task_id === runningTaskId"
+              class="codex-task-progress"
+              compact
+              :percentage="runningProgress.progress"
+              :message="runningProgress.progressMessage || phaseMessage"
+              :estimated="runningProgress.progressEstimated"
+            />
             <div class="codex-message-content">
               {{ displayContent(message) }}
             </div>
@@ -217,6 +225,8 @@ import {
 } from '@element-plus/icons-vue'
 import { codexChatAPI } from '@/api/codexChat'
 import { taskAPI } from '@/api/task'
+import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
+import { applyGenerationProgress } from '@/utils/generationProgress'
 import {
   CODEX_CONVERSATION_TIPS,
   codexActionLabel,
@@ -249,6 +259,12 @@ const intentHint = ref('')
 const intentExample = ref('')
 const runningTaskId = ref('')
 const phaseMessage = ref('')
+const runningProgress = ref({
+  progress: 1,
+  progressMessage: '',
+  progressEstimated: true,
+  progressStartedAt: Date.now(),
+})
 const cancelling = ref(false)
 const eventSource = ref(null)
 const lastEventId = ref(0)
@@ -277,6 +293,15 @@ const statusText = computed(() => {
 
 function upsertMessage(message) {
   messages.value = upsertChatMessage(messages.value, message)
+}
+
+function resetRunningProgress(message = '正在准备…') {
+  runningProgress.value = {
+    progress: 1,
+    progressMessage: message,
+    progressEstimated: true,
+    progressStartedAt: Date.now(),
+  }
 }
 
 function displayContent(message) {
@@ -323,7 +348,10 @@ async function loadMessages() {
   messages.value = await codexChatAPI.listMessages(sessionId.value)
   const active = [...messages.value].reverse().find((item) => item.status === 'processing' && item.task_id)
   runningTaskId.value = active?.task_id || ''
-  if (runningTaskId.value) startTaskPolling()
+  if (runningTaskId.value) {
+    resetRunningProgress(active?.status_message || '正在恢复生成任务…')
+    startTaskPolling()
+  }
   await scrollToBottom()
 }
 
@@ -387,6 +415,7 @@ function handleServerEvent(type, payload, event) {
     upsertMessage(payload.assistant_message)
     runningTaskId.value = payload.task_id || ''
     phaseMessage.value = '正在准备…'
+    resetRunningProgress(phaseMessage.value)
     startTaskPolling()
   } else if (type === 'message.delta') {
     const id = payload.message_id
@@ -472,6 +501,7 @@ async function send() {
     upsertMessage(result.assistant_message)
     runningTaskId.value = result.task_id
     phaseMessage.value = '正在准备…'
+    resetRunningProgress(phaseMessage.value)
     startTaskPolling()
     await scrollToBottom()
   } catch (error) {
@@ -507,6 +537,7 @@ function startTaskPolling() {
     if (!taskId) return
     try {
       const task = await taskAPI.get(taskId)
+      applyGenerationProgress(runningProgress.value, task, { kind: task.type })
       if (task.status === 'completed' || task.status === 'failed') {
         runningTaskId.value = ''
         stopTaskPolling()
@@ -725,6 +756,10 @@ onBeforeUnmount(() => {
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.codex-task-progress {
+  margin: 2px 0 8px;
 }
 
 .codex-generated-images {

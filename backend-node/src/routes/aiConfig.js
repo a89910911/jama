@@ -202,6 +202,78 @@ function listJimeng2MaterialAssets(log) {
   };
 }
 
+/** HolyCrab 素材管理：使用已保存的配置，密钥无需由浏览器重复传输。 */
+function holyCrabAssets(db, log) {
+  return async (req, res) => {
+    const body = req.body || {};
+    const configId = Number.parseInt(body.config_id, 10);
+    if (!Number.isFinite(configId) || configId <= 0) {
+      return response.badRequest(res, '请选择 HolyCrab 配置');
+    }
+    const config = aiConfigService.getConfig(db, configId);
+    if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
+    if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
+
+    const action = String(body.action || '').trim().toLowerCase();
+    const service = require('../services/holyCrabAssetService');
+    try {
+      let data;
+      if (action === 'list') {
+        data = await service.listAssets(config, body);
+      } else if (action === 'get') {
+        data = await service.getAsset(config, body.uniq_id);
+      } else if (action === 'create_from_url') {
+        data = await service.createAssetFromUrl(config, body);
+      } else if (action === 'delete') {
+        data = await service.deleteAsset(config, body.uniq_id);
+      } else if (action === 'upload') {
+        data = await service.uploadAsset(config, req.file, body);
+      } else {
+        return response.badRequest(res, '不支持的 HolyCrab 素材操作');
+      }
+      response.success(res, data);
+    } catch (err) {
+      log.error('holycrab asset operation failed', {
+        action,
+        config_id: configId,
+        error: err.message,
+      });
+      response.badRequest(res, err.message || 'HolyCrab 素材操作失败');
+    }
+  };
+}
+
+/** HolyCrab 素材内容代理：供浏览器播放器和下载按钮使用，支持 Range 请求。 */
+function holyCrabAssetContent(db, log) {
+  return async (req, res) => {
+    const configId = Number.parseInt(req.params.configId, 10);
+    if (!Number.isFinite(configId) || configId <= 0) {
+      return response.badRequest(res, 'HolyCrab 配置 ID 无效');
+    }
+    const config = aiConfigService.getConfig(db, configId);
+    if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
+    if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
+
+    const service = require('../services/holyCrabAssetService');
+    try {
+      const asset = await service.getAsset(config, req.params.uniqId);
+      await service.streamAssetContent(config, asset, req, res, {
+        download: String(req.query.download || '') === '1',
+      });
+    } catch (err) {
+      log.error('holycrab asset content proxy failed', {
+        config_id: configId,
+        uniq_id: req.params.uniqId,
+        error: err.message,
+      });
+      if (!res.headersSent && !res.destroyed) {
+        return response.badRequest(res, err.message || 'HolyCrab 素材文件读取失败');
+      }
+      if (!res.destroyed) res.destroy(err);
+    }
+  };
+}
+
 module.exports = function aiConfigRoutes(db, log, cfg) {
   return {
     list: list(db),
@@ -213,6 +285,8 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     testConnection: testConnection(db, log),
     listJimeng2MaterialAssets: listJimeng2MaterialAssets(log),
     modelArkAsset: modelArkAsset(log),
+    holyCrabAssets: holyCrabAssets(db, log),
+    holyCrabAssetContent: holyCrabAssetContent(db, log),
     bulkUpdateKey: bulkUpdateKey(db, log, cfg),
   };
 };

@@ -177,6 +177,7 @@ describe('fal.ai Seedance and TTS adapters', () => {
 
   it('polls a completed fal queue task and reads video.url', async () => {
     const previousFetch = global.fetch;
+    const progressEvents = [];
     const taskId = encodeFalQueueHandle({
       request_id: 'seedance-request',
       endpoint: 'bytedance/seedance-2.0/text-to-video',
@@ -209,9 +210,13 @@ describe('fal.ai Seedance and TTS adapters', () => {
           api_key: 'fal-secret',
         },
         2,
-        0
+        0,
+        (event) => progressEvents.push(event)
       );
       assert.equal(result.video_url, 'https://cdn.example.com/video.mp4');
+      assert.ok(progressEvents.length >= 1);
+      assert.ok(progressEvents[0].progress >= 20);
+      assert.equal(progressEvents[0].estimated, true);
     } finally {
       global.fetch = previousFetch;
     }

@@ -13,6 +13,8 @@ export function createCanvasNodeStatusStore() {
     map[nodeId] = {
       step: payload.step || 'busy',
       message: payload.message || '处理中…',
+      progress: Number.isFinite(Number(payload.progress)) ? Number(payload.progress) : null,
+      progressEstimated: !!payload.progressEstimated,
       at: Date.now(),
     }
   }

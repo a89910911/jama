@@ -19,7 +19,7 @@ function appendPrompt(base, extra) {
 }
 
 async function processPropImageGeneration(db, log, taskId, propId, opts) {
-  taskService.updateTaskStatus(db, taskId, 'processing', 0, '正在生成图片...');
+  taskService.updateTaskStatus(db, taskId, 'processing', 10, '正在准备道具图片…');
 
   const prop = propService.getById(db, propId);
   if (!prop) {
@@ -73,6 +73,7 @@ async function processPropImageGeneration(db, log, taskId, propId, opts) {
 
   let result;
   try {
+    taskService.updateTaskStatus(db, taskId, 'processing', 20, '正在提交道具图片生成请求…');
     result = await imageClient.callImageApi(db, log, {
       prompt: fullPrompt,
       size: imageSize,

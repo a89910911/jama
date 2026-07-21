@@ -124,6 +124,11 @@
           </el-table>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="AI 任务记录" name="ai_records" lazy>
+        <div class="tab-content ai-records-tab">
+          <AiRequests scope="system" embedded />
+        </div>
+      </el-tab-pane>
       <el-tab-pane label="高级设置（提示词）" name="prompts">
         <div class="tab-content">
           <PromptEditor />
@@ -209,6 +214,11 @@
       <el-tab-pane label="SD2 资产管理" name="sd2_assets">
         <div class="tab-content">
           <Sd2AssetManagement :configs="list" @saved="loadList" />
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="HolyCrab 资产管理" name="holycrab_assets">
+        <div class="tab-content">
+          <HolyCrabAssetManagement :configs="list" />
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -1313,10 +1323,12 @@ import { generationSettingsAPI } from '@/api/prompts'
 import PromptEditor from '@/components/PromptEditor.vue'
 import SceneModelMap from '@/components/SceneModelMap.vue'
 import Sd2AssetManagement from '@/components/Sd2AssetManagement.vue'
+import HolyCrabAssetManagement from '@/components/HolyCrabAssetManagement.vue'
+import AiRequests from '@/views/AiRequests.vue'
 
 const route = useRoute()
 const router = useRouter()
-const tabNames = new Set(['configs', 'prompts', 'sceneModelMap', 'generation', 'sd2_assets'])
+const tabNames = new Set(['configs', 'ai_records', 'prompts', 'sceneModelMap', 'generation', 'sd2_assets', 'holycrab_assets'])
 const activeTab = ref(tabNames.has(String(route.query.tab || '')) ? String(route.query.tab) : 'configs')
 const importFileRef = ref(null)
 

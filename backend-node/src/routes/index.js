@@ -83,6 +83,11 @@ function setupRouter(cfg, db, log) {
   r.get('/dramas/:id/assets/export', drama.exportAssets);
   const multer = require('multer');
   const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+  const holyCrabAssetUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 },
+  });
+  const holyCrabAssetSingle = holyCrabAssetUpload.single('file');
   r.post('/dramas/import', importUpload.single('file'), drama.importDrama);
   r.post('/dramas/import-novel', importUpload.single('file'), async (req, res) => {
     try {
@@ -132,6 +137,11 @@ function setupRouter(cfg, db, log) {
 
   // ---------- ai-configs ----------
   // 普通账号仅可读取运行时所需的非敏感模型能力，不能查看 AI 配置本身。
+  r.get('/ai-requests/stats', authService.requireSuperAdmin, aiRequests.systemStats);
+  r.get('/ai-requests', authService.requireSuperAdmin, aiRequests.systemList);
+  r.delete('/ai-requests', authService.requireSuperAdmin, aiRequests.systemClear);
+  r.get('/ai-requests/:request_id', authService.requireSuperAdmin, aiRequests.systemGet);
+  r.delete('/ai-requests/:request_id', authService.requireSuperAdmin, aiRequests.systemRemove);
   r.get('/ai-configs/vendor-lock', aiConfig.vendorLock);  // 必须在 /:id 之前
   r.get('/runtime/ai-configs', (req, res) => {
     const serviceType = String(req.query.service_type || '').trim();
@@ -159,6 +169,17 @@ function setupRouter(cfg, db, log) {
   r.post('/ai-configs/test', authService.requireSuperAdmin, aiConfig.testConnection);
   r.post('/ai-configs/jimeng2-list-assets', authService.requireSuperAdmin, aiConfig.listJimeng2MaterialAssets);
   r.post('/ai-configs/model-ark-asset', authService.requireSuperAdmin, aiConfig.modelArkAsset);
+  r.post('/ai-configs/holycrab-assets', authService.requireSuperAdmin, aiConfig.holyCrabAssets);
+  r.get('/ai-configs/holycrab-assets/:configId/:uniqId/content', authService.requireSuperAdmin, aiConfig.holyCrabAssetContent);
+  r.post('/ai-configs/holycrab-assets/upload', authService.requireSuperAdmin, (req, res, next) => {
+    holyCrabAssetSingle(req, res, (err) => {
+      if (err?.code === 'LIMIT_FILE_SIZE') {
+        return response.error(res, 413, 'FILE_TOO_LARGE', 'HolyCrab 单个素材不能超过 200MB');
+      }
+      if (err) return next(err);
+      return aiConfig.holyCrabAssets(req, res);
+    });
+  });
   r.put('/ai-configs/bulk-update-key', authService.requireSuperAdmin, aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
   r.get('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.get);
   r.put('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.update);

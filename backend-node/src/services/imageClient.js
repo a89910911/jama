@@ -2189,7 +2189,7 @@ function createAndGenerateImage(db, log, opts) {
     let stopTaskHeartbeat = () => {};
     try {
       db.prepare('UPDATE image_generations SET status = ? WHERE id = ?').run('processing', imageGenId);
-      taskService.updateTaskStatus(db, taskId, 'processing', 5, '正在生成图片...');
+      taskService.updateTaskStatus(db, taskId, 'processing', 10, '正在提交图片生成请求…');
       stopTaskHeartbeat = taskService.startTaskHeartbeat(db, log, taskId);
       const result = await callImageApi(db, log, {
         prompt,
@@ -2222,6 +2222,7 @@ function createAndGenerateImage(db, log, opts) {
         log.error('Image generation failed', { image_gen_id: imageGenId, error: result.error });
         return;
       }
+      taskService.updateTaskStatus(db, taskId, 'processing', 85, '图片已生成，正在保存到本地…');
       let localPath = null;
       try {
         const loadConfig = require('../config').loadConfig;
