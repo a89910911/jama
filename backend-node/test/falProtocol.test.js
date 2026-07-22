@@ -98,6 +98,14 @@ describe('fal.ai Seedance and TTS adapters', () => {
     assert.equal(normalizeFalSeedanceDuration(2), '4');
     assert.equal(normalizeFalSeedanceDuration(20), '15');
     assert.equal(normalizeFalSeedanceResolution('1080P'), '1080p');
+    assert.equal(
+      normalizeFalSeedanceResolution('1080P', 'bytedance/seedance-2.0/fast/text-to-video'),
+      '720p'
+    );
+    assert.equal(
+      normalizeFalSeedanceResolution('4K', 'bytedance/seedance-2.0/mini/reference-to-video'),
+      '720p'
+    );
     assert.equal(normalizeFalSeedanceAspectRatio('9:16'), '9:16');
     assert.equal(normalizeFalSeedanceAspectRatio('2:1'), 'auto');
     assert.equal(
@@ -170,6 +178,46 @@ describe('fal.ai Seedance and TTS adapters', () => {
         bitrate_mode: 'standard',
       });
       assert.equal(decodeFalQueueHandle(result.task_id).request_id, 'seedance-request');
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  it('routes Mini image input through reference-to-video and omits unsupported bitrate fields', async () => {
+    const previousFetch = global.fetch;
+    let captured = null;
+    global.fetch = async (url, options) => {
+      captured = { url: String(url), options };
+      return new Response(JSON.stringify({ request_id: 'mini-request' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    try {
+      const result = await callFalVideoApi(
+        {
+          provider: 'fal',
+          api_protocol: 'fal',
+          base_url: 'https://queue.fal.run',
+          api_key: 'fal-secret',
+        },
+        silentLog,
+        {
+          prompt: '让参考角色向镜头挥手',
+          model: 'bytedance/seedance-2.0/mini',
+          image_url: 'data:image/png;base64,AAAA',
+          duration: 8,
+          resolution: '1080p',
+          video_gen_id: 2,
+        }
+      );
+      const body = JSON.parse(captured.options.body);
+      assert.match(captured.url, /bytedance\/seedance-2\.0\/mini\/reference-to-video$/);
+      assert.deepEqual(body.image_urls, ['data:image/png;base64,AAAA']);
+      assert.equal(body.resolution, '720p');
+      assert.equal(Object.hasOwn(body, 'image_url'), false);
+      assert.equal(Object.hasOwn(body, 'bitrate_mode'), false);
+      assert.equal(decodeFalQueueHandle(result.task_id).request_id, 'mini-request');
     } finally {
       global.fetch = previousFetch;
     }

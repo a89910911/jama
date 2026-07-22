@@ -72,6 +72,46 @@ function update(db, log, cfg) {
   };
 }
 
+function setDefault(db, log) {
+  return (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return response.badRequest(res, '无效的配置 ID');
+
+    try {
+      const config = aiConfigService.setDefaultConfig(db, log, id);
+      if (!config) return response.notFound(res, '配置不存在');
+      response.success(res, config);
+    } catch (err) {
+      log.error('Set default AI config failed', { config_id: id, error: err.message });
+      response.internalError(res, '设置默认配置失败');
+    }
+  };
+}
+
+function listModels(db, log) {
+  return async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return response.badRequest(res, '无效的配置 ID');
+    const config = aiConfigService.getConfig(db, id);
+    if (!config) return response.notFound(res, '配置不存在');
+
+    try {
+      const result = await aiConfigService.listAvailableModels({
+        ...config,
+        service_type: req.query.service_type || config.service_type,
+      });
+      response.success(res, result);
+    } catch (err) {
+      log.error('List provider models failed', {
+        config_id: id,
+        provider: config.provider,
+        error: err.message,
+      });
+      response.badRequest(res, err.message || '同步模型失败');
+    }
+  };
+}
+
 function remove(db, log, cfg) {
   return (req, res) => {
     if (aiConfigService.getVendorLockStatus(cfg).enabled) {
@@ -281,6 +321,8 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     vendorLock: vendorLock(cfg),
     create: create(db, log, cfg),
     update: update(db, log, cfg),
+    setDefault: setDefault(db, log),
+    listModels: listModels(db, log),
     delete: remove(db, log, cfg),
     testConnection: testConnection(db, log),
     listJimeng2MaterialAssets: listJimeng2MaterialAssets(log),

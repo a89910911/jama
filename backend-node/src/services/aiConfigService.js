@@ -224,6 +224,25 @@ function updateConfig(db, log, id, req) {
   return getConfig(db, id);
 }
 
+function setDefaultConfig(db, log, id) {
+  const existing = getConfig(db, id);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const updateDefault = db.transaction(() => {
+    db.prepare(
+      'UPDATE ai_service_configs SET is_default = 0, updated_at = ? WHERE deleted_at IS NULL AND service_type = ? AND id != ? AND is_default = 1'
+    ).run(now, existing.service_type, id);
+    db.prepare(
+      'UPDATE ai_service_configs SET is_default = 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL'
+    ).run(now, id);
+  });
+  updateDefault();
+
+  log.info('AI config set as default', { config_id: id, service_type: existing.service_type });
+  return getConfig(db, id);
+}
+
 function deleteConfig(db, log, id) {
   const now = new Date().toISOString();
   const result = db.prepare('UPDATE ai_service_configs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, id);
@@ -261,6 +280,66 @@ function rowToConfig(r) {
     } catch (_) {}
   }
   return cfg;
+}
+
+/**
+ * 拉取提供商账号当前可用的模型。仅开放已经有稳定只读模型目录接口的提供商；
+ * 其余提供商继续使用前端经过核验的静态目录，避免把不兼容模型直接暴露为默认候选。
+ */
+async function listAvailableModels(opts) {
+  if (!opts?.api_key) throw new Error('api_key 必填');
+  if (!isVeniceConfig(opts)) throw new Error('当前提供商暂不支持动态同步模型');
+
+  const serviceType = String(opts.service_type || 'text').toLowerCase();
+  const typeMap = {
+    text: 'text',
+    image: 'image',
+    storyboard_image: 'image',
+    video: 'video',
+    tts: 'tts',
+  };
+  const modelType = typeMap[serviceType] || 'text';
+  const requestImpl = typeof opts.request_impl === 'function'
+    ? opts.request_impl
+    : veniceRequest;
+  const url = `${veniceApiBase(opts.base_url)}/models?type=${encodeURIComponent(modelType)}`;
+  const res = await requestImpl(url, {
+    method: 'GET',
+    headers: veniceHeaders(opts.api_key),
+    timeoutMs: 30000,
+  });
+  const raw = String(res?.raw || '');
+  const statusCode = Number(res?.statusCode || res?.status || 0);
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {}
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error(
+      `Venice.ai 模型同步失败 (${statusCode}): ${getVeniceErrorMessage(data, raw.slice(0, 300))}`
+    );
+  }
+
+  const rows = Array.isArray(data?.data) ? data.data : [];
+  const models = rows
+    .filter((item) => {
+      if (!item?.id || (item.type && item.type !== modelType)) return false;
+      if (item.model_spec?.offline === true) return false;
+      const retirementDate = Date.parse(item.model_spec?.deprecation?.date || '');
+      if (Number.isFinite(retirementDate) && retirementDate <= Date.now()) return false;
+      // 文本生成流程中部分任务要求 JSON Schema；明确不支持的模型不进入默认候选。
+      if (modelType === 'text' && item.model_spec?.capabilities?.supportsResponseSchema === false) return false;
+      return true;
+    })
+    .map((item) => ({
+      id: String(item.id),
+      name: String(item.model_spec?.name || item.id),
+      type: String(item.type || modelType),
+      traits: Array.isArray(item.model_spec?.traits) ? item.model_spec.traits : [],
+      deprecation: item.model_spec?.deprecation?.date || null,
+    }));
+
+  return { provider: 'venice', type: modelType, models };
 }
 
 /**
@@ -654,7 +733,9 @@ module.exports = {
   getConfig,
   createConfig,
   updateConfig,
+  setDefaultConfig,
   deleteConfig,
+  listAvailableModels,
   testConnection,
   getVendorLockStatus,
   applyVendorLock,

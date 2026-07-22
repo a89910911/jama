@@ -181,6 +181,8 @@ function setupRouter(cfg, db, log) {
     });
   });
   r.put('/ai-configs/bulk-update-key', authService.requireSuperAdmin, aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
+  r.put('/ai-configs/:id/default', authService.requireSuperAdmin, aiConfig.setDefault);
+  r.get('/ai-configs/:id/models', authService.requireSuperAdmin, aiConfig.listModels);
   r.get('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.get);
   r.put('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.update);
   r.delete('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.delete);

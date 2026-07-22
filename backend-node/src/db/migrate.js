@@ -313,6 +313,8 @@ function ensureAllColumns(database) {
     { name: 'error',        type: 'TEXT' },
     { name: 'result',       type: 'TEXT' },
     { name: 'prompt_snapshot', type: 'TEXT' },
+    { name: 'request_payload', type: 'TEXT' },
+    { name: 'recovery_attempts', type: 'INTEGER DEFAULT 0' },
     { name: 'created_at',   type: 'TEXT' },
     { name: 'updated_at',   type: 'TEXT' },
     { name: 'deleted_at',   type: 'TEXT' },

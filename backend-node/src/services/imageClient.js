@@ -797,9 +797,43 @@ function isQwenImageProvider(config, model) {
   return p === 'qwen_image' || /^qwen-image/.test(m);
 }
 
+function isQwenImage20Model(model) {
+  return /^qwen-image-2\.0(?:-|$)/i.test(String(model || ''));
+}
+
+function isWan27ImageModel(model) {
+  return /^wan2\.7-image(?:-pro)?$/i.test(String(model || ''));
+}
+
+function ratioFromImageSize(size, fallback = 16 / 9) {
+  const raw = String(size || '').trim().toLowerCase();
+  const dimensionMatch = raw.replace(/x/g, '*').match(/^(\d+)\s*\*\s*(\d+)$/);
+  if (dimensionMatch) {
+    const width = Number(dimensionMatch[1]);
+    const height = Number(dimensionMatch[2]);
+    if (width > 0 && height > 0) return width / height;
+  }
+  const ratioMatch = raw.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+  if (ratioMatch) {
+    const width = Number(ratioMatch[1]);
+    const height = Number(ratioMatch[2]);
+    if (width > 0 && height > 0) return width / height;
+  }
+  return fallback;
+}
+
+function recommended2KImageSize(size) {
+  const ratio = ratioFromImageSize(size);
+  if (ratio >= 1.7) return '2688*1536';
+  if (ratio >= 1.15) return '2368*1728';
+  if (ratio >= 0.87) return '2048*2048';
+  if (ratio >= 0.6) return '1728*2368';
+  return '1536*2688';
+}
+
 // qwen-image 仅支持以下 size：1664*928(16:9), 1472*1104(4:3), 1328*1328(1:1), 1104*1472(3:4), 928*1664(9:16)
-function qwenImageSize(size) {
-  const allowed = ['1664*928', '1472*1104', '1328*1328', '1104*1472', '928*1664'];
+function qwenImageSize(size, model) {
+  if (isQwenImage20Model(model)) return recommended2KImageSize(size);
   if (!size || typeof size !== 'string') return '1664*928';
   const s = String(size).trim().toLowerCase().replace(/x/g, '*');
   const match = s.match(/^(\d+)\s*\*\s*(\d+)$/);
@@ -813,6 +847,10 @@ function qwenImageSize(size) {
   if (ratio >= 0.85) return '1328*1328';  // 1:1
   if (ratio >= 0.65) return '1104*1472';  // 3:4
   return '928*1664';                      // 9:16
+}
+
+function dashScopeImageSizeForModel(size, model) {
+  return isWan27ImageModel(model) ? recommended2KImageSize(size) : dashScopeSize(size);
 }
 
 /**
@@ -1240,31 +1278,55 @@ async function callVeniceImageApi(config, log, opts) {
 // 通义千问 qwen-image：仅支持 content 中一个 text，用同步接口，parameters 不含 stream/enable_interleave
 async function callDashScopeImageApi(config, log, opts) {
   const { prompt, model, size, image_gen_id, reference_image_urls, files_base_url, storage_local_path, negative_prompt } = opts;
-  const base = (config.base_url || '').replace(/\/$/, '');
+  const base = (config.base_url || '').replace(/\/$/, '').replace(/\/api\/v1$/i, '');
   const url = base + (config.endpoint || '/api/v1/services/aigc/multimodal-generation/generation');
-  if (!url.includes('dashscope')) {
-    return { error: '通义万象 base_url 需为 https://dashscope.aliyuncs.com' };
+  let isAliyunEndpoint = false;
+  try {
+    isAliyunEndpoint = new URL(url).hostname.endsWith('aliyuncs.com');
+  } catch (_) {}
+  if (!isAliyunEndpoint) {
+    return { error: '通义模型 base_url 需使用阿里云百炼 aliyuncs.com 接口地址' };
   }
   const isQwenImage = isQwenImageProvider(config, model);
+  const isQwen20 = isQwenImage20Model(model);
+  const isWan27 = isWan27ImageModel(model);
+  const requestImpl = typeof opts.request_impl === 'function' ? opts.request_impl : postJSONWithTimeout;
+  const refs = Array.isArray(reference_image_urls) ? reference_image_urls.filter(Boolean) : [];
+  const refLimit = isQwen20 ? 3 : isWan27 ? 9 : 10;
+  const resolvedRefs = [];
+  for (const ref of refs.slice(0, refLimit)) {
+    const img = resolveImageRef(ref, files_base_url, storage_local_path);
+    if (img) resolvedRefs.push(img);
+  }
 
   if (isQwenImage) {
-    // 千问文生图：仅支持单条 text，长度不超过 800 字符；同步接口，无 stream/enable_interleave
-    const text = (prompt || '').toString().trim().slice(0, 800);
+    // Qwen Image 2.0 同一模型支持文生图和 1-3 张参考图编辑；旧系列仍只提交单条文本。
+    const textLimit = isQwen20 ? 5200 : 800;
+    const text = (prompt || '').toString().trim().slice(0, textLimit);
+    const content = [
+      ...(isQwen20 ? resolvedRefs.map((image) => ({ image })) : []),
+      { text },
+    ];
     const body = {
       model: model || 'qwen-image-max',
       input: {
-        messages: [{ role: 'user', content: [{ text }] }],
+        messages: [{ role: 'user', content }],
       },
       parameters: {
         prompt_extend: true,
         watermark: false,
-        size: qwenImageSize(size),
+        size: qwenImageSize(size, model),
       },
     };
     if (negative_prompt && String(negative_prompt).trim()) {
       body.parameters.negative_prompt = String(negative_prompt).trim().slice(0, 500);
     }
-    log.info('Image API request (Qwen-Image sync)', { url: url.slice(0, 70), model: body.model, image_gen_id });
+    log.info('Image API request (Qwen-Image sync)', {
+      url: url.slice(0, 70),
+      model: body.model,
+      image_gen_id,
+      reference_count: isQwen20 ? resolvedRefs.length : 0,
+    });
     const qwenHeaders = {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + (config.api_key || ''),
@@ -1272,7 +1334,7 @@ async function callDashScopeImageApi(config, log, opts) {
     let raw;
     let httpStatus;
     try {
-      const out = await postJSONWithTimeout(url, qwenHeaders, body, IMAGE_HTTP_TIMEOUT_MS);
+      const out = await requestImpl(url, qwenHeaders, body, IMAGE_HTTP_TIMEOUT_MS);
       httpStatus = out.statusCode;
       raw = out.raw;
     } catch (e) {
@@ -1309,39 +1371,41 @@ async function callDashScopeImageApi(config, log, opts) {
     }
   }
 
-  const refs = Array.isArray(reference_image_urls) ? reference_image_urls.filter(Boolean) : [];
-  const content = [{ text: prompt || '' }];
-  const resolvedRefs = [];
-  for (const ref of refs.slice(0, 10)) {
-    const img = resolveImageRef(ref, files_base_url, storage_local_path);
-    if (img) {
-      content.push({ image: img });
-      resolvedRefs.push(img.startsWith('data:') ? '(base64)' : img);
-    }
-  }
+  const content = isWan27
+    ? [...resolvedRefs.map((image) => ({ image })), { text: prompt || '' }]
+    : [{ text: prompt || '' }, ...resolvedRefs.map((image) => ({ image }))];
   log.info('reference_image_urls 完整路径（imageClient 入参及解析后）', {
     image_gen_id,
     raw_reference_image_urls: reference_image_urls || [],
-    resolved_for_api: resolvedRefs,
+    resolved_for_api: resolvedRefs.map((img) => (img.startsWith('data:') ? '(base64)' : img)),
   });
 
-  const hasRefs = content.length > 1;
-  const stream = !hasRefs; // enable_interleave=false 时必须 stream=false
+  const hasRefs = resolvedRefs.length > 0;
+  // Wan 2.7 使用同步 JSON；Wan 2.6 文生图继续使用 SSE 交错输出。
+  const stream = !isWan27 && !hasRefs;
+  const parameters = isWan27
+    ? {
+        watermark: false,
+        n: 1,
+        size: dashScopeImageSizeForModel(size, model),
+        ...(!hasRefs ? { thinking_mode: true } : {}),
+        ...(negative_prompt ? { negative_prompt } : {}),
+      }
+    : {
+        prompt_extend: true,
+        watermark: false,
+        n: 1,
+        enable_interleave: !hasRefs,
+        size: dashScopeImageSizeForModel(size, model),
+        stream,
+        ...(negative_prompt ? { negative_prompt } : {}),
+      };
   const body = {
     model: model || 'wan2.6-image',
     input: {
       messages: [{ role: 'user', content }],
     },
-    parameters: {
-      prompt_extend: true,
-      watermark: false,
-      n: 1,
-      enable_interleave: !hasRefs,
-      size: dashScopeSize(size),
-      stream,
-      // 多张参考图时注入 negative_prompt，防止生成分割/拼贴布局
-      ...(negative_prompt ? { negative_prompt } : {}),
-    },
+    parameters,
   };
   const contentSummary = content.map((p) => (p.text != null ? 'text' : p.image && p.image.startsWith('data:') ? 'image(base64)' : 'image(url)'));
   log.info('Image API request (DashScope)', {
@@ -1350,7 +1414,7 @@ async function callDashScopeImageApi(config, log, opts) {
     image_gen_id,
     reference_count: refs.length,
     enable_interleave: body.parameters.enable_interleave,
-    stream: body.parameters.stream,
+    stream,
     content_parts: contentSummary,
   });
   const headers = {
@@ -1361,7 +1425,7 @@ async function callDashScopeImageApi(config, log, opts) {
   let raw;
   let httpStatus;
   try {
-    const out = await postJSONWithTimeout(url, headers, body, IMAGE_HTTP_TIMEOUT_MS);
+    const out = await requestImpl(url, headers, body, IMAGE_HTTP_TIMEOUT_MS);
     httpStatus = out.statusCode;
     raw = out.raw;
   } catch (e) {
@@ -2454,6 +2518,11 @@ module.exports = {
   refListHasCanonical,
   fixAgnesImageSize,
   isAgnesImageConfig,
+  isQwenImage20Model,
+  isWan27ImageModel,
+  qwenImageSize,
+  dashScopeImageSizeForModel,
+  callDashScopeImageApi,
   normalizeFalImageSize,
   resolveFalImageEndpoint,
   normalizeVeniceImageResolution,

@@ -16,6 +16,12 @@ export const aiAPI = {
   update(id, body) {
     return request.put(`/ai-configs/${id}`, body)
   },
+  setDefault(id) {
+    return request.put(`/ai-configs/${id}/default`)
+  },
+  listModels(id, serviceType = 'text') {
+    return request.get(`/ai-configs/${id}/models`, { params: { service_type: serviceType } })
+  },
   delete(id) {
     return request.delete(`/ai-configs/${id}`)
   },

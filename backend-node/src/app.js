@@ -22,9 +22,16 @@ function createApp() {
   const log = logger;
 
   const taskService = require('./services/taskService');
+  const characterGenerationService = require('./services/characterGenerationService');
+  const recoverCharacterTasks = () => characterGenerationService.resumeInterruptedCharacterGenerations(
+    db,
+    config,
+    log
+  );
   taskService.clearCompletedTaskErrors(db, log);
+  recoverCharacterTasks();
   taskService.failOrphanedAsyncTasksOnStartup(db, log);
-  taskService.startOrphanedAsyncTaskReaper(db, log);
+  taskService.startOrphanedAsyncTaskReaper(db, log, { beforeSweep: recoverCharacterTasks });
 
   const { resumeProcessingVideoGenerations } = require('./services/videoService');
   resumeProcessingVideoGenerations(db, log);

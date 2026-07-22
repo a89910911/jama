@@ -280,6 +280,10 @@ describe('Venice.ai Seedance 2.0 adapter', () => {
     assert.equal(normalizeVeniceSeedanceDuration(2), '4s');
     assert.equal(normalizeVeniceSeedanceDuration('20s'), '15s');
     assert.equal(normalizeVeniceSeedanceResolution('1080P'), '1080p');
+    assert.equal(
+      normalizeVeniceSeedanceResolution('1080P', 'seedance-2-0-fast-text-to-video'),
+      '720p'
+    );
     assert.equal(normalizeVeniceSeedanceAspectRatio('9:16'), '9:16');
     assert.equal(normalizeVeniceSeedanceAspectRatio('auto'), '16:9');
     assert.equal(
@@ -389,6 +393,65 @@ describe('Venice.ai Seedance 2.0 adapter', () => {
 });
 
 describe('Venice.ai connection test', () => {
+  it('syncs only online, compatible text models from the account catalog', async () => {
+    let captured = null;
+    const result = await aiConfigService.listAvailableModels({
+      base_url: 'https://api.venice.ai/api/v1',
+      api_key: 'venice-secret',
+      provider: 'venice',
+      service_type: 'text',
+      request_impl: async (url, options) => {
+        captured = { url: String(url), options };
+        return {
+          statusCode: 200,
+          raw: JSON.stringify({
+            data: [
+              {
+                id: 'deepseek-v4-pro',
+                type: 'text',
+                model_spec: {
+                  name: 'DeepSeek V4 Pro',
+                  capabilities: { supportsResponseSchema: true },
+                  traits: ['reasoning'],
+                },
+              },
+              {
+                id: 'no-json-model',
+                type: 'text',
+                model_spec: { capabilities: { supportsResponseSchema: false } },
+              },
+              {
+                id: 'offline-model',
+                type: 'text',
+                model_spec: { offline: true, capabilities: { supportsResponseSchema: true } },
+              },
+              {
+                id: 'retired-model',
+                type: 'text',
+                model_spec: {
+                  capabilities: { supportsResponseSchema: true },
+                  deprecation: { date: '2000-01-01T00:00:00.000Z' },
+                },
+              },
+            ],
+          }),
+        };
+      },
+    });
+
+    assert.equal(captured.url, 'https://api.venice.ai/api/v1/models?type=text');
+    assert.equal(captured.options.headers.Authorization, 'Bearer venice-secret');
+    assert.deepEqual(result.models, [
+      {
+        id: 'deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        type: 'text',
+        traits: ['reasoning'],
+        deprecation: null,
+      },
+    ]);
+  });
+
   it('validates the key through the read-only models endpoint', async () => {
     let captured = null;
     const requestImpl = async (url, options) => {

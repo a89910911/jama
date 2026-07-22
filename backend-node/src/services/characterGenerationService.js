@@ -205,25 +205,48 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
   log.info('Character generation completed', { task_id: taskID, drama_id: req.drama_id, character_count: characters.length });
 }
 
+function resumableRequest(req) {
+  return {
+    drama_id: req.drama_id,
+    episode_id: req.episode_id,
+    outline: req.outline,
+    temperature: req.temperature,
+    model: req.model,
+  };
+}
+
+function scheduleCharacterGeneration(db, cfg, log, taskId, req, options = {}) {
+  const run = options.processTask || processCharacterGeneration;
+  const schedule = options.schedule || setImmediate;
+  schedule(() => {
+    Promise.resolve(run(db, cfg, log, taskId, req)).catch((err) => {
+      log.error('processCharacterGeneration fatal', { error: err.message, task_id: taskId });
+      taskService.updateTaskError(db, taskId, err.message || '角色提取失败');
+    });
+  });
+}
+
 function generateCharacters(db, cfg, log, req) {
   const dramaId = String(req.drama_id || '');
   if (!dramaId) throw new Error('drama_id 必填');
   const task = taskService.createTask(db, log, 'character_generation', dramaId);
-  setImmediate(() => {
-    processCharacterGeneration(db, cfg, log, task.id, {
-      drama_id: req.drama_id,
-      episode_id: req.episode_id,
-      outline: req.outline,
-      temperature: req.temperature,
-      model: req.model,
-    }).catch((err) => {
-      log.error('processCharacterGeneration fatal', { error: err.message, task_id: task.id });
-    });
-  });
+  const taskRequest = resumableRequest(req);
+  taskService.setTaskRequestPayload(db, task.id, taskRequest);
+  scheduleCharacterGeneration(db, cfg, log, task.id, taskRequest);
   return task.id;
+}
+
+/** Resume character extraction only after its heartbeat lease has expired. */
+function resumeInterruptedCharacterGenerations(db, cfg, log, options = {}) {
+  const claimed = taskService.claimRecoverableTasks(db, log, 'character_generation', options);
+  for (const task of claimed) {
+    scheduleCharacterGeneration(db, cfg, log, task.id, task.request_payload, options);
+  }
+  return claimed.length;
 }
 
 module.exports = {
   generateCharacters,
+  resumeInterruptedCharacterGenerations,
   enrichIdentityAnchors,
 };

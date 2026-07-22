@@ -1173,7 +1173,8 @@ function buildQueryUrl(config, taskId) {
   const isVolc = p === 'volces' || p === 'volcengine' || p === 'volc';
   const isSora = proto === 'sora';
   if (isVolc) return getVolcVideoBase(config) + VOLC_VIDEO_QUERY_PATH + '/' + encodeURIComponent(taskId);
-  const base = (config.base_url || '').replace(/\/$/, '');
+  let base = (config.base_url || '').replace(/\/$/, '');
+  if (isDashScope) base = base.replace(/\/api\/v1$/i, '');
   let defaultEp;
   if (isSora) defaultEp = '/v1/videos/{taskId}';
   else if (proto === 'xai') defaultEp = '/v1/videos/{taskId}';
@@ -1624,13 +1625,26 @@ async function callKlingVideoApi(config, log, opts) {
 const DASHSCOPE_VIDEO_GENERATION = '/api/v1/services/aigc/video-generation/video-synthesis';
 const DASHSCOPE_IMAGE2VIDEO = '/api/v1/services/aigc/image2video/video-synthesis';
 
+function normalizeDashScopeWan27Duration(duration) {
+  const value = Math.round(Number(duration) || 5);
+  return Math.min(15, Math.max(2, value));
+}
+
+function normalizeDashScopeWan27Resolution(resolution) {
+  const raw = String(resolution || '').toUpperCase();
+  return raw.includes('720') ? '720P' : '1080P';
+}
+
+function normalizeDashScopeWan27Ratio(aspectRatio) {
+  const raw = String(aspectRatio || '').trim();
+  return ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(raw) ? raw : '16:9';
+}
+
 /**
- * ???????????? endpoint ????????? /api/v1/tasks/{taskId}
+ * 通义万相视频模型统一使用异步任务，查询端点为 /api/v1/tasks/{taskId}。
  * - wan2.2-kf2v-flash: image2video, first_frame_url + last_frame_url
- * - wan2.6-t2v: video-generation, ? prompt??????
- * - wan2.6-i2v-flash: video-generation, prompt + img_url????????
- * - wanx2.1-vace-plus: video-generation, function image_reference + ref_images_url??? 3 ??
- * - wan2.6-r2v-flash: video-generation, reference_urls??? 5 ??
+ * - wan2.6 系列：使用旧版 img_url / reference_urls 参数
+ * - wan2.7 系列：使用统一 media 数组，并支持 2-15 秒、720P/1080P
  */
 async function callDashScopeVideoApi(config, log, opts) {
   const {
@@ -1641,13 +1655,19 @@ async function callDashScopeVideoApi(config, log, opts) {
     last_frame_url,
     reference_urls,
     duration,
+    aspect_ratio,
+    resolution,
+    negative_prompt,
     files_base_url,
     storage_local_path,
     video_gen_id,
   } = opts;
-  const base = (config.base_url || '').replace(/\/$/, '');
+  const base = (config.base_url || '').replace(/\/$/, '').replace(/\/api\/v1$/i, '');
   const model = modelName || 'wan2.2-kf2v-flash';
   const dur = duration ? Number(duration) : 10;
+  const wan27Duration = normalizeDashScopeWan27Duration(duration);
+  const wan27Resolution = normalizeDashScopeWan27Resolution(resolution);
+  const wan27Ratio = normalizeDashScopeWan27Ratio(aspect_ratio);
   const baseUrl = (files_base_url || '').replace(/\/$/, '');
   const isLocalhost = baseUrl && /localhost|127\.0\.0\.1/i.test(baseUrl);
 
@@ -1695,12 +1715,73 @@ async function callDashScopeVideoApi(config, log, opts) {
     const firstUrl = toImageInput(firstRaw);
     const lastUrl = toImageInput(lastRaw);
     if (!firstUrl || !lastUrl) {
-      return { error: 'wan2.2-kf2v-flash ?????????' };
+      return { error: 'wan2.2-kf2v-flash 需要首帧和尾帧图片' };
     }
     body = {
       model,
       input: { prompt: prompt || '', first_frame_url: firstUrl, last_frame_url: lastUrl },
       parameters: { resolution: '480P', prompt_extend: true },
+    };
+  } else if (model === 'wan2.7-t2v') {
+    url = base + DASHSCOPE_VIDEO_GENERATION;
+    body = {
+      model,
+      input: {
+        prompt: prompt || '',
+        ...(negative_prompt ? { negative_prompt: String(negative_prompt).slice(0, 500) } : {}),
+      },
+      parameters: {
+        resolution: wan27Resolution,
+        ratio: wan27Ratio,
+        duration: wan27Duration,
+        prompt_extend: true,
+        watermark: false,
+      },
+    };
+  } else if (model === 'wan2.7-i2v') {
+    url = base + DASHSCOPE_VIDEO_GENERATION;
+    const firstRaw = (first_frame_url && first_frame_url.trim()) || (image_url && image_url.trim()) || reference_urls?.[0];
+    const lastRaw = (last_frame_url && last_frame_url.trim()) || '';
+    const firstUrl = toImageInput(firstRaw);
+    const lastUrl = toImageInput(lastRaw);
+    if (!firstUrl) return { error: 'wan2.7-i2v 需要首帧图片' };
+    const media = [{ type: 'first_frame', url: firstUrl }];
+    if (lastUrl && lastUrl !== firstUrl) media.push({ type: 'last_frame', url: lastUrl });
+    body = {
+      model,
+      input: {
+        prompt: prompt || '',
+        media,
+      },
+      parameters: {
+        resolution: wan27Resolution,
+        duration: wan27Duration,
+        prompt_extend: true,
+        watermark: false,
+      },
+    };
+  } else if (model === 'wan2.7-r2v') {
+    url = base + DASHSCOPE_VIDEO_GENERATION;
+    const rawRefs = Array.isArray(reference_urls) ? reference_urls.filter(Boolean).slice(0, 5) : [];
+    if (rawRefs.length === 0) {
+      if (first_frame_url || image_url) rawRefs.push(first_frame_url || image_url);
+      if (last_frame_url) rawRefs.push(last_frame_url);
+    }
+    const media = rawRefs.map(toImageInput).filter(Boolean).map((item) => ({
+      type: 'reference_image',
+      url: item,
+    }));
+    if (media.length === 0) return { error: 'wan2.7-r2v 需要至少一张参考图片' };
+    body = {
+      model,
+      input: { prompt: prompt || '', media },
+      parameters: {
+        resolution: wan27Resolution,
+        ratio: wan27Ratio,
+        duration: wan27Duration,
+        prompt_extend: false,
+        watermark: false,
+      },
     };
   } else if (model === 'wan2.6-t2v') {
     url = base + DASHSCOPE_VIDEO_GENERATION;
@@ -1713,7 +1794,7 @@ async function callDashScopeVideoApi(config, log, opts) {
     url = base + DASHSCOPE_VIDEO_GENERATION;
     const imgRaw = (image_url && image_url.trim()) || (first_frame_url && first_frame_url.trim());
     const imgUrl = toImageInput(imgRaw);
-    if (!imgUrl) return { error: 'wan2.6-i2v-flash ??????' };
+    if (!imgUrl) return { error: 'wan2.6-i2v-flash 需要首帧图片' };
     body = {
       model,
       input: { prompt: prompt || '', img_url: imgUrl },
@@ -1723,7 +1804,7 @@ async function callDashScopeVideoApi(config, log, opts) {
     url = base + DASHSCOPE_VIDEO_GENERATION;
     const rawRefs = Array.isArray(reference_urls) ? reference_urls.filter(Boolean).slice(0, 3) : [];
     const refs = rawRefs.map(toImageInput).filter(Boolean);
-    if (refs.length === 0) return { error: 'wanx2.1-vace-plus ???????? 3 ??' };
+    if (refs.length === 0) return { error: 'wanx2.1-vace-plus 需要参考图片，最多 3 张' };
     body = {
       model,
       input: { function: 'image_reference', prompt: prompt || '', ref_images_url: refs },
@@ -1733,17 +1814,17 @@ async function callDashScopeVideoApi(config, log, opts) {
     url = base + DASHSCOPE_VIDEO_GENERATION;
     const rawRefs = Array.isArray(reference_urls) ? reference_urls.filter(Boolean).slice(0, 5) : [];
     const refs = rawRefs.map(toImageInput).filter(Boolean);
-    if (refs.length === 0) return { error: 'wan2.6-r2v-flash ??????????? 5 ??' };
+    if (refs.length === 0) return { error: 'wan2.6-r2v-flash 需要参考图片，最多 5 张' };
     body = {
       model,
       input: { prompt: prompt || '', reference_urls: refs },
       parameters: { prompt_extend: true },
     };
   } else {
-    return { error: '????????????: ' + model };
+    return { error: '暂不支持的通义视频模型: ' + model };
   }
 
-  const shorten = (v) => (v && v.startsWith('data:') ? '(base64 ???)' : v);
+  const shorten = (v) => (v && v.startsWith('data:') ? '(base64 图片)' : v);
   const imageUrlsInBody = body.input
     ? {
         first_frame_url: shorten(body.input.first_frame_url),
@@ -1751,16 +1832,20 @@ async function callDashScopeVideoApi(config, log, opts) {
         img_url: shorten(body.input.img_url),
         ref_images_url: Array.isArray(body.input.ref_images_url) ? body.input.ref_images_url.map(shorten) : body.input.ref_images_url,
         reference_urls: Array.isArray(body.input.reference_urls) ? body.input.reference_urls.map(shorten) : body.input.reference_urls,
+        media: Array.isArray(body.input.media)
+          ? body.input.media.map((item) => ({ type: item.type, url: shorten(item.url) }))
+          : undefined,
       }
     : {};
-  log.info('DashScope ???????base64 ??? = ?????? base64??? download image failed?', {
+  log.info('DashScope 视频参考素材', {
     model,
     video_gen_id,
-    files_base_url: baseUrl || '(???)',
+    files_base_url: baseUrl || '(未配置)',
     image_urls: imageUrlsInBody,
   });
   log.info('Video API request (DashScope)', { url: url.slice(0, 70), model, video_gen_id });
-  const res = await fetch(url, {
+  const requestImpl = typeof opts.request_impl === 'function' ? opts.request_impl : fetch;
+  const res = await requestImpl(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1771,7 +1856,7 @@ async function callDashScopeVideoApi(config, log, opts) {
   });
   const raw = await res.text();
   if (!res.ok) {
-    let errMsg = '????????: ' + res.status;
+    let errMsg = '通义视频生成请求失败: ' + res.status;
     try {
       const errJson = JSON.parse(raw);
       if (errJson.message) errMsg += ' - ' + errJson.message;
@@ -1786,16 +1871,16 @@ async function callDashScopeVideoApi(config, log, opts) {
   try {
     data = JSON.parse(raw);
   } catch (e) {
-    return { error: '??????????' };
+    return { error: '通义视频生成响应格式异常' };
   }
   if (data.code) {
-    return { error: data.message || data.code || '????????' };
+    return { error: data.message || data.code || '通义视频生成失败' };
   }
   const taskId = data?.output?.task_id;
   if (taskId) return { task_id: taskId, status: 'PENDING' };
   const videoUrl = parseDashScopeVideoUrl(data);
   if (videoUrl) return { video_url: videoUrl };
-  return { error: '??? task_id ? video_url' };
+  return { error: '通义视频响应中没有 task_id 或 video_url' };
 }
 
 /**
@@ -3589,11 +3674,15 @@ function normalizeFalSeedanceDuration(duration) {
   return String(Math.min(15, Math.max(4, value)));
 }
 
-function normalizeFalSeedanceResolution(resolution) {
+function normalizeFalSeedanceResolution(resolution, modelOrEndpoint = '') {
   const raw = String(resolution || '').trim().toLowerCase();
   const matched = raw.match(/(480|720|1080|4k)/);
   if (!matched) return '720p';
-  return matched[1] === '4k' ? '4k' : `${matched[1]}p`;
+  const normalized = matched[1] === '4k' ? '4k' : `${matched[1]}p`;
+  if (/\/(?:fast|mini)(?:\/|$)/i.test(String(modelOrEndpoint || '')) && !['480p', '720p'].includes(normalized)) {
+    return '720p';
+  }
+  return normalized;
 }
 
 function normalizeFalSeedanceAspectRatio(aspectRatio) {
@@ -3668,13 +3757,20 @@ async function callFalVideoApi(config, log, opts) {
         log,
         opts.video_gen_id
       );
-  const mode = referenceUrls.length
+  const requestedModel = config.endpoint || opts.model || 'bytedance/seedance-2.0';
+  const isMini = /\/mini(?:\/|$)/i.test(String(requestedModel));
+  const effectiveReferenceUrls = [...referenceUrls];
+  if (isMini && effectiveReferenceUrls.length === 0 && firstUrl) {
+    effectiveReferenceUrls.push(firstUrl);
+    if (lastUrl && lastUrl !== firstUrl) effectiveReferenceUrls.push(lastUrl);
+  }
+  const mode = effectiveReferenceUrls.length
     ? 'reference-to-video'
     : firstUrl
       ? 'image-to-video'
       : 'text-to-video';
   const endpoint = resolveFalSeedanceEndpoint(
-    config.endpoint || opts.model || 'bytedance/seedance-2.0',
+    requestedModel,
     mode
   );
   const url = joinFalUrl(falQueueBase(config.base_url), endpoint);
@@ -3686,17 +3782,17 @@ async function callFalVideoApi(config, log, opts) {
       ? 'high'
       : 'standard';
   const body = {
-    prompt: referenceUrls.length
+    prompt: effectiveReferenceUrls.length
       ? normalizeFalReferencePrompt(opts.prompt)
       : String(opts.prompt || ''),
-    resolution: normalizeFalSeedanceResolution(opts.resolution),
+    resolution: normalizeFalSeedanceResolution(opts.resolution, endpoint),
     duration: normalizeFalSeedanceDuration(opts.duration),
     aspect_ratio: normalizeFalSeedanceAspectRatio(opts.aspect_ratio),
     generate_audio: generateAudio,
-    bitrate_mode: bitrateMode,
-    ...(referenceUrls.length ? { image_urls: referenceUrls } : {}),
-    ...(firstUrl ? { image_url: firstUrl } : {}),
-    ...(lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
+    ...(!isMini ? { bitrate_mode: bitrateMode } : {}),
+    ...(effectiveReferenceUrls.length ? { image_urls: effectiveReferenceUrls } : {}),
+    ...(!isMini && firstUrl ? { image_url: firstUrl } : {}),
+    ...(!isMini && lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
   };
 
   log.info('[fal.ai 视频] 提交 Seedance 2.0 任务', {
@@ -3706,7 +3802,7 @@ async function callFalVideoApi(config, log, opts) {
     resolution: body.resolution,
     duration: body.duration,
     aspect_ratio: body.aspect_ratio,
-    reference_count: referenceUrls.length,
+    reference_count: effectiveReferenceUrls.length,
     has_first_frame: !!firstUrl,
     has_last_frame: !!body.end_image_url,
   });
@@ -3756,10 +3852,13 @@ function normalizeVeniceSeedanceDuration(duration) {
   return `${Math.min(15, Math.max(4, value))}s`;
 }
 
-function normalizeVeniceSeedanceResolution(resolution) {
+function normalizeVeniceSeedanceResolution(resolution, model = '') {
   const raw = String(resolution || '').trim().toLowerCase();
   const matched = raw.match(/(480|720|1080)/);
-  return matched ? `${matched[1]}p` : '720p';
+  const normalized = matched ? `${matched[1]}p` : '720p';
+  return /seedance-2-0-fast/i.test(String(model || '')) && normalized === '1080p'
+    ? '720p'
+    : normalized;
 }
 
 function normalizeVeniceSeedanceAspectRatio(aspectRatio) {
@@ -3835,7 +3934,7 @@ async function callVeniceVideoApi(config, log, opts) {
       ? normalizeFalReferencePrompt(opts.prompt)
       : String(opts.prompt || ''),
     duration: normalizeVeniceSeedanceDuration(opts.duration),
-    resolution: normalizeVeniceSeedanceResolution(opts.resolution),
+    resolution: normalizeVeniceSeedanceResolution(opts.resolution, model),
     aspect_ratio: normalizeVeniceSeedanceAspectRatio(opts.aspect_ratio),
     audio: parseBooleanSetting(settings.generate_audio ?? settings.audio, true),
     ...(referenceUrls.length ? { reference_image_urls: referenceUrls } : {}),
@@ -4477,6 +4576,9 @@ async function callVideoApiInternal(db, log, opts) {
       last_frame_url: opts.last_frame_url,
       reference_urls: opts.reference_urls,
       duration: opts.duration,
+      aspect_ratio,
+      resolution: opts.resolution,
+      negative_prompt: opts.negative_prompt,
       files_base_url: opts.files_base_url,
       storage_local_path: opts.storage_local_path,
       video_gen_id: opts.video_gen_id,
@@ -5477,6 +5579,10 @@ module.exports = {
   formatVideoPostBodyForLog,
   isSeedance2FamilyModel,
   normalizeVolcengineDuration,
+  normalizeDashScopeWan27Duration,
+  normalizeDashScopeWan27Resolution,
+  normalizeDashScopeWan27Ratio,
+  callDashScopeVideoApi,
   normalizeFalSeedanceDuration,
   normalizeFalSeedanceResolution,
   normalizeFalSeedanceAspectRatio,

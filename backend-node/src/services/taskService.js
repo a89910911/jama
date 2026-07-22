@@ -4,6 +4,7 @@ const ACTIVE_TASK_STATUSES = ['pending', 'processing', 'running'];
 const DEFAULT_ORPHAN_STALE_MS = 60 * 1000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 10 * 1000;
 const DEFAULT_REAPER_INTERVAL_MS = 30 * 1000;
+const DEFAULT_MAX_RECOVERY_ATTEMPTS = 2;
 const taskHeartbeats = new Map();
 
 function positiveNumber(value, fallback) {
@@ -26,6 +27,75 @@ function createTask(db, log, taskType, resourceId) {
   startTaskHeartbeat(db, log, id);
   const task = getTask(db, id);
   return task || { id, type: taskType, status: 'pending', progress: 0, message: '', resource_id: resourceId || '', created_at: now, updated_at: now, completed_at: null };
+}
+
+function setTaskRequestPayload(db, taskId, payload) {
+  const serialized = JSON.stringify(payload || {});
+  db.prepare('UPDATE async_tasks SET request_payload = ? WHERE id = ?').run(serialized, taskId);
+}
+
+function parseTaskRequestPayload(value) {
+  if (!value) return null;
+  try {
+    const payload = JSON.parse(value);
+    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Atomically claim stale tasks that have enough persisted input to be resumed.
+ * Updating updated_at is the lease acquisition: concurrent backend instances may
+ * select the same row, but only the first one can update it while it is stale.
+ */
+function claimRecoverableTasks(db, log, taskType, options = {}) {
+  const staleAfterMs = options.staleAfterMs === 0
+    ? 0
+    : positiveNumber(options.staleAfterMs, orphanStaleMs());
+  const maxAttempts = positiveNumber(options.maxAttempts, DEFAULT_MAX_RECOVERY_ATTEMPTS);
+  const limit = Math.min(100, positiveNumber(options.limit, 20));
+  const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
+  const rows = db.prepare(
+    `SELECT id, type, status, resource_id, request_payload, recovery_attempts, updated_at
+       FROM async_tasks
+      WHERE type = ?
+        AND status IN ('pending', 'processing', 'running')
+        AND deleted_at IS NULL
+        AND request_payload IS NOT NULL
+        AND TRIM(request_payload) != ''
+        AND COALESCE(recovery_attempts, 0) < ?
+        AND (updated_at IS NULL OR updated_at <= ?)
+      ORDER BY created_at ASC
+      LIMIT ?`
+  ).all(taskType, maxAttempts, staleBefore, limit);
+
+  const claimed = [];
+  for (const row of rows) {
+    const payload = parseTaskRequestPayload(row.request_payload);
+    if (!payload) continue;
+    const now = new Date().toISOString();
+    const changed = db.prepare(
+      `UPDATE async_tasks
+          SET status = 'pending', progress = 0,
+              message = '检测到服务重启，正在自动恢复任务...',
+              error = NULL, completed_at = NULL, updated_at = ?,
+              recovery_attempts = COALESCE(recovery_attempts, 0) + 1
+        WHERE id = ?
+          AND status IN ('pending', 'processing', 'running')
+          AND (updated_at IS NULL OR updated_at <= ?)`
+    ).run(now, row.id, staleBefore).changes;
+    if (!changed) continue;
+    startTaskHeartbeat(db, log, row.id);
+    claimed.push({ ...row, request_payload: payload, recovery_attempts: Number(row.recovery_attempts || 0) + 1 });
+    log?.warn?.('Recoverable async task claimed', {
+      task_id: row.id,
+      type: row.type,
+      resource_id: row.resource_id,
+      recovery_attempt: Number(row.recovery_attempts || 0) + 1,
+    });
+  }
+  return claimed;
 }
 
 function getTask(db, taskId) {
@@ -310,6 +380,7 @@ function startOrphanedAsyncTaskReaper(db, log, options = {}) {
   const intervalMs = positiveNumber(options.intervalMs, DEFAULT_REAPER_INTERVAL_MS);
   const sweep = () => {
     try {
+      options.beforeSweep?.();
       failOrphanedAsyncTasksOnStartup(db, log, { staleAfterMs });
     } catch (err) {
       log?.warn?.('Async task orphan sweep failed', { error: err.message });
@@ -325,6 +396,8 @@ module.exports = {
   getTask,
   getTasksByResource,
   getTasksByResources,
+  setTaskRequestPayload,
+  claimRecoverableTasks,
   updateTaskStatus,
   updateTaskError,
   updateTaskResult,

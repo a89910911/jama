@@ -67,7 +67,7 @@
               class="vendor-lock-tip"
             >
               <template #title>
-                <span>🔒 当前为厂商锁定模式，AI 服务由管理员统一配置。你只能修改 <b>API Key</b> 和 <b>默认模型</b>。</span>
+                <span>🔒 当前为厂商锁定模式，AI 服务由管理员统一配置。你只能修改 <b>API Key</b>、<b>默认模型</b>和<b>默认配置</b>。</span>
               </template>
             </el-alert>
             <el-button type="primary" size="small" class="vendor-bulk-key-btn" @click="openBulkKey">
@@ -114,9 +114,18 @@
                 <span v-else class="no-default">—</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="openTest(row)">测试</el-button>
+                <el-button
+                  v-if="!row.is_default"
+                  link
+                  type="success"
+                  size="small"
+                  :loading="defaultingId === row.id"
+                  :disabled="defaultingId !== null"
+                  @click="onSetDefault(row)"
+                >设为默认</el-button>
                 <el-button link type="primary" size="small" @click="onRowEdit(row)">{{ vendorLock.enabled ? '修改Key' : '编辑' }}</el-button>
                 <el-button v-if="!vendorLock.enabled" link type="danger" size="small" @click="onDelete(row)">删除</el-button>
               </template>
@@ -227,7 +236,10 @@
     <el-dialog
       v-model="dialogVisible"
       :title="vendorLock.enabled ? '修改 API Key / 默认模型' : (editingId ? '编辑配置' : '添加配置')"
+      class="ai-config-editor-dialog"
       width="520px"
+      top="5vh"
+      append-to-body
       :close-on-click-modal="false"
       @closed="resetForm"
     >
@@ -251,7 +263,9 @@
           <el-form-item>
             <template #label><span class="form-label-tip">默认模型</span></template>
             <el-select v-model="form.default_model" clearable style="width: 100%">
-              <el-option v-for="m in formModelList" :key="m" :label="m" :value="m" />
+              <el-option-group v-for="group in formModelGroups" :key="group.tier" :label="group.label">
+                <el-option v-for="option in group.options" :key="option.value" :label="option.label" :value="option.value" />
+              </el-option-group>
             </el-select>
             <p class="field-tip">实际调用时使用的模型，可从预设列表中选择。</p>
           </el-form-item>
@@ -835,8 +849,16 @@ input_reference = (图片文件，可选)</pre>
               style="width: 220px; margin-bottom: 8px"
               @change="onPresetModelSelect"
             >
-              <el-option v-for="m in availableModels" :key="m" :label="m" :value="m" />
+              <el-option-group v-for="group in availableModelGroups" :key="group.tier" :label="group.label">
+                <el-option v-for="option in group.options" :key="option.value" :label="option.label" :value="option.value" />
+              </el-option-group>
             </el-select>
+            <el-button
+              v-if="canSyncProviderModels"
+              size="small"
+              :loading="syncingProviderModels"
+              @click="syncProviderModels"
+            >同步 Venice 模型</el-button>
           </div>
           <el-input v-model="form.modelText" type="textarea" :rows="2" placeholder="选择预设厂商后自动填入，可编辑；多个用逗号或换行分隔" />
         </el-form-item>
@@ -854,7 +876,9 @@ input_reference = (图片文件，可选)</pre>
             clearable
             style="width: 100%"
           >
-            <el-option v-for="m in formModelList" :key="m" :label="m" :value="m" />
+            <el-option-group v-for="group in formModelGroups" :key="group.tier" :label="group.label">
+              <el-option v-for="option in group.options" :key="option.value" :label="option.label" :value="option.value" />
+            </el-option-group>
           </el-select>
           <p class="field-tip">该配置被选为「默认」时，生成故事/图片/视频将使用此处指定的模型。</p>
         </el-form-item>
@@ -1320,6 +1344,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key, Microphone, Folder } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
 import { generationSettingsAPI } from '@/api/prompts'
+import { groupModelOptions } from '@/config/aiModelCatalog'
 import PromptEditor from '@/components/PromptEditor.vue'
 import SceneModelMap from '@/components/SceneModelMap.vue'
 import Sd2AssetManagement from '@/components/Sd2AssetManagement.vue'
@@ -1392,6 +1417,7 @@ const loading = ref(false)
 const list = ref([])
 const selectedRows = ref([])
 const batchDeleting = ref(false)
+const defaultingId = ref(null)
 const vendorLock = ref({ enabled: false, config_file: '' })
 const dialogVisible = ref(false)
 const editingId = ref(null)
@@ -1430,8 +1456,17 @@ const form = ref({
   group_id: '',
 })
 const presetModelPick = ref('')
+const remoteProviderModels = ref([])
+const syncingProviderModels = ref(false)
 
 const formModelList = computed(() => parseModelText(form.value.modelText))
+const remoteProviderModelIds = computed(() => remoteProviderModels.value.map((item) => item.id))
+const formModelGroups = computed(() => groupModelOptions(
+  formModelList.value,
+  form.value.service_type,
+  form.value.provider,
+  remoteProviderModelIds.value
+))
 
 // 保证「生成时默认使用」下拉有可选且选中值在列表内，否则会不显示或修改无效
 watch(
@@ -1448,6 +1483,7 @@ watch(
 )
 
 function onServiceTypeChange() {
+  remoteProviderModels.value = []
   const st = form.value.service_type || 'text'
   if (st === 'jimeng2_character_auth') {
     if (!form.value.provider || form.value.provider === CUSTOM_PROVIDER_SENTINEL) {
@@ -1560,34 +1596,34 @@ const oneKeyHolyCrabSaving = ref(false)
 /** 预设厂商与模型（与参考前端一致） */
 const providerConfigs = {
   text: [
-    { id: 'fal', name: 'fal.ai', models: ['openai/gpt-5.5'] },
-    { id: 'venice', name: 'Venice.ai', models: ['openai-gpt-55'] },
+    { id: 'fal', name: 'fal.ai', models: ['openai/gpt-5.5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-terra', 'openai/gpt-5.6-luna'] },
+    { id: 'venice', name: 'Venice.ai', models: ['openai-gpt-55', 'openai-gpt-55-pro', 'deepseek-v4-pro', 'deepseek-v4-flash', 'qwen3-6-27b'] },
     { id: 'openai', name: 'OpenAI', models: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'] },
-    { id: 'volcengine', name: '火山引擎', models: ['deepseek-v3-2-251201', 'doubao-1-5-pro-32k-250115', 'kimi-k2-thinking-251104'] },
+    { id: 'volcengine', name: '火山引擎', models: ['deepseek-v3-2-251201', 'doubao-seed-2-0-pro-260215', 'doubao-seed-2-0-lite-260215', 'doubao-1-5-pro-32k-250115', 'kimi-k2-thinking-251104'] },
     // { id: 'chatfire', name: 'Chatfire', models: ['gemini-3-flash-preview', 'claude-sonnet-4-5-20250929', 'doubao-seed-1-8-251228'] },
     { id: 'gemini', name: 'Google Gemini', models: ['gemini-2.5-pro', 'gemini-3-flash-preview'] },
     { id: 'deepseek', name: 'DeepSeek', models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
-    { id: 'qwen', name: '通义千问', models: ['qwen3-max', 'qwen-plus', 'qwen-flash'] },
+    { id: 'qwen', name: '通义千问', models: ['qwen-plus', 'qwen3.7-max', 'qwen3.7-max-2026-05-20', 'qwen3.6-plus', 'qwen3.6-flash', 'qwen-flash', 'qwen3-max'] },
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-2.0-flash'] }
   ],
   image: [
     { id: 'fal', name: 'fal.ai', models: ['openai/gpt-image-2'] },
     { id: 'venice', name: 'Venice.ai', models: ['gpt-image-2'] },
-    { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-4-0-250828'] },
+    { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-5-0-pro-260628', 'doubao-seedream-5-0-260128', 'doubao-seedream-5-0-lite-260128', 'doubao-seedream-4-0-250828'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-image', 'kling-omni-image'] },
     { id: 'nano_banana', name: 'NanoBanana', models: ['nano-banana-2', 'nano-banana-pro', 'nano-banana'] },
     // { id: 'chatfire', name: 'Chatfire', models: ['nano-banana-pro', 'doubao-seedream-4-5-251128', 'qwen-image'] },
     { id: 'gemini', name: 'Google Gemini', models: ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
     { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] },
-    { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
-    { id: 'qwen_image', name: '通义千问', models: ['qwen-image-max', 'qwen-image-plus', 'qwen-image'] },
+    { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
+    { id: 'qwen_image', name: '通义千问', models: ['qwen-image-max', 'qwen-image-2.0-pro', 'qwen-image-2.0', 'qwen-image-plus', 'qwen-image'] },
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   storyboard_image: [
     { id: 'fal', name: 'fal.ai', models: ['openai/gpt-image-2'] },
     { id: 'venice', name: 'Venice.ai', models: ['gpt-image-2'] },
-    { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
-    { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-4-0-250828'] },
+    { id: 'dashscope', name: '通义万象', models: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image', 'qwen-image-edit-plus-2026-01-09', 'qwen-image-edit-plus', 'qwen-image-edit-max'] },
+    { id: 'volcengine', name: '火山引擎', models: ['doubao-seedream-4-5-251128', 'doubao-seedream-5-0-pro-260628', 'doubao-seedream-5-0-260128', 'doubao-seedream-5-0-lite-260128', 'doubao-seedream-4-0-250828'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-image', 'kling-omni-image'] },
     { id: 'nano_banana', name: 'NanoBanana', models: ['nano-banana-2', 'nano-banana-pro', 'nano-banana'] },
     // { id: 'chatfire', name: 'Chatfire', models: ['nano-banana-pro', 'doubao-seedream-4-5-251128', 'qwen-image'] },
@@ -1596,8 +1632,8 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-image-2.1-flash', 'agnes-image-2.0-flash'] }
   ],
   video: [
-    { id: 'fal', name: 'fal.ai', models: ['bytedance/seedance-2.0'] },
-    { id: 'venice', name: 'Venice.ai', models: ['seedance-2-0'] },
+    { id: 'fal', name: 'fal.ai', models: ['bytedance/seedance-2.0', 'bytedance/seedance-2.0/fast', 'bytedance/seedance-2.0/mini'] },
+    { id: 'venice', name: 'Venice.ai', models: ['seedance-2-0', 'seedance-2-0-fast'] },
     { id: 'holycrab', name: 'HolyCrab BytePlus', models: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'] },
     { id: 'klingai', name: '可灵官方 Omni (api-beijing.klingai.com)', models: ['kling-video-o1', 'kling-v3-omni'] },
     { id: 'ffir', name: '飞儿API / 可灵 Omni-Video (ffir.cn)', models: ['kling-video-o1', 'kling-v3-omni'] },
@@ -1607,7 +1643,7 @@ const providerConfigs = {
     // { id: 'chatfire', name: 'Chatfire', models: ['doubao-seedance-1-5-pro-251215', 'doubao-seedance-1-0-lite-i2v-250428', 'doubao-seedance-1-0-lite-t2v-250428', 'doubao-seedance-1-0-pro-250528', 'doubao-seedance-1-0-pro-fast-251015', 'sora-2', 'sora-2-pro'] },
     { id: 'minimax', name: 'MiniMax 海螺', models: ['MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'MiniMax-Hailuo-02'] },
     { id: 'gemini', name: 'Google Gemini (Veo)', models: ['veo-3.1-generate-preview', 'veo-3.0-generate-preview', 'veo-3.0-fast-generate-preview'] },
-    { id: 'dashscope', name: '通义万相', models: ['wan2.6-r2v-flash', 'wan2.6-t2v', 'wan2.2-kf2v-flash', 'wan2.6-i2v-flash', 'wanx2.1-vace-plus'] },
+    { id: 'dashscope', name: '通义万相', models: ['wan2.6-r2v-flash', 'wan2.7-r2v', 'wan2.7-i2v', 'wan2.7-t2v', 'wan2.6-t2v', 'wan2.2-kf2v-flash', 'wan2.6-i2v-flash', 'wanx2.1-vace-plus'] },
     {
       id: 'jimeng_ai_api',
       name: 'Jimeng AI API（自建即梦免费 API）',
@@ -1625,7 +1661,7 @@ const providerConfigs = {
     { id: 'agnes', name: 'Agnes AI', models: ['agnes-video-v2.0'] },
   ],
   tts: [
-    { id: 'fal', name: 'fal.ai', models: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/gemini-3.1-flash-tts'] },
+    { id: 'fal', name: 'fal.ai', models: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/qwen-3-tts/text-to-speech/0.6b', 'fal-ai/gemini-3.1-flash-tts'] },
     { id: 'minimax', name: 'MiniMax T2A', models: ['speech-02-hd', 'speech-02-turbo'] },
   ],
   jimeng2_character_auth: [
@@ -1753,8 +1789,36 @@ const availableModels = computed(() => {
   const provider = form.value.provider
   if (!st || !provider) return []
   const p = (providerConfigs[st] || []).find((x) => x.id === provider)
-  return p?.models || []
+  return [...new Set([...(p?.models || []), ...remoteProviderModelIds.value])]
 })
+
+const availableModelGroups = computed(() => groupModelOptions(
+  availableModels.value,
+  form.value.service_type,
+  form.value.provider,
+  remoteProviderModelIds.value
+))
+
+const canSyncProviderModels = computed(() => (
+  editingId.value != null
+  && form.value.provider === 'venice'
+  && form.value.service_type === 'text'
+))
+
+async function syncProviderModels() {
+  if (!canSyncProviderModels.value || syncingProviderModels.value) return
+  syncingProviderModels.value = true
+  try {
+    const result = await aiAPI.listModels(editingId.value, form.value.service_type)
+    const models = Array.isArray(result?.models) ? result.models : []
+    remoteProviderModels.value = models
+    ElMessage.success(`已同步 ${models.length} 个当前账号可用的 Venice 文本模型`)
+  } catch (_) {
+    // request 已统一显示错误信息
+  } finally {
+    syncingProviderModels.value = false
+  }
+}
 
 /** 根据当前厂商/协议/base_url 推算实际将使用的接口地址，供用户核对 */
 const endpointPreviewInfo = computed(() => {
@@ -1956,6 +2020,7 @@ const endpointPreviewInfo = computed(() => {
 })
 
 function onProviderChange(providerId) {
+  remoteProviderModels.value = []
   if (providerId === CUSTOM_PROVIDER_SENTINEL) {
     form.value.provider = ''
     form.value.api_protocol = ''
@@ -2025,19 +2090,19 @@ function onProviderChange(providerId) {
 
 /** 通义一键配置用 */
 const TONGYI_CONFIGS = [
-  { service_type: 'text', name: '通义千问', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', provider: 'qwen', model: ['qwen-plus'] },
-  { service_type: 'image', name: '通义万象 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image'] },
-  { service_type: 'image', name: '通义千问 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'qwen_image', model: ['qwen-image-max', 'qwen-image-plus', 'qwen-image'] },
-  { service_type: 'storyboard_image', name: '通义万象 分镜图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image'] },
-  { service_type: 'video', name: '通义万相', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.2-kf2v-flash'] }
+  { service_type: 'text', name: '通义千问', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', provider: 'qwen', model: ['qwen-plus', 'qwen3.7-max', 'qwen3.7-max-2026-05-20', 'qwen3.6-plus', 'qwen3.6-flash', 'qwen-flash'] },
+  { service_type: 'image', name: '通义万象 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image'] },
+  { service_type: 'image', name: '通义千问 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'qwen_image', model: ['qwen-image-max', 'qwen-image-2.0-pro', 'qwen-image-2.0', 'qwen-image-plus', 'qwen-image'] },
+  { service_type: 'storyboard_image', name: '通义万象 分镜图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image'] },
+  { service_type: 'video', name: '通义万相', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.2-kf2v-flash', 'wan2.7-r2v', 'wan2.7-i2v', 'wan2.7-t2v', 'wan2.6-r2v-flash', 'wan2.6-i2v-flash', 'wan2.6-t2v'] }
 ]
 
 /** 火山引擎一键配置用 */
 const VOLCENGINE_CONFIGS = [
-  { service_type: 'text', name: '火山引擎 文本', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['deepseek-v3-2-251201', 'doubao-1-5-pro-32k-250115', 'kimi-k2-thinking-251104'] },
-  { service_type: 'image', name: '火山引擎 即梦 文本生图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128'] },
-  { service_type: 'storyboard_image', name: '火山引擎 即梦 分镜图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128'] },
-  { service_type: 'video', name: '火山引擎 即梦 视频', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volces', model: ['doubao-seedance-1-5-pro-251215'] }
+  { service_type: 'text', name: '火山引擎 文本', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['deepseek-v3-2-251201', 'doubao-seed-2-0-pro-260215', 'doubao-seed-2-0-lite-260215', 'doubao-1-5-pro-32k-250115', 'kimi-k2-thinking-251104'] },
+  { service_type: 'image', name: '火山引擎 即梦 文本生图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128', 'doubao-seedream-5-0-pro-260628', 'doubao-seedream-5-0-260128', 'doubao-seedream-5-0-lite-260128'] },
+  { service_type: 'storyboard_image', name: '火山引擎 即梦 分镜图', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volcengine', model: ['doubao-seedream-4-5-251128', 'doubao-seedream-5-0-pro-260628', 'doubao-seedream-5-0-260128', 'doubao-seedream-5-0-lite-260128'] },
+  { service_type: 'video', name: '火山引擎 即梦 视频', base_url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'volces', model: ['doubao-seedance-1-5-pro-251215', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128'] }
 ]
 
 /** Agnes 一键配置用 */
@@ -2051,12 +2116,12 @@ const AGNES_CONFIGS = [
 const FAL_CONFIGS = [
   {
     service_type: 'text',
-    name: 'fal.ai GPT 5.5 文本',
+    name: 'fal.ai GPT 5.5 / 5.6 文本',
     base_url: 'https://fal.run/openrouter/router/openai/v1',
     provider: 'fal',
     api_protocol: 'fal',
     endpoint: '/chat/completions',
-    model: ['openai/gpt-5.5'],
+    model: ['openai/gpt-5.5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-terra', 'openai/gpt-5.6-luna'],
   },
   {
     service_type: 'image',
@@ -2080,7 +2145,7 @@ const FAL_CONFIGS = [
     base_url: 'https://queue.fal.run',
     provider: 'fal',
     api_protocol: 'fal',
-    model: ['bytedance/seedance-2.0'],
+    model: ['bytedance/seedance-2.0', 'bytedance/seedance-2.0/fast', 'bytedance/seedance-2.0/mini'],
     settings: JSON.stringify({ generate_audio: true, bitrate_mode: 'standard' }),
   },
   {
@@ -2089,7 +2154,7 @@ const FAL_CONFIGS = [
     base_url: 'https://fal.run',
     provider: 'fal',
     api_protocol: 'fal',
-    model: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/gemini-3.1-flash-tts'],
+    model: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/qwen-3-tts/text-to-speech/0.6b', 'fal-ai/gemini-3.1-flash-tts'],
     settings: JSON.stringify({ voice_id: 'Vivian', language: 'Chinese' }),
   },
 ]
@@ -2097,12 +2162,12 @@ const FAL_CONFIGS = [
 const VENICE_CONFIGS = [
   {
     service_type: 'text',
-    name: 'Venice.ai GPT 5.5 文本',
+    name: 'Venice.ai 文本模型',
     base_url: 'https://api.venice.ai/api/v1',
     provider: 'venice',
     api_protocol: 'venice',
     endpoint: '/chat/completions',
-    model: ['openai-gpt-55'],
+    model: ['openai-gpt-55', 'openai-gpt-55-pro', 'deepseek-v4-pro', 'deepseek-v4-flash', 'qwen3-6-27b'],
   },
   {
     service_type: 'image',
@@ -2126,7 +2191,7 @@ const VENICE_CONFIGS = [
     base_url: 'https://api.venice.ai/api/v1',
     provider: 'venice',
     api_protocol: 'venice',
-    model: ['seedance-2-0'],
+    model: ['seedance-2-0', 'seedance-2-0-fast'],
     settings: JSON.stringify({ generate_audio: true }),
   },
 ]
@@ -2187,6 +2252,7 @@ function parseModelText(text) {
 function resetForm() {
   editingId.value = null
   presetModelPick.value = ''
+  remoteProviderModels.value = []
   form.value = {
     service_type: 'text',
     name: '',
@@ -2217,6 +2283,7 @@ function openAdd() {
 }
 
 function openEdit(row) {
+  remoteProviderModels.value = []
   editingId.value = row.id
   const model = Array.isArray(row.model) ? row.model : (row.model ? [row.model] : [])
   const modelList = model.map((m) => String(m).trim()).filter(Boolean)
@@ -2460,6 +2527,20 @@ async function onDelete(row) {
     ElMessage.success('已删除')
     await loadList()
   } catch (_) {}
+}
+
+async function onSetDefault(row) {
+  if (row.is_default || defaultingId.value !== null) return
+  defaultingId.value = row.id
+  try {
+    await aiAPI.setDefault(row.id)
+    ElMessage.success(`已将「${row.name}」设为${serviceTypeLabel(row.service_type)}默认配置`)
+    await loadList()
+  } catch (_) {
+    // request 已统一显示错误信息
+  } finally {
+    defaultingId.value = null
+  }
 }
 
 function onSelectionChange(rows) {
@@ -2823,6 +2904,26 @@ onMounted(() => {
   color: var(--el-color-primary, #409eff) !important;
   font-style: italic;
 }
+
+.ai-config-editor-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  max-height: 90dvh;
+  overflow: hidden;
+}
+
+.ai-config-editor-dialog > .el-dialog__header,
+.ai-config-editor-dialog > .el-dialog__footer {
+  flex: 0 0 auto;
+}
+
+.ai-config-editor-dialog > .el-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 </style>
 
 <style scoped>
@@ -3037,7 +3138,12 @@ code {
 .vendor-lock-tip {
   margin-bottom: 16px;
 }
-.model-row { margin-bottom: 4px; }
+.model-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .deepseek-settings {
   display: flex;
   align-items: center;

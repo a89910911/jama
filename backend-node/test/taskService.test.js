@@ -2,6 +2,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const taskService = require('../src/services/taskService');
+const characterGenerationService = require('../src/services/characterGenerationService');
 
 function createTestDb() {
   const db = new Database(':memory:');
@@ -19,6 +20,8 @@ function createTestDb() {
       updated_at TEXT,
       completed_at TEXT,
       prompt_snapshot TEXT,
+      request_payload TEXT,
+      recovery_attempts INTEGER DEFAULT 0,
       deleted_at TEXT
     );
     CREATE TABLE image_generations (
@@ -190,6 +193,98 @@ describe('taskService.failOrphanedAsyncTasksOnStartup', () => {
 });
 
 describe('taskService task lifecycle', () => {
+  it('atomically claims a stale task with persisted recovery input', () => {
+    const db = createTestDb();
+    const old = '2020-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO async_tasks
+        (id, type, status, resource_id, request_payload, recovery_attempts, created_at, updated_at)
+       VALUES ('task-recover-character', 'character_generation', 'processing', '7', ?, 0, ?, ?)`
+    ).run(JSON.stringify({ drama_id: 7, episode_id: 14, outline: 'test script' }), old, old);
+
+    const claimed = taskService.claimRecoverableTasks(
+      db,
+      { warn() {} },
+      'character_generation',
+      { staleAfterMs: 60_000 }
+    );
+
+    assert.equal(claimed.length, 1);
+    assert.deepEqual(claimed[0].request_payload, {
+      drama_id: 7,
+      episode_id: 14,
+      outline: 'test script',
+    });
+    const task = taskService.getTask(db, 'task-recover-character');
+    assert.equal(task.status, 'pending');
+    assert.equal(task.error, null);
+    assert.match(task.message, /自动恢复/);
+    assert.equal(
+      db.prepare('SELECT recovery_attempts FROM async_tasks WHERE id = ?').get(task.id).recovery_attempts,
+      1
+    );
+
+    assert.equal(
+      taskService.claimRecoverableTasks(
+        db,
+        { warn() {} },
+        'character_generation',
+        { staleAfterMs: 60_000 }
+      ).length,
+      0
+    );
+    taskService.updateTaskResult(db, task.id, { ok: true });
+    db.close();
+  });
+
+  it('persists recovery input without exposing it from the task API model', () => {
+    const db = createTestDb();
+    const task = taskService.createTask(db, { info() {} }, 'character_generation', '7');
+    taskService.setTaskRequestPayload(db, task.id, { drama_id: 7, episode_id: 14 });
+
+    const stored = db.prepare('SELECT request_payload FROM async_tasks WHERE id = ?').get(task.id);
+    assert.deepEqual(JSON.parse(stored.request_payload), { drama_id: 7, episode_id: 14 });
+    assert.equal(Object.hasOwn(taskService.getTask(db, task.id), 'request_payload'), false);
+
+    taskService.updateTaskResult(db, task.id, { ok: true });
+    db.close();
+  });
+
+  it('reschedules a claimed character extraction with its original input', async () => {
+    const db = createTestDb();
+    const old = '2020-01-01T00:00:00.000Z';
+    const request = { drama_id: 7, episode_id: 14, outline: 'recover me' };
+    db.prepare(
+      `INSERT INTO async_tasks
+        (id, type, status, resource_id, request_payload, recovery_attempts, created_at, updated_at)
+       VALUES ('task-reschedule-character', 'character_generation', 'processing', '7', ?, 0, ?, ?)`
+    ).run(JSON.stringify(request), old, old);
+
+    let resolveRun;
+    const ran = new Promise((resolve) => { resolveRun = resolve; });
+    const count = characterGenerationService.resumeInterruptedCharacterGenerations(
+      db,
+      {},
+      { warn() {}, error() {} },
+      {
+        staleAfterMs: 60_000,
+        schedule(run) { run(); },
+        async processTask(runDb, _cfg, _log, taskId, runRequest) {
+          assert.equal(runDb, db);
+          assert.equal(taskId, 'task-reschedule-character');
+          assert.deepEqual(runRequest, request);
+          taskService.updateTaskResult(runDb, taskId, { recovered: true });
+          resolveRun();
+        },
+      }
+    );
+
+    assert.equal(count, 1);
+    await ran;
+    assert.equal(taskService.getTask(db, 'task-reschedule-character').status, 'completed');
+    db.close();
+  });
+
   it('clears a transient failure when a late result completes successfully', () => {
     const db = createTestDb();
     const old = '2020-01-01T00:00:00.000Z';
