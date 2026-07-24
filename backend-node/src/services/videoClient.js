@@ -52,6 +52,7 @@ const {
   holyCrabRequest,
   parseHolyCrabEnvelope,
 } = require('./holyCrabClient');
+const { applyRequiredVideoAudioOption } = require('./videoAudioPolicy');
 
 /**
  * ?? provider ??????????api_protocol ??????????
@@ -766,13 +767,13 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
   const maxRef = 9;
   const urls = orderedUrls.slice(0, maxRef);
 
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     model: finalModel,
     content: [{ type: 'text', text: (prompt || '').trim() }],
     ratio,
     duration: effectiveDuration,
     watermark: watermark != null ? Boolean(watermark) : false,
-  };
+  }, 'volcengine_omni');
   if (resolution) body.resolution = resolution;
   if (seed != null) body.seed = Number(seed);
   if (camera_fixed != null) body.camera_fixed = Boolean(camera_fixed);
@@ -1011,15 +1012,14 @@ async function callKlingOmniVideoApi(config, log, opts) {
     return { error: '可灵 Omni：multi_shot=false 时 prompt 不能为空' };
   }
 
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     model_name: modelName,
     mode: 'std',
     duration: durStr,
     multi_shot: false,
     prompt: textPrompt,
-    sound: 'off',
     aspect_ratio: ratio,
-  };
+  }, 'kling_omni');
 
   if (image_list.length) {
     body.image_list = image_list;
@@ -2222,17 +2222,16 @@ async function callViduVideoApi(config, log, opts) {
     custom_endpoint: !!(config.endpoint && String(config.endpoint).trim()),
   });
 
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     model: modelName,
     prompt: effectivePrompt,
     duration: dur,
     resolution: resolutionBody,
     aspect_ratio: ratio,
     movement_amplitude: 'auto',
-    audio: false,
     off_peak: false,
     watermark: false,
-  };
+  }, 'vidu');
   if (!isOfficialVidu) {
     body.aspectRatio = ratio;
   }
@@ -3775,25 +3774,22 @@ async function callFalVideoApi(config, log, opts) {
   );
   const url = joinFalUrl(falQueueBase(config.base_url), endpoint);
   const settings = parseConfigSettingsJson(config);
-  const generateAudio =
-    settings.generate_audio == null ? true : Boolean(settings.generate_audio);
   const bitrateMode =
     String(settings.bitrate_mode || '').toLowerCase() === 'high'
       ? 'high'
       : 'standard';
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     prompt: effectiveReferenceUrls.length
       ? normalizeFalReferencePrompt(opts.prompt)
       : String(opts.prompt || ''),
     resolution: normalizeFalSeedanceResolution(opts.resolution, endpoint),
     duration: normalizeFalSeedanceDuration(opts.duration),
     aspect_ratio: normalizeFalSeedanceAspectRatio(opts.aspect_ratio),
-    generate_audio: generateAudio,
     ...(!isMini ? { bitrate_mode: bitrateMode } : {}),
     ...(effectiveReferenceUrls.length ? { image_urls: effectiveReferenceUrls } : {}),
     ...(!isMini && firstUrl ? { image_url: firstUrl } : {}),
     ...(!isMini && lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
-  };
+  }, 'fal');
 
   log.info('[fal.ai 视频] 提交 Seedance 2.0 任务', {
     video_gen_id: opts.video_gen_id,
@@ -3878,12 +3874,6 @@ function resolveVeniceSeedanceModel(model, mode) {
   return `${base}-${mode}`;
 }
 
-function parseBooleanSetting(value, fallback) {
-  if (value == null) return fallback;
-  if (typeof value === 'boolean') return value;
-  return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
-}
-
 async function callVeniceVideoApi(config, log, opts) {
   const referenceInputs = Array.isArray(opts.reference_urls)
     ? opts.reference_urls.filter(Boolean)
@@ -3928,7 +3918,7 @@ async function callVeniceVideoApi(config, log, opts) {
       : 'text-to-video';
   const model = resolveVeniceSeedanceModel(opts.model, mode);
   const settings = parseConfigSettingsJson(config);
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     model,
     prompt: referenceUrls.length
       ? normalizeFalReferencePrompt(opts.prompt)
@@ -3936,14 +3926,13 @@ async function callVeniceVideoApi(config, log, opts) {
     duration: normalizeVeniceSeedanceDuration(opts.duration),
     resolution: normalizeVeniceSeedanceResolution(opts.resolution, model),
     aspect_ratio: normalizeVeniceSeedanceAspectRatio(opts.aspect_ratio),
-    audio: parseBooleanSetting(settings.generate_audio ?? settings.audio, true),
     ...(referenceUrls.length ? { reference_image_urls: referenceUrls } : {}),
     ...(firstUrl ? { image_url: firstUrl } : {}),
     ...(lastUrl && lastUrl !== firstUrl ? { end_image_url: lastUrl } : {}),
     ...(settings.seedance_consent && typeof settings.seedance_consent === 'object'
       ? { consents: { seedance: settings.seedance_consent } }
       : {}),
-  };
+  }, 'venice');
   if (opts.negative_prompt && String(opts.negative_prompt).trim()) {
     body.negative_prompt = String(opts.negative_prompt).trim().slice(0, 10000);
   }
@@ -4329,8 +4318,7 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
   }
 
   const model = resolveHolyCrabSeedanceModel(opts.model);
-  const settings = parseConfigSettingsJson(config);
-  const body = {
+  const body = applyRequiredVideoAudioOption({
     prompt: imageAssetIds.length
       ? normalizeFalReferencePrompt(opts.prompt)
       : String(opts.prompt || ''),
@@ -4338,12 +4326,8 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
     ratio: normalizeHolyCrabAspectRatio(opts.aspect_ratio),
     resolution: normalizeHolyCrabResolution(opts.resolution, model),
     model,
-    generate_audio: parseBooleanSetting(
-      settings.generate_audio ?? settings.generateAudio,
-      false
-    ),
     ...(imageAssetIds.length ? { imageAssetIds } : {}),
-  };
+  }, 'holycrab');
   const url = joinHolyCrabUrl(config.base_url, '/api/tasks/generation');
   log.info('[HolyCrab 视频] 提交 BytePlus Seedance 任务', {
     video_gen_id: opts.video_gen_id,
@@ -4757,6 +4741,9 @@ async function callVideoApiInternal(db, log, opts) {
     duration: effectiveDuration,
     watermark: (watermark != null) ? Boolean(watermark) : false,
   };
+  if (isVolc && isSeedance2FamilyModel(finalModel)) {
+    applyRequiredVideoAudioOption(body, 'volcengine');
+  }
   if (resolution) body.resolution = resolution;
   if (seed != null) body.seed = Number(seed);
   if (camera_fixed != null) body.camera_fixed = Boolean(camera_fixed);

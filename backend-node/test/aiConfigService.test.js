@@ -63,3 +63,32 @@ describe('aiConfigService.setDefaultConfig', () => {
     assert.equal(aiConfigService.getConfig(db, textId).is_default, true);
   });
 });
+
+describe('aiConfigService required video audio policy', () => {
+  it('forces generate_audio on when video configs are created or updated', () => {
+    const db = createTestDb();
+    const log = { info() {} };
+    const created = aiConfigService.createConfig(db, log, {
+      service_type: 'video',
+      provider: 'holycrab',
+      name: 'video',
+      base_url: 'https://example.com',
+      model: ['seedance-2-0'],
+      settings: JSON.stringify({ generate_audio: false, bitrate_mode: 'high' }),
+    });
+
+    assert.deepEqual(JSON.parse(created.settings), {
+      generate_audio: true,
+      bitrate_mode: 'high',
+    });
+
+    const updated = aiConfigService.updateConfig(db, log, created.id, {
+      settings: JSON.stringify({ generate_audio: false }),
+    });
+    assert.deepEqual(JSON.parse(updated.settings), { generate_audio: true });
+    assert.deepEqual(
+      JSON.parse(db.prepare('SELECT settings FROM ai_service_configs WHERE id = ?').get(created.id).settings),
+      { generate_audio: true }
+    );
+  });
+});

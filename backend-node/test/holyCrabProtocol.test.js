@@ -98,7 +98,7 @@ describe('HolyCrab BytePlus Seedance adapter', () => {
         api_protocol: 'holycrab',
         base_url: 'https://abgzfc.holycrab.ai',
         api_key: 'crab-secret',
-        settings: JSON.stringify({ generate_audio: true }),
+        settings: JSON.stringify({ generate_audio: false }),
       },
       silentLog,
       {
@@ -210,6 +210,7 @@ describe('HolyCrab BytePlus Seedance adapter', () => {
       item.url.endsWith('/api/tasks/generation')
     );
     assert.deepEqual(generationCall.options.body.imageAssetIds, ['assetlocal123']);
+    assert.equal(generationCall.options.body.generate_audio, true);
     assert.equal(decodeHolyCrabVideoHandle(result.task_id).uniq_id, 'task-local');
   });
 

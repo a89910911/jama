@@ -654,6 +654,13 @@ input_reference = (图片文件，可选)</pre>
           title="用于创作页「角色生成 → SD2认证」"
           description="保存后，系统从此处读取网关与 Token 调用 POST /api/business/v1/assets 登记角色图；可用「列出素材」核对素材状态。角色主图需为外网可访问的 http(s) 地址（图床或本服务 storage.base_url）。"
         />
+        <el-form-item v-if="form.service_type === 'video'">
+          <template #label><span class="form-label-tip">生成音频</span></template>
+          <div>
+            <el-switch :model-value="true" disabled />
+            <p class="field-tip">视频必须生成声音，此项由系统强制开启，不能关闭。</p>
+          </div>
+        </el-form-item>
         <template v-if="form.service_type === 'video' && form.api_protocol === 'kling_omni'">
           <el-form-item>
             <template #label><span class="form-label-tip">AccessKey</span></template>
@@ -2205,7 +2212,7 @@ const HOLYCRAB_VIDEO_CONFIG = {
   endpoint: '/api/tasks/generation',
   query_endpoint: '/api/tasks/{taskId}',
   model: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'],
-  settings: JSON.stringify({ generate_audio: false }),
+  settings: JSON.stringify({ generate_audio: true }),
 }
 
 function serviceTypeLabel(t) {
@@ -2359,22 +2366,18 @@ async function submit() {
         }
       }
       settings = Object.keys(s).length ? JSON.stringify(s) : null
-    } else if (form.value.service_type === 'video' && form.value.api_protocol === 'kling_omni') {
-      let baseS = {}
-      if (editingId.value) {
-        const prev = list.value.find((r) => r.id === editingId.value)
-        if (prev?.settings) {
-          try {
-            baseS = JSON.parse(prev.settings)
-          } catch (_) {}
-        }
+    } else if (form.value.service_type === 'video') {
+      const prev = editingId.value ? list.value.find((r) => r.id === editingId.value) : null
+      const baseS = parseSettings(prev?.settings)
+      baseS.generate_audio = true
+      if (form.value.api_protocol === 'kling_omni') {
+        if ((form.value.kling_access_key || '').trim()) baseS.kling_access_key = form.value.kling_access_key.trim()
+        else delete baseS.kling_access_key
+        if ((form.value.kling_secret_key || '').trim()) baseS.kling_secret_key = form.value.kling_secret_key.trim()
+        else delete baseS.kling_secret_key
+        if (form.value.kling_secret_key_base64) baseS.kling_secret_key_base64 = true
+        else delete baseS.kling_secret_key_base64
       }
-      if ((form.value.kling_access_key || '').trim()) baseS.kling_access_key = form.value.kling_access_key.trim()
-      else delete baseS.kling_access_key
-      if ((form.value.kling_secret_key || '').trim()) baseS.kling_secret_key = form.value.kling_secret_key.trim()
-      else delete baseS.kling_secret_key
-      if (form.value.kling_secret_key_base64) baseS.kling_secret_key_base64 = true
-      else delete baseS.kling_secret_key_base64
       settings = Object.keys(baseS).length ? JSON.stringify(baseS) : null
     } else if (isDeepSeekOfficialForm.value) {
       const prev = editingId.value ? list.value.find((r) => r.id === editingId.value) : null

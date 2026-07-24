@@ -22,6 +22,7 @@ const {
   holyCrabRequest,
   parseHolyCrabEnvelope,
 } = require('./holyCrabClient');
+const { forceVideoAudioSettings } = require('./videoAudioPolicy');
 
 function normalizeApiKeyForService(serviceType, apiKey) {
   if (serviceType === 'jimeng2_character_auth' && apiKey != null) {
@@ -90,6 +91,7 @@ function getConfig(db, id) {
 function createConfig(db, log, req) {
   const now = new Date().toISOString();
   const model = modelToDb(req.model);
+  const settings = forceVideoAudioSettings(req.service_type || 'text', req.settings);
   let endpoint = req.endpoint || '';
   let queryEndpoint = req.query_endpoint || '';
   if (!endpoint && req.provider) {
@@ -148,7 +150,7 @@ function createConfig(db, log, req) {
     queryEndpoint,
     req.priority ?? 0,
     req.is_default ? 1 : 0,
-    req.settings || null,
+    settings,
     now,
     now
   );
@@ -204,7 +206,11 @@ function updateConfig(db, log, id, req) {
     updates.push('query_endpoint = ?');
     params.push(req.query_endpoint || '');
   }
-  if (req.settings != null) {
+  const effectiveServiceType = req.service_type || existing.service_type;
+  if (effectiveServiceType === 'video') {
+    updates.push('settings = ?');
+    params.push(forceVideoAudioSettings('video', req.settings ?? existing.settings));
+  } else if (req.settings != null) {
     updates.push('settings = ?');
     params.push(req.settings);
   }
@@ -267,7 +273,7 @@ function rowToConfig(r) {
     priority: r.priority ?? 0,
     is_default: !!r.is_default,
     is_active: r.is_active == null ? true : !!r.is_active,
-    settings: r.settings,
+    settings: forceVideoAudioSettings(r.service_type, r.settings),
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -705,7 +711,7 @@ function applyVendorLock(db, log, cfg) {
       item.query_endpoint || '',
       item.priority ?? 0,
       item.is_default ? 1 : 0,
-      item.settings || null,
+      forceVideoAudioSettings(item.service_type || 'text', item.settings),
       now,
       now
     );

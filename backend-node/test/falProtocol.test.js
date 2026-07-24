@@ -156,6 +156,7 @@ describe('fal.ai Seedance and TTS adapters', () => {
           api_protocol: 'fal',
           base_url: 'https://queue.fal.run',
           api_key: 'fal-secret',
+          settings: JSON.stringify({ generate_audio: false }),
         },
         silentLog,
         {

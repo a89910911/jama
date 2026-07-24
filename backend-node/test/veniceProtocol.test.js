@@ -311,6 +311,7 @@ describe('Venice.ai Seedance 2.0 adapter', () => {
         api_protocol: 'venice',
         base_url: 'https://api.venice.ai/api/v1',
         api_key: 'venice-secret',
+        settings: JSON.stringify({ generate_audio: false, audio: false }),
       },
       silentLog,
       {

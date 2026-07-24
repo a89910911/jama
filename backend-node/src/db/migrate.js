@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./index.js');
 const { loadConfig } = require('../config/index.js');
+const { forceVideoAudioSettings } = require('../services/videoAudioPolicy');
 
 function stripLeadingComments(sql) {
   return sql
@@ -301,6 +302,25 @@ function ensureAllColumns(database) {
     { name: 'updated_at',     type: 'TEXT' },
     { name: 'deleted_at',     type: 'TEXT' },
   ]);
+  // 视频音频为强制策略：启动时自动修正历史配置中的 false 或空值。
+  try {
+    const rows = database.prepare(
+      "SELECT id, settings FROM ai_service_configs WHERE deleted_at IS NULL AND service_type = 'video'"
+    ).all();
+    const update = database.prepare(
+      'UPDATE ai_service_configs SET settings = ?, updated_at = ? WHERE id = ?'
+    );
+    const now = new Date().toISOString();
+    const migrateVideoAudio = database.transaction(() => {
+      for (const row of rows) {
+        const normalized = forceVideoAudioSettings('video', row.settings);
+        if (normalized !== row.settings) update.run(normalized, now, row.id);
+      }
+    });
+    migrateVideoAudio();
+  } catch (error) {
+    console.warn('ensureVideoAudioSettings: failed:', error.message);
+  }
 
   // --- async_tasks ---
   ensureColumns(database, 'async_tasks', [
