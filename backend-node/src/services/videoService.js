@@ -20,6 +20,13 @@ function setVideoGenFailed(db, videoGenId, errorMsg, now) {
       db.prepare('UPDATE video_generations SET status = ?, updated_at = ? WHERE id = ?').run('failed', now, videoGenId);
     } else throw e;
   }
+  try {
+    require('./redrawService').syncVideoGenerationResult(db, null, videoGenId);
+  } catch (_) {}
+  try {
+    const cfg = require('../config').loadConfig();
+    require('./actionMigrationService').syncVideoGenerationResult(db, cfg, videoGenId);
+  } catch (_) {}
 }
 
 function list(db, query) {
@@ -60,6 +67,7 @@ function rowToItem(r) {
     model: r.model,
     image_gen_id: r.image_gen_id,
     image_url: r.image_url,
+    source_video_url: r.source_video_url,
     video_url: r.video_url,
     local_path: r.local_path,
     status: r.status,
@@ -311,6 +319,13 @@ async function finalizeSuccessfulVideo(
     video_url: persistedVideoUrl,
     local_path: localPath,
   });
+  try {
+    require('./redrawService').syncVideoGenerationResult(db, log, videoGenId);
+  } catch (_) {}
+  try {
+    const cfg = require('../config').loadConfig();
+    require('./actionMigrationService').syncVideoGenerationResult(db, cfg, videoGenId);
+  } catch (_) {}
 }
 
 async function pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspect, providerTaskId, config) {
@@ -545,6 +560,7 @@ async function processVideoGeneration(db, log, videoGenId) {
       drama_id: row.drama_id,
       storyboard_id: row.storyboard_id || undefined,
       image_url: hasOmniRefs ? undefined : row.image_url,
+      source_video_url: row.source_video_url || undefined,
       first_frame_url: hasOmniRefs ? undefined : row.first_frame_url,
       last_frame_url: hasOmniRefs ? undefined : row.last_frame_url,
       reference_urls,

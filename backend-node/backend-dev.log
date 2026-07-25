@@ -1,0 +1,3687 @@
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sqlRestarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+Restarting 'src/server.js'
+Failed running 'src/server.js'. Waiting for file changes before restarting...
+egative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Ran migration: 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Ran migration: 25_prompt_definition_content_type.sql
+Ran migration: 26_prompt_workflow_classification.sql #1
+Ran migration: 26_prompt_workflow_classification.sql #2
+Ran migration: 26_prompt_workflow_classification.sql #3
+Ran migration: 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Ran migration: 32_async_task_recovery.sql #1
+Ran migration: 32_async_task_recovery.sql #2
+Ran migration: 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Ran migration: 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Ran migration: 35_redraw_workbench.sql #5
+Ran migration: 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+ensureColumns: added storyboards.layout_description (TEXT)
+ensureColumns: added storyboards.image_url (TEXT)
+ensureColumns: added storyboards.local_path (TEXT)
+ensureColumns: added storyboards.main_panel_idx (INTEGER)
+ensureColumns: added storyboards.composed_image (TEXT)
+ensureColumns: added storyboards.result (TEXT)
+ensureColumns: added storyboards.emotion (TEXT)
+ensureColumns: added storyboards.emotion_intensity (INTEGER)
+ensureColumns: added storyboards.error_msg (TEXT)
+ensureColumns: added storyboards.lighting_style (TEXT)
+ensureColumns: added storyboards.depth_of_field (TEXT)
+ensureColumns: added storyboards.polished_prompt (TEXT)
+ensureColumns: added storyboards.continuity_snapshot (TEXT)
+ensureColumns: added storyboards.audio_local_path (TEXT)
+ensureColumns: added storyboards.narration_audio_local_path (TEXT)
+ensureColumns: added storyboards.first_frame_image_id (INTEGER)
+ensureColumns: added storyboards.last_frame_image_id (INTEGER)
+ensureColumns: added storyboards.last_frame_image_url (TEXT)
+ensureColumns: added storyboards.last_frame_local_path (TEXT)
+ensureColumns: added characters.extra_images (TEXT)
+ensureColumns: added characters.error_msg (TEXT)
+ensureColumns: added characters.ref_image (TEXT)
+ensureColumns: added characters.seedance2_voice_asset (TEXT)
+ensureColumns: added scenes.polished_prompt (TEXT)
+ensureColumns: added scenes.extra_images (TEXT)
+ensureColumns: added scenes.ref_image (TEXT)
+ensureColumns: added scenes.error_msg (TEXT)
+ensureColumns: added props.extra_images (TEXT)
+ensureColumns: added props.ref_image (TEXT)
+ensureColumns: added props.error_msg (TEXT)
+ensureColumns: added image_generations.episode_id (INTEGER)
+ensureColumns: added image_generations.use_first_frame_layout_lock (INTEGER)
+ensureColumns: added image_generations.width (INTEGER)
+ensureColumns: added image_generations.height (INTEGER)
+ensureColumns: added video_generations.resolution (TEXT)
+ensureColumns: added video_generations.seed (INTEGER)
+ensureColumns: added video_generations.camera_fixed (INTEGER)
+ensureColumns: added video_generations.watermark (INTEGER)
+ensureColumns: added video_generations.provider_task_id (TEXT)
+ensureColumns: added video_merges.merge_options (TEXT)
+ensureColumns: added video_merges.merged_url (TEXT)
+ensureColumns: added video_merges.duration (INTEGER)
+ensureColumns: added video_merges.completed_at (TEXT)
+ensureColumns: added video_merges.error_msg (TEXT)
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:07:59.240Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:07:59.240Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:07:59.240Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:07:59.240Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:07:59.240Z [INFO] Server is ready!
+2026-07-25T14:08:14.951Z [INFO] GET /health
+2026-07-25T14:13:06.536Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:13:13.370Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:13:21.622Z [INFO] POST /api/v1/auth/login
+2026-07-25T14:13:21.686Z [INFO] Account logged in {"username":"zhangzexing"}
+2026-07-25T14:13:21.801Z [INFO] GET /api/v1/dramas
+2026-07-25T14:13:21.804Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:13:21.805Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:13:24.029Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:13:24.100Z [INFO] GET /api/v1/dramas
+2026-07-25T14:13:24.101Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:13:24.103Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:13:31.796Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:13:31.826Z [INFO] GET /api/v1/dramas
+2026-07-25T14:13:31.827Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:13:31.828Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:13:33.122Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:41.079Z [INFO] POST /api/v1/redraw/jobs
+2026-07-25T14:13:41.095Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:41.099Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:13:53.308Z [INFO] POST /api/v1/redraw/jobs/1/import-episode-cards
+2026-07-25T14:13:53.326Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:53.329Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:13:56.783Z [INFO] POST /api/v1/redraw/jobs/1/import-episode-cards
+2026-07-25T14:13:56.801Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:56.804Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:13:57.753Z [INFO] POST /api/v1/redraw/jobs/1/submit
+2026-07-25T14:13:57.761Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:57.764Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:13:59.821Z [INFO] POST /api/v1/redraw/jobs/1/reconcile
+2026-07-25T14:13:59.837Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:13:59.840Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:14:00.631Z [INFO] POST /api/v1/redraw/jobs/1/repair
+2026-07-25T14:14:00.647Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:14:00.650Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:14:26.109Z [INFO] POST /api/v1/redraw/jobs/1/import-episode-cards
+2026-07-25T14:14:26.124Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:14:26.128Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:14:31.968Z [INFO] GET /api/v1/redraw/jobs
+2026-07-25T14:14:31.983Z [INFO] GET /api/v1/redraw/jobs/1
+2026-07-25T14:14:34.065Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:14:34.078Z [INFO] GET /api/v1/dramas
+2026-07-25T14:14:34.079Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:14:37.390Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:14:37.416Z [INFO] GET /api/v1/dramas
+2026-07-25T14:14:37.417Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:14:37.418Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:14:38.030Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:14:38.054Z [INFO] GET /api/v1/dramas
+2026-07-25T14:14:38.055Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:14:38.056Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:14:38.486Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:14:38.508Z [INFO] GET /api/v1/dramas
+2026-07-25T14:14:38.509Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:14:38.510Z [INFO] GET /api/v1/ai-configs/vendor-lock
+2026-07-25T14:14:38.780Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:14:38.801Z [INFO] GET /api/v1/dramas
+2026-07-25T14:14:38.803Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:14:38.803Z [INFO] GET /api/v1/ai-configs/vendor-lock
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:28:01.800Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:28:01.800Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:28:01.801Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:28:01.801Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:28:01.801Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+ensureColumns: added video_generations.action_migration_job_id (TEXT)
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:30:06.799Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:30:06.799Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:30:06.799Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:30:06.799Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:30:06.800Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:30:25.022Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:30:25.022Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:30:25.022Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:30:25.022Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:30:25.022Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:30:40.136Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:30:40.137Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:30:40.137Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:30:40.137Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:30:40.137Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:32:48.974Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:32:48.975Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:32:48.975Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:32:48.975Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:32:48.975Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:32:57.571Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:32:57.572Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:32:57.572Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:32:57.572Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:32:57.572Z [INFO] Server is ready!
+2026-07-25T14:35:43.312Z [INFO] GET /api/v1/auth/me
+2026-07-25T14:35:43.357Z [INFO] GET /api/v1/dramas
+2026-07-25T14:35:43.359Z [INFO] GET /api/v1/dramas/examples
+2026-07-25T14:35:43.360Z [INFO] GET /api/v1/ai-configs/vendor-lock
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:35:58.820Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:35:58.820Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:35:58.820Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:35:58.820Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:35:58.821Z [INFO] Server is ready!
+2026-07-25T14:46:45.477Z [INFO] GET /health
+2026-07-25T14:46:45.515Z [INFO] GET /api/v1/redraw/jobs
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:46:52.743Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:46:52.743Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:46:52.743Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:46:52.744Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:46:52.744Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:47:43.662Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:47:43.662Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:47:43.663Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:47:43.663Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:47:43.663Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:49:15.241Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:49:15.242Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:49:15.242Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:49:15.242Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:49:15.242Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:49:31.288Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:49:31.288Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:49:31.288Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:49:31.289Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:49:31.289Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:49:42.016Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:49:42.016Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:49:42.016Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:49:42.016Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:49:42.016Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:50:17.734Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:50:17.734Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:50:17.734Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:50:17.734Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:50:17.734Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:50:50.583Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:50:50.583Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:50:50.583Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:50:50.584Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:50:50.584Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:51:32.653Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:51:32.653Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:51:32.654Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:51:32.654Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:51:32.654Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T14:59:26.328Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T14:59:26.328Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T14:59:26.328Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T14:59:26.329Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T14:59:26.329Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:00:36.037Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:00:36.037Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:00:36.037Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:00:36.037Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:00:36.037Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:06:40.644Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:06:40.644Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:06:40.644Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:06:40.644Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:06:40.644Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:06:51.338Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:06:51.338Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:06:51.339Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:06:51.339Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:06:51.339Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Skip (already exists): 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Skip (already exists): 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Ran migration: 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Skip (already exists): 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Skip (already exists): 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Skip (already exists): 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Skip (already exists): 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:06:54.897Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:06:54.897Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:06:54.898Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:06:54.898Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:06:54.898Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Ran migration: 01_init.sql #1
+Ran migration: 01_init.sql #2
+Ran migration: 01_init.sql #3
+Ran migration: 01_init.sql #4
+Ran migration: 01_init.sql #5
+Ran migration: 01_init.sql #6
+Ran migration: 01_init.sql #7
+Ran migration: 01_init.sql #8
+Ran migration: 01_init.sql #9
+Ran migration: 01_init.sql #10
+Ran migration: 01_init.sql #11
+Ran migration: 01_init.sql #12
+Ran migration: 01_init.sql #13
+Ran migration: 01_init.sql #14
+Ran migration: 01_init.sql #15
+Ran migration: 01_init.sql #16
+Ran migration: 01_init.sql #17
+Ran migration: 01_init.sql #18
+Recorded migration: 1 01_init.sql
+Skip (already exists): 02_add_default_model.sql
+Recorded migration: 2 02_add_default_model.sql
+Skip (already exists): 03_add_props_episode_id.sql
+Recorded migration: 3 03_add_props_episode_id.sql
+Skip (already exists): 04_async_tasks_columns.sql #1
+Skip (already exists): 04_async_tasks_columns.sql #2
+Skip (already exists): 04_async_tasks_columns.sql #3
+Recorded migration: 4 04_async_tasks_columns.sql
+Skip (already exists): 05_add_image_generations_completed_at.sql #1
+Skip (already exists): 05_add_image_generations_completed_at.sql #2
+Recorded migration: 5 05_add_image_generations_completed_at.sql
+Skip (already exists): 06_add_characters_local_path.sql
+Recorded migration: 6 06_add_characters_local_path.sql
+Skip (already exists): 07_add_scenes_image_columns.sql #1
+Skip (already exists): 07_add_scenes_image_columns.sql #2
+Recorded migration: 7 07_add_scenes_image_columns.sql
+Skip (already exists): 08_add_video_generations_completed_at.sql #1
+Skip (already exists): 08_add_video_generations_completed_at.sql #2
+Recorded migration: 8 08_add_video_generations_completed_at.sql
+Ran migration: 09_scene_prop_libraries.sql #1
+Ran migration: 09_scene_prop_libraries.sql #2
+Recorded migration: 9 09_scene_prop_libraries.sql
+Ran migration: 10_prompt_overrides.sql
+Recorded migration: 10 10_prompt_overrides.sql
+Skip (already exists): 11_add_api_protocol.sql
+Recorded migration: 11 11_add_api_protocol.sql
+Ran migration: 12_image_proxy_cache.sql
+Recorded migration: 12 12_image_proxy_cache.sql
+Skip (already exists): 13_character_identity_anchors.sql #1
+Skip (already exists): 13_character_identity_anchors.sql #2
+Skip (already exists): 13_character_identity_anchors.sql #3
+Skip (already exists): 13_character_identity_anchors.sql #4
+Skip (already exists): 13_character_identity_anchors.sql #5
+Skip (already exists): 13_character_identity_anchors.sql #6
+Skip (already exists): 13_character_identity_anchors.sql #7
+Skip (already exists): 13_character_identity_anchors.sql #8
+Skip (already exists): 13_character_identity_anchors.sql #9
+Recorded migration: 13 13_character_identity_anchors.sql
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #1
+Skip (already exists): 14_storyboard_segments_and_model_map.sql #2
+Ran migration: 14_storyboard_segments_and_model_map.sql #3
+Recorded migration: 14 14_storyboard_segments_and_model_map.sql
+Skip (already exists): 15_storyboard_angle_structured.sql #1
+Skip (already exists): 15_storyboard_angle_structured.sql #2
+Skip (already exists): 15_storyboard_angle_structured.sql #3
+Recorded migration: 15 15_storyboard_angle_structured.sql
+Skip (already exists): 16_character_polished_prompt.sql
+Recorded migration: 16 16_character_polished_prompt.sql
+Skip (already exists): 17_character_stages.sql
+Recorded migration: 17 17_character_stages.sql
+Skip (already exists): 18_storyboard_narration.sql
+Recorded migration: 18 18_storyboard_narration.sql
+Skip (already exists): 19_storyboard_universal_mode.sql #1
+Skip (already exists): 19_storyboard_universal_mode.sql #2
+Recorded migration: 19 19_storyboard_universal_mode.sql
+Skip (already exists): 20_character_seedance2_asset.sql
+Recorded migration: 20 20_character_seedance2_asset.sql
+Skip (already exists): 21_asset_negative_prompt.sql #1
+Skip (already exists): 21_asset_negative_prompt.sql #2
+Skip (already exists): 21_asset_negative_prompt.sql #3
+Recorded migration: 21 21_asset_negative_prompt.sql
+Skip (already exists): 22_library_source_id.sql #1
+Skip (already exists): 22_library_source_id.sql #2
+Skip (already exists): 22_library_source_id.sql #3
+Skip (already exists): 22_library_source_id.sql #4
+Skip (already exists): 22_library_source_id.sql #5
+Skip (already exists): 22_library_source_id.sql #6
+Ran migration: 22_library_source_id.sql #7
+Ran migration: 22_library_source_id.sql #8
+Ran migration: 22_library_source_id.sql #9
+Recorded migration: 22 22_library_source_id.sql
+Ran migration: 23_prompt_templates.sql #1
+Ran migration: 23_prompt_templates.sql #2
+Ran migration: 23_prompt_templates.sql #3
+Ran migration: 23_prompt_templates.sql #4
+Ran migration: 23_prompt_templates.sql #5
+Skip (already exists): 23_prompt_templates.sql #6
+Recorded migration: 23 23_prompt_templates.sql
+Ran migration: 24_prompt_single_template.sql #1
+Ran migration: 24_prompt_single_template.sql #2
+Ran migration: 24_prompt_single_template.sql #3
+Recorded migration: 24 24_prompt_single_template.sql
+Skip (already exists): 25_prompt_definition_content_type.sql
+Recorded migration: 25 25_prompt_definition_content_type.sql
+Skip (already exists): 26_prompt_workflow_classification.sql #1
+Skip (already exists): 26_prompt_workflow_classification.sql #2
+Skip (already exists): 26_prompt_workflow_classification.sql #3
+Recorded migration: 26 26_prompt_workflow_classification.sql
+Skip (already exists): 27_prompt_detail_category.sql
+Recorded migration: 27 27_prompt_detail_category.sql
+Ran migration: 28_performance_indexes.sql #1
+Ran migration: 28_performance_indexes.sql #2
+Ran migration: 28_performance_indexes.sql #3
+Ran migration: 28_performance_indexes.sql #4
+Ran migration: 28_performance_indexes.sql #5
+Ran migration: 28_performance_indexes.sql #6
+Ran migration: 28_performance_indexes.sql #7
+Ran migration: 28_performance_indexes.sql #8
+Ran migration: 28_performance_indexes.sql #9
+Ran migration: 28_performance_indexes.sql #10
+Ran migration: 28_performance_indexes.sql #11
+Ran migration: 28_performance_indexes.sql #12
+Ran migration: 28_performance_indexes.sql #13
+Recorded migration: 28 28_performance_indexes.sql
+Ran migration: 29_user_accounts.sql #1
+Ran migration: 29_user_accounts.sql #2
+Recorded migration: 29 29_user_accounts.sql
+Ran migration: 30_ai_request_logs.sql #1
+Ran migration: 30_ai_request_logs.sql #2
+Ran migration: 30_ai_request_logs.sql #3
+Ran migration: 30_ai_request_logs.sql #4
+Ran migration: 30_ai_request_logs.sql #5
+Recorded migration: 30 30_ai_request_logs.sql
+Ran migration: 31_codex_chat.sql #1
+Ran migration: 31_codex_chat.sql #2
+Ran migration: 31_codex_chat.sql #3
+Ran migration: 31_codex_chat.sql #4
+Ran migration: 31_codex_chat.sql #5
+Ran migration: 31_codex_chat.sql #6
+Recorded migration: 31 31_codex_chat.sql
+Skip (already exists): 32_async_task_recovery.sql #1
+Skip (already exists): 32_async_task_recovery.sql #2
+Recorded migration: 32 32_async_task_recovery.sql
+Skip (already exists): 33_ai_assistant_engine.sql #1
+Ran migration: 33_ai_assistant_engine.sql #2
+Recorded migration: 33 33_ai_assistant_engine.sql
+Skip (already exists): 34_storyboard_per_shot_first_last_frame.sql
+Recorded migration: 34 34_storyboard_per_shot_first_last_frame.sql
+Ran migration: 35_redraw_workbench.sql #1
+Ran migration: 35_redraw_workbench.sql #2
+Ran migration: 35_redraw_workbench.sql #3
+Ran migration: 35_redraw_workbench.sql #4
+Skip (already exists): 35_redraw_workbench.sql #5
+Skip (already exists): 35_redraw_workbench.sql #6
+Ran migration: 35_redraw_workbench.sql #7
+Ran migration: 35_redraw_workbench.sql #8
+Ran migration: 35_redraw_workbench.sql #9
+Ran migration: 35_redraw_workbench.sql #10
+Ran migration: 35_redraw_workbench.sql #11
+Recorded migration: 35 35_redraw_workbench.sql
+Ran migration: 36_action_migration.sql #1
+Ran migration: 36_action_migration.sql #2
+Ran migration: 36_action_migration.sql #3
+Skip (already exists): 36_action_migration.sql #4
+Ran migration: 36_action_migration.sql #5
+Ran migration: 36_action_migration.sql #6
+Ran migration: 36_action_migration.sql #7
+Ran migration: 36_action_migration.sql #8
+Recorded migration: 36 36_action_migration.sql
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:07:01.313Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:07:01.313Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:07:01.313Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:07:01.313Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:07:01.313Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:07:15.369Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:07:15.369Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:07:15.369Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:07:15.369Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:07:15.369Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:07:18.431Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:07:18.431Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:07:18.432Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:07:18.432Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:07:18.432Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:07:48.566Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:07:48.567Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:07:48.567Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:07:48.567Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:07:48.567Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:08:48.182Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:08:48.183Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:08:48.183Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:08:48.183Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:08:48.183Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:08:51.589Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:08:51.589Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:08:51.589Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:08:51.589Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:08:51.590Z [INFO] Server is ready!
+Restarting 'src/server.js'
+Prompt catalog ready: {
+  seeded: 98,
+  mergedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  consolidatedPrompts: {
+    definitionsDeleted: 0,
+    templatesDeleted: 0,
+    systemCustomizationsMigrated: 0,
+    projectOverridesMigrated: 0
+  },
+  legacyMigrated: 0,
+  sceneMapsMigrated: 0
+}
+webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
+2026-07-25T15:09:26.772Z [INFO] Server starting {"port":5679,"host":"0.0.0.0"}
+2026-07-25T15:09:26.772Z [INFO] Frontend:  http://localhost:5679
+2026-07-25T15:09:26.772Z [INFO] API:       http://localhost:5679/api/v1
+2026-07-25T15:09:26.772Z [INFO] Health:    http://localhost:5679/health
+2026-07-25T15:09:26.772Z [INFO] Server is ready!

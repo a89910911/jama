@@ -69,6 +69,18 @@ const router = createRouter({
       name: 'media-library',
       component: () => import('@/views/MediaLibrary.vue'),
       meta: { title: '媒体素材库' }
+    },
+    {
+      path: '/redraw',
+      name: 'redraw',
+      component: () => import('@/views/RedrawWorkbench.vue'),
+      meta: { title: '转绘工作台' }
+    },
+    {
+      path: '/action-migration',
+      name: 'action-migration',
+      component: () => import('@/views/ActionMigration.vue'),
+      meta: { title: '动作迁移' }
     }
   ]
 })

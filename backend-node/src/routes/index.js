@@ -27,6 +27,8 @@ const authService = require('../services/authService');
 const aiRequestRoutes = require('./aiRequests');
 const aiRequestLogService = require('../services/aiRequestLogService');
 const codexChatRoutes = require('./codexChat');
+const redrawRoutes = require('./redraw');
+const actionMigrationRoutes = require('./actionMigration');
 
 function setupRouter(cfg, db, log) {
   const r = express.Router();
@@ -57,6 +59,8 @@ function setupRouter(cfg, db, log) {
   const prompts = promptRoutes.routes(db, log);
   const aiRequests = aiRequestRoutes(db, log);
   const codexChat = codexChatRoutes(db, cfg, log);
+  const redraw = redrawRoutes(db, cfg, log);
+  const actionMigration = actionMigrationRoutes(db, cfg, log);
 
   // ---------- authentication ----------
   // 登录是唯一公开 API；其余业务接口都必须具有有效登录会话。
@@ -131,6 +135,7 @@ function setupRouter(cfg, db, log) {
   r.delete('/dramas/:drama_id/ai-requests/:request_id', aiRequests.remove);
   r.get('/dramas/:drama_id/ai-chat/sessions', codexChat.listSessions);
   r.post('/dramas/:drama_id/ai-chat/sessions', codexChat.createSession);
+  r.get('/dramas/:drama_id/redraw-jobs', redraw.listJobs);
   r.get('/dramas/:id', drama.getDrama);
   r.put('/dramas/:id', drama.updateDrama);
   r.delete('/dramas/:id', drama.deleteDrama);
@@ -348,6 +353,31 @@ function setupRouter(cfg, db, log) {
   r.post('/videos/episode/:episode_id/batch', videos.episodeBatch);
   r.get('/videos/:id', videos.get);
   r.delete('/videos/:id', videos.delete);
+
+  // ---------- redraw ----------
+  r.get('/redraw/jobs', redraw.listJobs);
+  r.post('/redraw/jobs', redraw.createJob);
+  r.get('/redraw/jobs/:job_id', redraw.getJob);
+  r.post('/redraw/jobs/:job_id/cards', redraw.createCard);
+  r.post('/redraw/jobs/:job_id/import-episode-cards', redraw.importEpisodeCards);
+  r.post('/redraw/jobs/:job_id/submit', redraw.submitJob);
+  r.post('/redraw/jobs/:job_id/reconcile', redraw.reconcileJob);
+  r.post('/redraw/jobs/:job_id/repair', redraw.repairJob);
+  r.put('/redraw/cards/:card_id', redraw.updateCard);
+  r.post('/redraw/cards/:card_id/preflight', redraw.preflightCard);
+  r.post('/redraw/cards/:card_id/structure', redraw.generateStructure);
+  r.post('/redraw/cards/:card_id/submit', redraw.submitCard);
+
+  // ---------- action migration ----------
+  r.get('/action-migration/capability', actionMigration.capability);
+  r.get('/action-migration/jobs', actionMigration.listJobs);
+  r.post('/action-migration/jobs', actionMigration.createJob);
+  r.get('/action-migration/jobs/:job_id', actionMigration.getJob);
+  r.post('/action-migration/jobs/:job_id/preflight', actionMigration.preflightJob);
+  r.post('/action-migration/jobs/:job_id/submit', actionMigration.submitJob);
+  r.post('/action-migration/jobs/:job_id/retry', actionMigration.retryJob);
+  r.post('/action-migration/jobs/:job_id/cancel', actionMigration.cancelJob);
+  r.delete('/action-migration/jobs/:job_id', actionMigration.deleteJob);
 
   // ---------- video-merges ----------
   r.get('/video-merges', videoMerges.list);

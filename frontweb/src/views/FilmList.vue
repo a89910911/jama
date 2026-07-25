@@ -16,6 +16,12 @@
           <el-button class="btn-library" @click="showPropLibrary = true">
             <el-icon><Box /></el-icon>素材道具
           </el-button>
+          <el-button class="btn-library" @click="$router.push('/redraw')">
+            <el-icon><VideoCamera /></el-icon>转绘工作台
+          </el-button>
+          <el-button class="btn-library" @click="$router.push('/action-migration')">
+            <el-icon><MagicStick /></el-icon>动作迁移
+          </el-button>
         </div>
         <!-- 右侧操作区 -->
         <div class="header-actions">
@@ -372,7 +378,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Delete, Setting, Plus, User, PictureFilled, Box, Sunny, Moon, ChatDotSquare, Download, Upload, QuestionFilled, FolderOpened, MagicStick, Files } from '@element-plus/icons-vue'
+import { Edit, Delete, Setting, Plus, User, PictureFilled, Box, Sunny, Moon, ChatDotSquare, Download, Upload, QuestionFilled, FolderOpened, MagicStick, Files, VideoCamera } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'

@@ -10,10 +10,8 @@ const { setupRouter } = require('./routes/index.js');
 function createApp() {
   const config = loadConfig();
   const db = getDb(config.database);
-  if (db.dialect === 'sqlite') {
-    const { runMigrationsAndEnsure } = require('./db/migrate.js');
-    runMigrationsAndEnsure(db);
-  }
+  const { runMigrationsAndEnsure } = require('./db/migrate.js');
+  runMigrationsAndEnsure(db);
   const { ensurePromptCatalog } = require('./services/promptTemplateService');
   const promptInit = ensurePromptCatalog(db);
   console.log('Prompt catalog ready:', promptInit);

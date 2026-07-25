@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { getDb } = require('./index.js');
+const crypto = require('crypto');
+const { getDb, closeDb } = require('./index.js');
 const { loadConfig } = require('../config/index.js');
 const { forceVideoAudioSettings } = require('../services/videoAudioPolicy');
 
@@ -15,6 +16,80 @@ function stripLeadingComments(sql) {
     .trim();
 }
 
+function checksum(sql) {
+  return crypto.createHash('sha256').update(sql).digest('hex');
+}
+
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    if (!quote && (char === "'" || char === '"' || char === '`')) {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === quote) {
+        if (sql[i + 1] === quote) {
+          current += sql[i + 1];
+          i += 1;
+        } else if (sql[i - 1] !== '\\') {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (char === ';') {
+      if (current.trim()) statements.push(current.trim() + ';');
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+
+function parseMigrationFile(file) {
+  const match = file.match(/^(\d+)_([\s\S]+)\.sql$/);
+  if (!match) {
+    throw new Error(`Invalid migration filename "${file}". Expected NN_name.sql`);
+  }
+  return {
+    version: Number(match[1]),
+    name: match[2],
+  };
+}
+
+function ensureMigrationTable(database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      checksum TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    )
+  `);
+}
+
+function getAppliedMigrations(database) {
+  ensureMigrationTable(database);
+  const rows = database.prepare(
+    'SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC'
+  ).all();
+  return new Map(rows.map((row) => [Number(row.version), row]));
+}
+
+function recordMigration(database, migration) {
+  database.prepare(
+    'INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)'
+  ).run(migration.version, migration.file, migration.checksum, new Date().toISOString());
+}
+
 function runOne(database, sql, file, index) {
   const s = stripLeadingComments(sql);
   if (!s) return;
@@ -23,9 +98,17 @@ function runOne(database, sql, file, index) {
     console.log('Ran migration:', file + (index >= 0 ? ' #' + (index + 1) : ''));
   } catch (err) {
     const msg = (err.message || '').toLowerCase();
-    if (err.code === 'SQLITE_ERROR' && (msg.includes('duplicate column') || msg.includes('already exists'))) {
+    if (
+      (err.code === 'SQLITE_ERROR' && (msg.includes('duplicate column') || msg.includes('already exists'))) ||
+      msg.includes('duplicate column') ||
+      msg.includes('already exists') ||
+      msg.includes('duplicate key name') ||
+      err.errno === 1050 ||
+      err.errno === 1060 ||
+      err.errno === 1061
+    ) {
       console.log('Skip (already exists):', file + (index >= 0 ? ' #' + (index + 1) : ''));
-    } else if (err.code === 'SQLITE_ERROR' && msg.includes('no such table')) {
+    } else if ((err.code === 'SQLITE_ERROR' && msg.includes('no such table')) || err.errno === 1146) {
       // ALTER TABLE 遇到表不存在时，记录警告并跳过（启动后 ensureAllColumns 会兜底建表补列）
       console.warn('Skip migration (table not found, will be ensured later):', file, '-', err.message);
     } else {
@@ -34,25 +117,39 @@ function runOne(database, sql, file, index) {
   }
 }
 
-function runMigrations(database) {
-  const migrationsDir = path.join(__dirname, '..', '..', 'migrations');
+function runMigrations(database, options = {}) {
+  const migrationsDir = options.migrationsDir || path.join(__dirname, '..', '..', 'migrations');
   if (!fs.existsSync(migrationsDir)) {
     console.log('Migrations dir missing, skipping:', migrationsDir);
     return;
   }
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+  const applied = getAppliedMigrations(database);
   for (const file of files) {
     const fullPath = path.join(migrationsDir, file);
     const sql = fs.readFileSync(fullPath, 'utf8');
-    const statements = sql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    const migration = {
+      ...parseMigrationFile(file),
+      file,
+      checksum: checksum(sql),
+    };
+    const appliedRow = applied.get(migration.version);
+    if (appliedRow) {
+      if (appliedRow.checksum !== migration.checksum) {
+        console.warn(
+          `Migration checksum changed for version ${migration.version} (${file}); keeping recorded version.`
+        );
+      }
+      continue;
+    }
+    const statements = splitSqlStatements(sql);
     if (statements.length <= 1) {
       runOne(database, sql, file, -1);
     } else {
-      statements.forEach((stmt, i) => runOne(database, stmt + ';', file, i));
+      statements.forEach((stmt, i) => runOne(database, stmt, file, i));
     }
+    recordMigration(database, migration);
+    console.log('Recorded migration:', `${migration.version} ${file}`);
   }
 }
 
@@ -387,11 +484,13 @@ function ensureAllColumns(database) {
     { name: 'first_frame_url',      type: 'TEXT' },
     { name: 'last_frame_url',       type: 'TEXT' },
     { name: 'reference_image_urls', type: 'TEXT' },
+    { name: 'source_video_url',     type: 'TEXT' },
     { name: 'video_url',            type: 'TEXT' },
     { name: 'local_path',           type: 'TEXT' },
     { name: 'status',               type: 'TEXT' },
     { name: 'task_id',              type: 'TEXT' },
     { name: 'provider_task_id',     type: 'TEXT' },
+    { name: 'action_migration_job_id', type: 'TEXT' },
     { name: 'scene_id',             type: 'INTEGER' },
     { name: 'completed_at',         type: 'TEXT' },
     { name: 'error_msg',            type: 'TEXT' },
@@ -685,12 +784,20 @@ function runMigrationsAndEnsure(database) {
 function main() {
   const config = loadConfig();
   const database = getDb(config.database);
-  runMigrationsAndEnsure(database);
-  console.log('Migrations complete.');
+  try {
+    runMigrationsAndEnsure(database);
+    console.log('Migrations complete.');
+  } finally {
+    closeDb();
+  }
 }
 
 if (require.main === module) {
   main();
 }
 
-module.exports = { runMigrationsAndEnsure, ensureColumns };
+module.exports = {
+  runMigrations,
+  runMigrationsAndEnsure,
+  ensureColumns,
+};

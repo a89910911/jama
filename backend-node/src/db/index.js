@@ -1,7 +1,6 @@
-const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const { MysqlDatabase, assertMysqlSchema } = require('./mysql');
+const { MysqlDatabase } = require('./mysql');
 
 let db = null;
 
@@ -9,9 +8,9 @@ function getDb(config) {
   if (db) return db;
   if (String(config.type || '').toLowerCase() === 'mysql') {
     db = new MysqlDatabase(config);
-    assertMysqlSchema(db);
     return db;
   }
+  const Database = require('better-sqlite3');
   const dbPath = config.path;
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {

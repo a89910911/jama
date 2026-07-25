@@ -48,4 +48,16 @@ test('translates SQLite metadata and date expressions', () => {
     ),
     'updated_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)'
   );
+  assert.equal(
+    translateSqliteSqlToMysql('id INTEGER PRIMARY KEY AUTOINCREMENT'),
+    'id INTEGER PRIMARY KEY AUTO_INCREMENT'
+  );
+  assert.equal(
+    translateSqliteSqlToMysql('id TEXT PRIMARY KEY'),
+    'id VARCHAR(191) PRIMARY KEY'
+  );
+  assert.equal(
+    translateSqliteSqlToMysql('cache_key TEXT NOT NULL UNIQUE'),
+    'cache_key VARCHAR(191) NOT NULL UNIQUE'
+  );
 });

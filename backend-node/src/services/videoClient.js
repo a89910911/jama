@@ -626,6 +626,10 @@ function holyCrabMimeFromExtension(extension) {
     tiff: 'image/tiff',
     heic: 'image/heic',
     heif: 'image/heif',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    webm: 'video/webm',
+    m4v: 'video/mp4',
   }[ext] || '';
 }
 
@@ -634,7 +638,7 @@ function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
   if (!raw) return null;
 
   if (raw.startsWith('data:')) {
-    const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(raw);
+    const match = /^data:((?:image|video)\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(raw);
     if (!match) return null;
     const buffer = Buffer.from(String(match[2] || '').replace(/\s/g, ''), 'base64');
     if (!buffer.length) return null;
@@ -685,6 +689,60 @@ function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
     extension,
     localPath: candidate,
   };
+}
+
+function videoMimeFromExtension(extension) {
+  const ext = String(extension || '').replace(/^\./, '').toLowerCase();
+  return {
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    webm: 'video/webm',
+    m4v: 'video/mp4',
+  }[ext] || 'video/mp4';
+}
+
+function resolveLocalVideoReference(rawUrl, files_base_url, storage_local_path, log, video_gen_id) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:video/')) return raw;
+  if (isPublicHttpUrl(raw)) return raw;
+
+  const publicFromBase = publicUrlFromLocalRef(raw, files_base_url);
+  if (publicFromBase) return publicFromBase;
+
+  if (!storage_local_path) return raw;
+  const storageRoot = path.resolve(storage_local_path);
+  let candidate = '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      const marker = '/static/';
+      const markerIndex = parsed.pathname.toLowerCase().indexOf(marker);
+      if (markerIndex < 0) return raw;
+      const relative = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+      candidate = path.resolve(storageRoot, relative.replace(/^[/\\]+/, ''));
+    } catch (_) {
+      return raw;
+    }
+  } else {
+    candidate = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(storageRoot, raw.replace(/^[/\\]+/, '').split(/[?#]/)[0]);
+  }
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) return raw;
+  try {
+    const buf = fs.readFileSync(candidate);
+    const mime = videoMimeFromExtension(path.extname(candidate));
+    log.info('[Video] local structure video encoded for reference', {
+      video_gen_id,
+      bytes: buf.length,
+      mime,
+    });
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (error) {
+    log.warn('[Video] failed to read local structure video', { video_gen_id, error: error.message });
+    return raw;
+  }
 }
 
 /**
@@ -748,6 +806,7 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     camera_fixed,
     watermark,
     image_url,
+    source_video_url,
     reference_urls,
     files_base_url,
     storage_local_path,
@@ -818,6 +877,22 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     if (body.content.length > 1) body.task_type = 'i2v';
   }
 
+  const structureVideo = resolveLocalVideoReference(
+    source_video_url,
+    files_base_url,
+    storage_local_path,
+    log,
+    video_gen_id
+  );
+  if (structureVideo) {
+    body.content.splice(1, 0, {
+      type: 'video_url',
+      video_url: { url: structureVideo },
+      role: 'reference_video',
+    });
+    body.task_type = 'i2v';
+  }
+
   // Seedance 2.0 音色参考：本路径仅 volcengine_omni 调用；有 URL 即注入（网关别名如 mingiz-sd2 也要生效）
   if (opts.voice_reference_url) {
     let voiceUrl = String(opts.voice_reference_url).trim();
@@ -860,6 +935,8 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
         preview = String(part.text).slice(0, 80);
       } else if (part.image_url?.url) {
         preview = String(part.image_url.url).slice(0, 80);
+      } else if (part.video_url?.url) {
+        preview = String(part.video_url.url).slice(0, 80);
       } else if (part.audio_url?.url) {
         preview = String(part.audio_url.url).slice(0, 80);
       }
@@ -886,6 +963,7 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     ratio,
     duration: effectiveDuration,
     image_count: urls.length,
+    has_reference_video: !!structureVideo,
     has_voice_ref: !!voice_reference_url,
     video_gen_id,
   });
@@ -894,6 +972,7 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     ratio,
     duration: effectiveDuration,
     image_count: urls.length,
+    has_reference_video: !!structureVideo,
     has_voice_ref: !!voice_reference_url,
   });
 
@@ -4267,8 +4346,15 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
   }
   appendRaw(opts.first_frame_url || opts.first_frame_local_path || opts.image_url);
   appendRaw(opts.last_frame_url || opts.last_frame_local_path);
+  const rawVideoInputs = [];
+  const appendVideoRaw = (value) => {
+    const raw = String(value || '').trim();
+    if (raw && !rawVideoInputs.includes(raw) && rawVideoInputs.length < 3) rawVideoInputs.push(raw);
+  };
+  appendVideoRaw(opts.source_video_url);
 
   const imageAssetIds = [];
+  const videoAssetIds = [];
   try {
     for (let index = 0; index < rawInputs.length; index++) {
       const localSource = resolveHolyCrabLocalImageSource(
@@ -4313,6 +4399,45 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
       }
       if (assetId && !imageAssetIds.includes(assetId)) imageAssetIds.push(assetId);
     }
+    for (let index = 0; index < rawVideoInputs.length; index++) {
+      const localSource = resolveHolyCrabLocalImageSource(
+        rawVideoInputs[index],
+        opts.storage_local_path
+      );
+      let assetId = '';
+      if (localSource) {
+        log.info('[HolyCrab] local structure video upload', {
+          video_gen_id: opts.video_gen_id,
+          index,
+          bytes: localSource.buffer.length,
+          content_type: localSource.mimeType,
+        });
+        assetId = await uploadHolyCrabLocalImage(
+          config,
+          localSource,
+          requestImpl,
+          opts
+        );
+      } else {
+        const publicUrl = resolveLocalVideoReference(
+          rawVideoInputs[index],
+          opts.files_base_url,
+          opts.storage_local_path,
+          log,
+          opts.video_gen_id
+        );
+        if (!publicUrl) {
+          throw new Error(`HolyCrab 第 ${index + 1} 个结构视频无法读取或转换`);
+        }
+        assetId = await registerHolyCrabAssetFromUrl(
+          config,
+          publicUrl,
+          requestImpl,
+          opts
+        );
+      }
+      if (assetId && !videoAssetIds.includes(assetId)) videoAssetIds.push(assetId);
+    }
   } catch (error) {
     return { error: error.message };
   }
@@ -4327,6 +4452,7 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
     resolution: normalizeHolyCrabResolution(opts.resolution, model),
     model,
     ...(imageAssetIds.length ? { imageAssetIds } : {}),
+    ...(videoAssetIds.length ? { videoAssetIds } : {}),
   }, 'holycrab');
   const url = joinHolyCrabUrl(config.base_url, '/api/tasks/generation');
   log.info('[HolyCrab 视频] 提交 BytePlus Seedance 任务', {
@@ -4337,6 +4463,7 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
     resolution: body.resolution,
     generate_audio: body.generate_audio,
     image_asset_count: imageAssetIds.length,
+    video_asset_count: videoAssetIds.length,
   });
 
   try {
@@ -4637,6 +4764,7 @@ async function callVideoApiInternal(db, log, opts) {
       camera_fixed: opts.camera_fixed,
       watermark: opts.watermark,
       image_url: opts.image_url,
+      source_video_url: opts.source_video_url,
       reference_urls: opts.reference_urls,
       files_base_url: opts.files_base_url,
       storage_local_path: opts.storage_local_path,
@@ -4880,6 +5008,7 @@ async function callVideoApi(db, log, opts) {
       image_url: opts.image_url || null,
       first_frame_url: opts.first_frame_url || null,
       last_frame_url: opts.last_frame_url || null,
+      source_video_url: opts.source_video_url || null,
       reference_urls: opts.reference_urls || [],
       options: opts,
     },

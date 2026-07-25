@@ -37,7 +37,11 @@ function replaceOutsideQuoted(sql, replacer) {
 
 function quoteMysqlReservedIdentifiers(sql) {
   return replaceOutsideQuoted(sql, (segment) =>
-    segment.replace(/\bkey\b/gi, '`key`')
+    segment.replace(/\bkey\b/gi, (match, offset, full) => {
+      const before = full.slice(Math.max(0, offset - 16), offset).toLowerCase();
+      if (/\b(primary|foreign|unique)\s+$/.test(before)) return match.toUpperCase();
+      return '`key`';
+    })
   );
 }
 
@@ -84,8 +88,20 @@ function translateSqliteSqlToMysql(input) {
     segment
       .replace(/\bINSERT\s+OR\s+IGNORE\b/gi, 'INSERT IGNORE')
       .replace(/\bINSERT\s+OR\s+REPLACE\b/gi, 'REPLACE')
+      .replace(/\bAUTOINCREMENT\b/gi, 'AUTO_INCREMENT')
+      .replace(/\bTEXT\s+PRIMARY\s+KEY\b/gi, 'VARCHAR(191) PRIMARY KEY')
+      .replace(/\bTEXT\s+NOT\s+NULL\s+UNIQUE\b/gi, 'VARCHAR(191) NOT NULL UNIQUE')
+      .replace(/\bTEXT\s+UNIQUE\b/gi, 'VARCHAR(191) UNIQUE')
+      .replace(/\bTEXT\s+((?:NOT\s+NULL\s+)?DEFAULT\b)/gi, 'VARCHAR(255) $1')
+      .replace(/\bAS\s+TEXT\b/gi, 'AS CHAR')
       .replace(/\s+COLLATE\s+NOCASE\b/gi, '')
   );
+  sql = sql.replace(/'\/static\/'\s*\|\|\s*([A-Za-z_][A-Za-z0-9_.]*)/g, "CONCAT('/static/', $1)");
+  sql = sql.replace(
+    /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*?)\)\s+WHERE\s+[\s\S]*$/i,
+    'CREATE INDEX $1 ON $2 ($3)'
+  );
+  sql = sql.replace(/\bCREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/gi, 'CREATE $1INDEX');
   sql = translateOnConflict(sql);
   sql = sql.replace(
     /datetime\s*\(\s*'now'\s*,\s*'-5 minutes'\s*\)/gi,
