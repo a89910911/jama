@@ -26,3 +26,5 @@ build
 frontweb-edu
 /.idea/
 /example_drama/
+__pycache__/
+*.pyc
