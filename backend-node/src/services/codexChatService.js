@@ -16,7 +16,12 @@ const { codexChatEventBus } = require('./codexChatEventBus');
 const codexResources = require('./codexResourceService');
 const codexStoryboards = require('./codexStoryboardService');
 const codexIntents = require('./codexIntentService');
+const assistantActions = require('./assistantActionRegistry');
 const codexEditing = require('./codexEditingService');
+const uploadService = require('./uploadService');
+const imageService = require('./imageService');
+const assistantSettings = require('./assistantSettingsService');
+const { getConfiguredApiRuntime } = require('../integrations/assistant/configuredApiRuntime');
 
 const CODEX_PROVIDER = 'codex_app_server';
 const MAX_CONTEXT_CHARS = 30_000;
@@ -61,6 +66,7 @@ function rowToSession(row) {
     drama_id: row.drama_id,
     episode_id: row.episode_id,
     user_id: row.user_id,
+    engine: row.engine || assistantSettings.ENGINE_CODEX,
     codex_thread_id: row.codex_thread_id,
     title: row.title,
     status: row.status,
@@ -114,19 +120,21 @@ function createSession(db, details) {
   const episode = verifyEpisode(db, dramaId, details.episode_id);
   const now = new Date().toISOString();
   const id = randomUUID();
+  const engine = assistantSettings.getAssistantEngine(db);
   const title = String(
     details.title
       || (episode ? `第${episode.episode_number || ''}集 AI 对话` : `${drama.title || '项目'} AI 对话`)
   ).trim().slice(0, 100);
   db.prepare(
     `INSERT INTO codex_chat_sessions
-      (id, drama_id, episode_id, user_id, title, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`
+      (id, drama_id, episode_id, user_id, engine, title, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`
   ).run(
     id,
     dramaId,
     episode?.id || null,
     details.user_id || null,
+    engine,
     title,
     now,
     now
@@ -214,10 +222,88 @@ function updateMessage(db, messageId, fields) {
   return rowToMessage(db.prepare('SELECT * FROM codex_chat_messages WHERE id = ?').get(String(messageId)));
 }
 
+function normalizeStorySourceText(text) {
+  return String(text || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\r\n?/g, '\n');
+}
+
+function isExplicitStoryGenerationRequest(text) {
+  const normalized = normalizeStorySourceText(text);
+  const tail = normalized.slice(-1600);
+  const directCommand = /(?:请|帮我|需要|我要|希望|要求|目标(?:是|为)?|请按|调用).{0,30}(?:生成|创作|编写|写出|写成|完善).{0,12}(?:完整)?(?:剧本|短剧)(?=[。！!？?\s，,：:]|$)/i;
+  const standaloneCommand = /(?:^|\n)\s*(?:生成|创作|编写|写出|写成)(?:完整)?(?:剧本|短剧)\s*[。！!？?]?\s*$/im;
+  return directCommand.test(tail) || standaloneCommand.test(tail);
+}
+
+function parseEpisodeOrdinal(value) {
+  const input = String(value || '').trim();
+  if (/^\d+$/.test(input)) return Number(input);
+  const digits = {
+    零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4,
+    五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+  };
+  if (input === '十') return 10;
+  if (input.includes('十')) {
+    const [left, right] = input.split('十');
+    const tens = left ? digits[left] : 1;
+    const ones = right ? digits[right] : 0;
+    return Number.isInteger(tens) && Number.isInteger(ones)
+      ? tens * 10 + ones
+      : null;
+  }
+  return input.length === 1 && Number.isInteger(digits[input])
+    ? digits[input]
+    : null;
+}
+
+function extractStoryRequestMetadata(text) {
+  const normalized = normalizeStorySourceText(text);
+  const lineValue = (labels) => {
+    const match = normalized.match(
+      new RegExp(`(?:^|\\n)\\s*(?:${labels})\\s*[：:]\\s*([^\\n]{1,80})`, 'i')
+    );
+    return match ? String(match[1]).trim() : '';
+  };
+  const title = normalized.match(/《([^》\n]{1,100})》/)?.[1]?.trim() || '';
+  const storyType = lineValue('题材分类|题材类型|剧本类型|故事类型');
+  let storyStyle = lineValue('故事风格|剧本风格|叙事风格|视觉风格');
+  if (!storyStyle && /(轻喜|甜宠|喜剧|悬疑|惊悚|治愈|现实|古风|科幻)/i.test(storyType)) {
+    storyStyle = storyType;
+  }
+
+  const explicitCountMatch = normalized.match(
+    /(?:总集数|剧集数|计划集数|集数)\s*[：:]?\s*(\d{1,2})\s*集?/i
+  ) || normalized.match(/共\s*(\d{1,2})\s*集/i);
+  let episodeCount = explicitCountMatch ? Number(explicitCountMatch[1]) : null;
+  if (!episodeCount) {
+    const episodeNumbers = [];
+    const headingPattern = /(?:^|\n)\s*第\s*([0-9零〇一二两三四五六七八九十]{1,4})\s*集(?:\s|$)/g;
+    let match;
+    while ((match = headingPattern.exec(normalized))) {
+      const value = parseEpisodeOrdinal(match[1]);
+      if (Number.isInteger(value) && value > 0) episodeNumbers.push(value);
+    }
+    if (episodeNumbers.length > 1) episodeCount = Math.max(...episodeNumbers);
+  }
+
+  return {
+    title,
+    story_type: storyType,
+    story_style: storyStyle,
+    episode_count: Number.isInteger(episodeCount)
+      ? Math.max(1, Math.min(50, episodeCount))
+      : null,
+  };
+}
+
 function inferIntent(text, hint) {
   const allowed = new Set(codexIntents.SUPPORTED_INTENTS);
-  if (allowed.has(hint)) return hint;
   const input = String(text || '');
+  if (isExplicitStoryGenerationRequest(input)) return 'generate_story';
+  if (allowed.has(hint)) return hint;
   const discussesExistingResult = /(为什么|为何|怎么回事|有什么问题|哪里有问题|失败原因|是否已经|有没有生成|生成了多少|如何使用|怎么使用|什么意思|评价|分析一下|检查一下)/i.test(input)
     && !/(请|帮我|麻烦|现在|立即|重新|再|继续|开始).{0,12}(生成|制作|创建|画|改写|重写|续写|提取|保存|补齐)/i.test(input);
   if (discussesExistingResult) return 'chat';
@@ -270,11 +356,20 @@ function buildConversationContext(db, session, episode) {
 }
 
 function buildStoryPrompt(db, session, episode, body, taskId, intent) {
+  const inferred = extractStoryRequestMetadata(body.content || body.message || '');
   const episodeCount = episode
     ? 1
-    : Math.max(1, Math.min(50, Math.floor(Number(body.episode_count) || 1)));
+    : Math.max(
+      1,
+      Math.min(
+        50,
+        Math.floor(Number(inferred.episode_count || body.episode_count) || 1)
+      )
+    );
   const drama = dramaService.getDramaById(db, session.drama_id);
-  const premise = String(body.content || body.message || '').trim();
+  const premise = normalizeStorySourceText(body.content || body.message || '').trim();
+  const storyStyle = inferred.story_style || body.style || drama?.metadata?.story_style || '';
+  const storyType = inferred.story_type || body.type || drama?.genre || '';
   const promptContext = {
     dramaId: session.drama_id,
     taskId,
@@ -287,8 +382,8 @@ function buildStoryPrompt(db, session, episode, body, taskId, intent) {
     variables: {
       episode_count: episodeCount,
       story_premise: premise,
-      story_style: body.style || drama?.metadata?.story_style || '',
-      story_type: body.type || drama?.genre || '',
+      story_style: storyStyle,
+      story_type: storyType,
     },
   });
   const operation = intent === 'continue_current_episode'
@@ -303,6 +398,7 @@ function buildStoryPrompt(db, session, episode, body, taskId, intent) {
     systemPrompt,
     '【本次操作】',
     operation,
+    `【识别出的创作参数】标题：${inferred.title || drama?.title || '未指定'}；题材类型：${storyType || '由内容推断'}；故事风格：${storyStyle || '由内容推断'}；生成集数：${episodeCount}`,
     episode?.script_content ? `【当前剧本】\n${String(episode.script_content).slice(0, 20_000)}` : '',
     '【项目提示词接口生成的用户提示词】',
     userPrompt,
@@ -327,7 +423,7 @@ function parseScriptResult(text) {
       script_content: String(episode.script_content || episode.content || episode.script || '').trim(),
     }))
     .filter((episode) => episode.script_content);
-  if (!episodes.length) throw new Error('Codex 未返回有效剧本内容');
+  if (!episodes.length) throw new Error('AI 助手未返回有效剧本内容');
   return {
     assistant_reply: String(parsed?.assistant_reply || `已生成 ${episodes.length} 集剧本。`).trim(),
     episodes,
@@ -343,37 +439,62 @@ function assertTaskActive(db, taskId) {
   }
 }
 
-async function persistCodexImage(db, log, cfg, details) {
-  const source = path.resolve(String(details.savedPath || ''));
-  if (!source || !fs.existsSync(source)) throw new Error('Codex 未返回有效图片文件');
-  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
-  const allowedRoot = path.resolve(details.allowedImageRoot || path.join(codexHome, 'generated_images'));
-  const relativeToAllowed = path.relative(allowedRoot, source);
-  if (relativeToAllowed.startsWith('..') || path.isAbsolute(relativeToAllowed)) {
-    throw new Error('Codex 图片路径不在允许目录中');
-  }
-  const stat = fs.statSync(source);
-  if (!stat.isFile() || stat.size <= 0 || stat.size > 25 * 1024 * 1024) {
-    throw new Error('Codex 图片文件无效或超过 25MB');
-  }
-  const metadata = await sharp(source).metadata();
-  if (!['png', 'jpeg', 'webp'].includes(metadata.format)) {
-    throw new Error('Codex 返回了不支持的图片格式');
-  }
-
+async function persistAssistantImage(db, log, cfg, details) {
   const rawStorage = cfg?.storage?.local_path || './data/storage';
   const storageRoot = path.isAbsolute(rawStorage)
     ? rawStorage
     : path.join(process.cwd(), rawStorage);
   const projectDir = storageLayout.getProjectStorageSubdir(db, details.dramaId);
-  const relDir = `${projectDir}/images`;
-  const destDir = path.join(storageRoot, ...relDir.split('/'));
-  fs.mkdirSync(destDir, { recursive: true });
-  const ext = metadata.format === 'jpeg' ? '.jpg' : `.${metadata.format}`;
-  const filename = `codex_${Date.now()}_${randomUUID().slice(0, 8)}${ext}`;
-  const destination = path.join(destDir, filename);
-  fs.copyFileSync(source, destination);
-  const localPath = `${relDir}/${filename}`;
+  let source = null;
+  let destination = null;
+  let localPath = null;
+
+  if (details.savedPath) {
+    source = path.resolve(String(details.savedPath));
+    if (!fs.existsSync(source)) throw new Error('Codex 未返回有效图片文件');
+    const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+    const allowedRoot = path.resolve(
+      details.allowedImageRoot || path.join(codexHome, 'generated_images')
+    );
+    const relativeToAllowed = path.relative(allowedRoot, source);
+    if (relativeToAllowed.startsWith('..') || path.isAbsolute(relativeToAllowed)) {
+      throw new Error('Codex 图片路径不在允许目录中');
+    }
+  } else if (details.imageUrl) {
+    localPath = await uploadService.downloadImageToLocal(
+      storageRoot,
+      details.imageUrl,
+      'images',
+      log,
+      'assistant',
+      projectDir
+    );
+    if (!localPath) throw new Error('图片 API 返回的图片保存失败');
+    source = path.join(storageRoot, ...localPath.split('/'));
+    destination = source;
+  } else {
+    throw new Error('图片生成引擎未返回有效图片');
+  }
+
+  const stat = fs.statSync(source);
+  if (!stat.isFile() || stat.size <= 0 || stat.size > 25 * 1024 * 1024) {
+    throw new Error('生成图片文件无效或超过 25MB');
+  }
+  const metadata = await sharp(source).metadata();
+  if (!['png', 'jpeg', 'webp'].includes(metadata.format)) {
+    throw new Error('生成引擎返回了不支持的图片格式');
+  }
+
+  if (!localPath) {
+    const relDir = `${projectDir}/images`;
+    const destDir = path.join(storageRoot, ...relDir.split('/'));
+    fs.mkdirSync(destDir, { recursive: true });
+    const ext = metadata.format === 'jpeg' ? '.jpg' : `.${metadata.format}`;
+    const filename = `codex_${Date.now()}_${randomUUID().slice(0, 8)}${ext}`;
+    destination = path.join(destDir, filename);
+    fs.copyFileSync(source, destination);
+    localPath = `${relDir}/${filename}`;
+  }
   const now = new Date().toISOString();
 
   const transaction = db.transaction(() => {
@@ -389,7 +510,7 @@ async function persistCodexImage(db, log, cfg, details) {
       details.episodeId || null,
       details.sceneId || null,
       details.characterId || null,
-      CODEX_PROVIDER,
+      details.provider || CODEX_PROVIDER,
       details.prompt,
       details.model || null,
       details.frameType || null,
@@ -433,7 +554,7 @@ async function persistCodexImage(db, log, cfg, details) {
 
     const asset = assetService.create(db, log, {
       drama_id: details.dramaId,
-      name: String(details.assetName || 'Codex 生成图片').slice(0, 100),
+      name: String(details.assetName || 'AI 助手生成图片').slice(0, 100),
       type: 'image',
       category: details.targetType || 'ai_chat',
       url: `/static/${localPath}`,
@@ -474,7 +595,19 @@ function validateImageTarget(db, session, body) {
        WHERE s.id = ? AND e.drama_id = ? AND s.deleted_at IS NULL AND e.deleted_at IS NULL`
     ).get(targetId, session.drama_id);
     if (!row) throw new Error('目标分镜不属于当前项目');
-    return { targetType, storyboardId: targetId, frameType: body.frame_type || 'first' };
+    const storyboardTarget = session.episode_id
+      ? codexStoryboards.listStoryboardImageTargets(
+        db,
+        session,
+        { missingOnly: false }
+      ).find((item) => Number(item.storyboardId) === targetId)
+      : null;
+    return {
+      ...(storyboardTarget || {}),
+      targetType,
+      storyboardId: targetId,
+      frameType: body.frame_type || 'first',
+    };
   }
   const tableMap = { character: 'characters', scene: 'scenes', prop: 'props' };
   const table = tableMap[targetType];
@@ -491,9 +624,88 @@ function validateImageTarget(db, session, body) {
   };
 }
 
+function runtimeForSession(db, log, session) {
+  if (session.engine === assistantSettings.ENGINE_CONFIGURED_API) {
+    return getConfiguredApiRuntime({ db, log });
+  }
+  return getCodexRuntime({ log });
+}
+
+function engineLabel(session) {
+  return session.engine === assistantSettings.ENGINE_CONFIGURED_API
+    ? 'AI 配置 API'
+    : 'Codex';
+}
+
+function assistantImageSize(db, session) {
+  try {
+    const drama = db.prepare(
+      'SELECT metadata FROM dramas WHERE id = ? AND deleted_at IS NULL'
+    ).get(Number(session.drama_id));
+    const metadata = typeof drama?.metadata === 'string'
+      ? JSON.parse(drama.metadata)
+      : drama?.metadata;
+    return imageService.aspectRatioToSize(metadata?.aspect_ratio) || undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function targetImageReference(item) {
+  return item?.local_path || item?.localPath || item?.image_url || item?.imageUrl || '';
+}
+
+function storyboardImageReferences(target) {
+  const references = [];
+  const labels = [];
+  const add = (item, label) => {
+    const value = targetImageReference(item);
+    if (!value || references.includes(value)) return;
+    references.push(value);
+    labels.push(`Image ${references.length}: ${label}`);
+  };
+  if (target.scene) {
+    add(target.scene, `scene background reference for "${target.scene.location || 'scene'}"`);
+  }
+  for (const character of target.characters || []) {
+    add(character, `character appearance reference for "${character.name || 'character'}"`);
+  }
+  for (const prop of target.props || []) {
+    add(prop, `prop/object reference for "${prop.name || 'prop'}"`);
+  }
+  return {
+    referenceImages: references,
+    referenceContext: labels.join('\n'),
+  };
+}
+
+function imageRequestForSession(db, session, prompt, options = {}) {
+  if (session.engine !== assistantSettings.ENGINE_CONFIGURED_API) return undefined;
+  const serviceType = options.storyboard
+    ? 'storyboard_image'
+    : 'image';
+  const refs = options.storyboard
+    ? storyboardImageReferences(options.target || {})
+    : { referenceImages: [], referenceContext: '' };
+  return {
+    prompt,
+    dramaId: session.drama_id,
+    imageServiceType: serviceType,
+    sceneKey: serviceType === 'storyboard_image'
+      ? 'storyboard_image_generation'
+      : undefined,
+    size: assistantImageSize(db, session),
+    quality: 'standard',
+    ...refs,
+  };
+}
+
 async function ensureSessionThread(db, session, runtime) {
   const threadId = await runtime.ensureThread(session.codex_thread_id);
-  if (threadId !== session.codex_thread_id) {
+  if (
+    session.engine === assistantSettings.ENGINE_CODEX
+    && threadId !== session.codex_thread_id
+  ) {
     db.prepare(
       'UPDATE codex_chat_sessions SET codex_thread_id = ?, updated_at = ? WHERE id = ?'
     ).run(threadId, new Date().toISOString(), session.id);
@@ -515,21 +727,41 @@ async function resolveIntentPlan(db, log, details) {
     ? body.intent_hint
     : '';
   const initialIntent = inferIntent(body.content, explicitHint);
-  const contextualRequest = !explicitHint
-    && codexIntents.needsContextualPlanning(body.content);
-  if (explicitHint || (initialIntent !== 'chat' && !contextualRequest)) {
-    return codexIntents.createLocalIntentPlan(
-      initialIntent,
-      body.content,
-      explicitHint ? 'shortcut' : 'rule'
-    );
-  }
+  const plannerProvider = session.engine === assistantSettings.ENGINE_CONFIGURED_API
+    ? assistantSettings.ENGINE_CONFIGURED_API
+    : CODEX_PROVIDER;
+  const plannerLog = aiRequestLogs.start(db, {
+    drama_id: session.drama_id,
+    episode_id: episode?.id,
+    service_type: 'text',
+    operation: 'assistant_intent_planning',
+    scene_key: 'assistant_intent_planning',
+    provider: plannerProvider,
+    related_type: 'codex_chat_message',
+    related_id: assistantMessageId,
+    metadata: {
+      engine: session.engine,
+      schema_version: '1.0',
+      shortcut_hint: explicitHint || null,
+      local_rule_intent: initialIntent,
+    },
+    request: {
+      schema_version: '1.0',
+      engine: session.engine,
+      shortcut_hint: explicitHint || null,
+      local_rule_intent: initialIntent,
+      content_length: String(body.content || '').length,
+      content_head: String(body.content || '').slice(0, 1000),
+      content_tail: String(body.content || '').slice(-1000),
+    },
+  });
 
-  taskService.updateTaskStatus(db, taskId, 'processing', 15, 'Codex 正在理解你的需求...');
+  const label = engineLabel(session);
+  taskService.updateTaskStatus(db, taskId, 'processing', 15, `${label}正在理解你的需求...`);
   codexChatEventBus.publish(session.id, 'phase.changed', {
     task_id: taskId,
     phase: 'planning',
-    message: 'Codex 正在理解你的需求...',
+    message: `${label}正在理解你的需求...`,
   });
   try {
     const turn = await runtime.runTurn({
@@ -539,49 +771,104 @@ async function resolveIntentPlan(db, log, details) {
         db,
         session,
         episode,
-        body.content
+        body.content,
+        {
+          taskId,
+          intentHint: explicitHint,
+          ruleIntent: initialIntent,
+        }
       ),
       outputSchema: codexIntents.INTENT_PLAN_SCHEMA,
+      sceneKey: 'assistant_intent_planning',
       timeoutMs: 90_000,
       onTurnStarted(turnId) {
         updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
       },
     });
     assertTaskActive(db, taskId);
-    return codexIntents.parseIntentPlan(turn.text, body.content);
+    const planned = codexIntents.parseIntentPlan(turn.text, body.content);
+    const authoritativeIntent = isExplicitStoryGenerationRequest(body.content)
+      ? 'generate_story'
+      : explicitHint;
+    if (authoritativeIntent && planned.intent !== authoritativeIntent) {
+      const reconciled = {
+        ...planned,
+        intent: authoritativeIntent,
+        confidence: Math.max(0.99, planned.confidence),
+        requested_actions: [authoritativeIntent],
+        reason: `用户本轮明确指令优先；${planned.reason || '已完成语义复核'}`,
+        evidence: [
+          `本轮明确指定：${codexIntents.intentLabel(authoritativeIntent)}`,
+          ...(planned.evidence || []),
+        ].slice(0, 8),
+        source: `${planned.source}+explicit_policy`,
+      };
+      aiRequestLogs.succeed(db, plannerLog, reconciled, {
+        provider: turn.provider || plannerProvider,
+        model: turn.model,
+      });
+      return reconciled;
+    }
+    aiRequestLogs.succeed(db, plannerLog, planned, {
+      provider: turn.provider || plannerProvider,
+      model: turn.model,
+    });
+    return planned;
   } catch (error) {
+    aiRequestLogs.fail(db, plannerLog, error, null, { provider: plannerProvider });
     if (error.code === 'CODEX_TURN_INTERRUPTED') throw error;
-    log?.warn?.('Codex intent planning failed; falling back to chat', {
+    log?.warn?.('Assistant intent planning failed; using safe local decision', {
       task_id: taskId,
       error: error.message,
     });
+    const fallbackIntent = explicitHint || initialIntent;
+    const safeFallback = codexIntents.createLocalIntentPlan(
+      fallbackIntent,
+      body.content,
+      explicitHint ? 'shortcut_fallback' : 'rule_fallback'
+    );
     return {
-      ...codexIntents.createLocalIntentPlan('chat', body.content, 'fallback'),
-      confidence: 0,
-      reason: `意图规划失败，已安全回退为普通对话：${error.message}`,
+      ...safeFallback,
+      confidence: fallbackIntent === 'chat' ? 0 : 0.7,
+      reason: fallbackIntent === 'chat'
+        ? `意图识别服务不可用，已安全回退为普通对话：${error.message}`
+        : `意图识别服务不可用，使用本地明确指令结果：${error.message}`,
     };
   }
 }
 
 function mergeIntentPlanMetadata(message, plan) {
+  const decision = {
+    schema_version: plan.schema_version || '1.0',
+    intent: plan.intent,
+    label: codexIntents.intentLabel(plan.intent),
+    confidence: plan.confidence,
+    normalized_request: plan.normalized_request,
+    reason: plan.reason,
+    evidence: plan.evidence || [],
+    alternatives: plan.alternatives || [],
+    requested_actions: plan.requested_actions || [plan.intent],
+    missing_inputs: plan.missing_inputs || [],
+    requires_confirmation: !!plan.requires_confirmation,
+    confirmation_granted: !!plan.confirmation_granted,
+    clarification_question: plan.clarification_question || '',
+    resource_scopes: plan.resource_scopes,
+    resource_names: plan.resource_names,
+    storyboard_numbers: plan.storyboard_numbers,
+    prompt_fields: plan.prompt_fields,
+    detail_fields: plan.detail_fields,
+    target_all: plan.target_all,
+    prepare_source: plan.prepare_source,
+    force_regenerate: plan.force_regenerate,
+    source: plan.source,
+  };
+  const actionPlan = assistantActions.compileActionPlan(plan);
+  decision.action_plan = actionPlan;
   return {
     ...(message?.metadata || {}),
-    intent_plan: {
-      intent: plan.intent,
-      label: codexIntents.intentLabel(plan.intent),
-      confidence: plan.confidence,
-      normalized_request: plan.normalized_request,
-      reason: plan.reason,
-      resource_scopes: plan.resource_scopes,
-      resource_names: plan.resource_names,
-      storyboard_numbers: plan.storyboard_numbers,
-      prompt_fields: plan.prompt_fields,
-      detail_fields: plan.detail_fields,
-      target_all: plan.target_all,
-      prepare_source: plan.prepare_source,
-      force_regenerate: plan.force_regenerate,
-      source: plan.source,
-    },
+    intent_plan: decision,
+    intent_decision: decision,
+    action_plan: actionPlan,
   };
 }
 
@@ -595,11 +882,12 @@ async function extractResourcesWithCodex(db, cfg, log, details) {
     runtime,
     threadId,
   } = details;
-  taskService.updateTaskStatus(db, taskId, 'processing', 25, 'Codex 正在提取角色、道具和场景...');
+  const label = engineLabel(session);
+  taskService.updateTaskStatus(db, taskId, 'processing', 25, `${label}正在提取角色、道具和场景...`);
   codexChatEventBus.publish(session.id, 'phase.changed', {
     task_id: taskId,
     phase: 'extracting_resources',
-    message: 'Codex 正在提取角色、道具和场景...',
+    message: `${label}正在提取角色、道具和场景...`,
   });
   const prompt = codexResources.buildResourceExtractionPrompt(
     db,
@@ -613,6 +901,7 @@ async function extractResourcesWithCodex(db, cfg, log, details) {
     taskId,
     threadId,
     text: prompt,
+    sceneKey: 'role_extraction',
     outputSchema: codexResources.RESOURCE_OUTPUT_SCHEMA,
     timeoutMs: 3 * 60_000,
     onTurnStarted(turnId) {
@@ -645,11 +934,12 @@ async function generateStoryboardsWithCodex(db, cfg, log, details) {
     threadId,
   } = details;
   if (!episode) throw new Error('生成分镜必须选择一个剧集');
-  taskService.updateTaskStatus(db, taskId, 'processing', 20, 'Codex 正在生成完整分镜...');
+  const label = engineLabel(session);
+  taskService.updateTaskStatus(db, taskId, 'processing', 20, `${label}正在生成完整分镜...`);
   codexChatEventBus.publish(session.id, 'phase.changed', {
     task_id: taskId,
     phase: 'generating_storyboards',
-    message: 'Codex 正在生成完整分镜...',
+    message: `${label}正在生成完整分镜...`,
   });
   const bundle = codexStoryboards.buildStoryboardGenerationPrompt(
     db,
@@ -663,6 +953,7 @@ async function generateStoryboardsWithCodex(db, cfg, log, details) {
     taskId,
     threadId,
     text: bundle.prompt,
+    sceneKey: 'storyboard_extraction',
     outputSchema: bundle.outputSchema,
     timeoutMs: 6 * 60_000,
     onTurnStarted(turnId) {
@@ -692,6 +983,74 @@ async function generateStoryboardsWithCodex(db, cfg, log, details) {
   return { parsed, saved, plan: bundle.plan };
 }
 
+async function generateStoryWithAssistant(db, log, details) {
+  const {
+    session,
+    episode,
+    body,
+    taskId,
+    assistantMessageId,
+    runtime,
+    threadId,
+  } = details;
+  const intent = details.intent || 'generate_story';
+  const label = engineLabel(session);
+  const prompt = buildStoryPrompt(db, session, episode, body, taskId, intent);
+  taskService.updateTaskStatus(db, taskId, 'processing', 30, `${label}正在生成剧本...`);
+  codexChatEventBus.publish(session.id, 'phase.changed', {
+    task_id: taskId,
+    phase: 'generating_script',
+    message: `${label}正在生成剧本...`,
+  });
+  const turn = await runtime.runTurn({
+    taskId,
+    threadId,
+    text: prompt,
+    sceneKey: 'story_generation',
+    outputSchema: SCRIPT_OUTPUT_SCHEMA,
+    timeoutMs: 3 * 60_000,
+    onTurnStarted(turnId) {
+      updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
+    },
+    onDelta(delta) {
+      codexChatEventBus.publish(session.id, 'message.delta', {
+        task_id: taskId,
+        message_id: assistantMessageId,
+        delta,
+      });
+    },
+  });
+  assertTaskActive(db, taskId);
+  const parsed = parseScriptResult(turn.text);
+  taskService.updateTaskStatus(db, taskId, 'processing', 85, '正在保存剧本...');
+  let savedEpisodes;
+  if (episode) {
+    const generated = parsed.episodes[0];
+    const saved = dramaService.updateEpisodeScript(db, log, session.drama_id, episode.id, {
+      title: generated.title || episode.title,
+      script_content: intent === 'continue_current_episode'
+        ? `${episode.script_content || ''}\n\n${generated.script_content}`.trim()
+        : generated.script_content,
+    });
+    if (!saved) throw new Error('保存当前剧集失败');
+    savedEpisodes = [saved];
+  } else {
+    const saved = dramaService.saveEpisodes(db, log, session.drama_id, {
+      episodes: parsed.episodes,
+    });
+    if (!saved) throw new Error('保存剧本失败');
+    const numbers = parsed.episodes.map((item) => Number(item.episode_number));
+    savedEpisodes = db.prepare(
+      `SELECT id, drama_id, episode_number, title, script_content
+         FROM episodes
+        WHERE drama_id = ? AND deleted_at IS NULL
+          AND episode_number IN (${numbers.map(() => '?').join(', ')})
+        ORDER BY episode_number ASC`
+    ).all(Number(session.drama_id), ...numbers);
+  }
+  return { parsed, savedEpisodes };
+}
+
 async function processMessage(db, cfg, log, details) {
   const {
     sessionId,
@@ -706,18 +1065,22 @@ async function processMessage(db, cfg, log, details) {
     taskService.updateTaskError(db, taskId, 'AI 对话不存在');
     return;
   }
-  const episode = verifyEpisode(db, session.drama_id, session.episode_id);
-  const runtime = getCodexRuntime({ log });
+  let episode = verifyEpisode(db, session.drama_id, session.episode_id);
+  const runtime = runtimeForSession(db, log, session);
+  const selectedEngineLabel = engineLabel(session);
+  const engineProvider = session.engine === assistantSettings.ENGINE_CONFIGURED_API
+    ? assistantSettings.ENGINE_CONFIGURED_API
+    : CODEX_PROVIDER;
   let intent = inferIntent(body.content, body.intent_hint);
   let intentPlan = codexIntents.createLocalIntentPlan(intent, body.content);
   let intentPlanMetadata = intentPlan;
   let logRecord = null;
 
-  taskService.updateTaskStatus(db, taskId, 'processing', 10, '正在连接 Codex...');
+  taskService.updateTaskStatus(db, taskId, 'processing', 10, `正在连接${selectedEngineLabel}...`);
   codexChatEventBus.publish(sessionId, 'phase.changed', {
     task_id: taskId,
     phase: 'connecting',
-    message: '正在连接 Codex...',
+    message: `正在连接${selectedEngineLabel}...`,
   });
 
   try {
@@ -733,6 +1096,15 @@ async function processMessage(db, cfg, log, details) {
       threadId,
     });
     intent = intentPlan.intent;
+    const policyCheck = assistantActions.validateActionPlan(
+      db,
+      session,
+      episode,
+      intentPlan
+    );
+    intentPlan.missing_inputs = policyCheck.missing_inputs;
+    intentPlan.requires_confirmation = policyCheck.requires_confirmation;
+    intentPlan.clarification_question = policyCheck.clarification_question;
     const originalContent = body.content;
     if (
       intentPlan.normalized_request
@@ -743,7 +1115,17 @@ async function processMessage(db, cfg, log, details) {
         `【意图识别后的可执行要求】${intentPlan.normalized_request}`,
       ].join('\n\n');
     }
-    intentPlanMetadata = mergeIntentPlanMetadata(null, intentPlan).intent_plan;
+    const resolvedMetadata = mergeIntentPlanMetadata(null, intentPlan);
+    intentPlanMetadata = resolvedMetadata.intent_plan;
+    let preparationResults = {};
+    const executionMetadata = (extra = {}) => ({
+      engine: session.engine,
+      intent_plan: intentPlanMetadata,
+      intent_decision: intentPlanMetadata,
+      action_plan: resolvedMetadata.action_plan,
+      preparation_results: preparationResults,
+      ...extra,
+    });
     const userRow = rowToMessage(db.prepare(
       'SELECT * FROM codex_chat_messages WHERE id = ?'
     ).get(userMessageId));
@@ -779,6 +1161,44 @@ async function processMessage(db, cfg, log, details) {
       ).get(assistantMessageId)),
     });
 
+    if (!policyCheck.allowed) {
+      const reply = policyCheck.clarification_question
+        || '当前要求还不能安全执行，请补充目标范围后再试。';
+      const blockedMetadata = {
+        ...resolvedMetadata,
+        policy_check: {
+          allowed: false,
+          missing_inputs: policyCheck.missing_inputs,
+          requires_confirmation: policyCheck.requires_confirmation,
+          project_state: policyCheck.state,
+        },
+      };
+      updateMessage(db, assistantMessageId, {
+        content: reply,
+        content_type: 'text',
+        action_type: intent,
+        status: 'completed',
+        metadata: blockedMetadata,
+      });
+      taskService.updateTaskResult(db, taskId, {
+        session_id: sessionId,
+        message_id: assistantMessageId,
+        action: intent,
+        intent_plan: intentPlanMetadata,
+        action_plan: blockedMetadata.action_plan,
+        requires_input: true,
+        policy_check: blockedMetadata.policy_check,
+      });
+      codexChatEventBus.publish(sessionId, 'message.completed', {
+        task_id: taskId,
+        requires_input: true,
+        message: rowToMessage(db.prepare(
+          'SELECT * FROM codex_chat_messages WHERE id = ?'
+        ).get(assistantMessageId)),
+      });
+      return;
+    }
+
     logRecord = aiRequestLogs.start(db, {
       drama_id: session.drama_id,
       episode_id: episode?.id,
@@ -789,16 +1209,106 @@ async function processMessage(db, cfg, log, details) {
       ].includes(intent) ? 'image' : 'text',
       operation: intent,
       scene_key: 'codex_ai_chat',
-      provider: CODEX_PROVIDER,
+      provider: engineProvider,
+      metadata: {
+        engine: session.engine,
+        intent_source: intentPlan.source,
+        intent_confidence: intentPlan.confidence,
+        action_plan: resolvedMetadata.action_plan,
+      },
       related_type: 'codex_chat_message',
       related_id: assistantMessageId,
       request: {
         content: originalContent,
         intent,
         intent_plan: intentPlanMetadata,
+        action_plan: resolvedMetadata.action_plan,
         episode_id: episode?.id || null,
       },
     });
+
+    let generatedStoryStage = null;
+    if (
+      intentPlan.requested_actions?.includes('generate_story')
+      && ![
+        'generate_story',
+        'rewrite_current_episode',
+        'continue_current_episode',
+      ].includes(intent)
+    ) {
+      generatedStoryStage = await generateStoryWithAssistant(db, log, {
+        session,
+        episode,
+        body,
+        taskId,
+        assistantMessageId,
+        runtime,
+        threadId,
+        intent: 'generate_story',
+      });
+      if (episode) {
+        episode = verifyEpisode(db, session.drama_id, episode.id);
+      }
+    }
+    let extractedResourceStage = null;
+    if (
+      intentPlan.requested_actions?.includes('extract_resources')
+      && !['extract_resources', 'generate_resource_images'].includes(intent)
+    ) {
+      extractedResourceStage = await extractResourcesWithCodex(db, cfg, log, {
+        session,
+        episode,
+        body,
+        taskId,
+        assistantMessageId,
+        runtime,
+        threadId,
+      });
+    }
+    let generatedStoryboardStage = null;
+    if (
+      intentPlan.requested_actions?.includes('generate_storyboards')
+      && !['generate_storyboards', 'generate_storyboard_images'].includes(intent)
+    ) {
+      generatedStoryboardStage = await generateStoryboardsWithCodex(
+        db,
+        cfg,
+        log,
+        {
+          session,
+          episode,
+          body,
+          taskId,
+          assistantMessageId,
+          runtime,
+          threadId,
+        }
+      );
+    }
+    const preparationMessages = [
+      generatedStoryStage
+        ? `已先生成并写入 ${generatedStoryStage.savedEpisodes.length} 集剧本。`
+        : '',
+      extractedResourceStage
+        ? `已先提取并写入${resourceSummary(extractedResourceStage.saved.counts)}。`
+        : '',
+      generatedStoryboardStage
+        ? `已先生成并写入 ${generatedStoryboardStage.saved.length} 条分镜。`
+        : '',
+    ].filter(Boolean);
+    preparationResults = {
+      generated_episode_ids: generatedStoryStage?.savedEpisodes
+        ?.map((item) => item.id)
+        .filter(Boolean) || [],
+      extracted_resource_counts: extractedResourceStage?.saved?.counts || null,
+      generated_storyboard_ids: generatedStoryboardStage?.saved
+        ?.map((item) => item.id)
+        .filter(Boolean) || [],
+    };
+    const withPreparationSummary = (reply) => [
+      ...preparationMessages,
+      reply,
+    ].filter(Boolean).join('\n\n');
 
     if (intent === 'optimize_resource_prompt') {
       const targets = codexEditing.listResourcePromptTargets(
@@ -807,7 +1317,7 @@ async function processMessage(db, cfg, log, details) {
         intentPlan,
         body.content
       );
-      taskService.updateTaskStatus(db, taskId, 'processing', 30, 'Codex 正在优化资源图片提示词...');
+      taskService.updateTaskStatus(db, taskId, 'processing', 30, `${selectedEngineLabel}正在优化资源图片提示词...`);
       codexChatEventBus.publish(sessionId, 'phase.changed', {
         task_id: taskId,
         phase: 'optimizing_resource_prompts',
@@ -823,6 +1333,7 @@ async function processMessage(db, cfg, log, details) {
           targets,
           body.content
         ),
+        sceneKey: assistantActions.getActionDefinition(intent).sceneKey,
         outputSchema: codexEditing.resourcePromptOutputSchema(targets),
         timeoutMs: 3 * 60_000,
         onTurnStarted(turnId) {
@@ -842,11 +1353,12 @@ async function processMessage(db, cfg, log, details) {
         targets,
         parsed
       );
-      const reply = `${parsed.assistant_reply}\n\n已优化并写入 ${saved.length} 个资源的图片提示词。`;
-      const metadata = {
-        intent_plan: intentPlanMetadata,
+      const reply = withPreparationSummary(
+        `${parsed.assistant_reply}\n\n已优化并写入 ${saved.length} 个资源的图片提示词。`
+      );
+      const metadata = executionMetadata({
         resource_prompt_updates: saved,
-      };
+      });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'resources',
@@ -866,7 +1378,7 @@ async function processMessage(db, cfg, log, details) {
       aiRequestLogs.succeed(db, logRecord, {
         message_id: assistantMessageId,
         updated_count: saved.length,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -885,7 +1397,7 @@ async function processMessage(db, cfg, log, details) {
         intentPlan,
         body.content
       );
-      taskService.updateTaskStatus(db, taskId, 'processing', 30, 'Codex 正在补充分镜说明...');
+      taskService.updateTaskStatus(db, taskId, 'processing', 30, `${selectedEngineLabel}正在补充分镜说明...`);
       codexChatEventBus.publish(sessionId, 'phase.changed', {
         task_id: taskId,
         phase: 'updating_storyboard_details',
@@ -902,6 +1414,7 @@ async function processMessage(db, cfg, log, details) {
           fields,
           body.content
         ),
+        sceneKey: assistantActions.getActionDefinition(intent).sceneKey,
         outputSchema: codexEditing.storyboardUpdateOutputSchema(targets, fields),
         timeoutMs: 5 * 60_000,
         onTurnStarted(turnId) {
@@ -918,12 +1431,13 @@ async function processMessage(db, cfg, log, details) {
         parsed,
         fields
       );
-      const reply = `${parsed.assistant_reply}\n\n已补充并写入 ${saved.length} 条分镜，更新字段：${fields.join('、')}。`;
-      const metadata = {
-        intent_plan: intentPlanMetadata,
+      const reply = withPreparationSummary(
+        `${parsed.assistant_reply}\n\n已补充并写入 ${saved.length} 条分镜，更新字段：${fields.join('、')}。`
+      );
+      const metadata = executionMetadata({
         storyboard_updates: saved,
         updated_fields: fields,
-      };
+      });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'storyboards',
@@ -945,7 +1459,7 @@ async function processMessage(db, cfg, log, details) {
         message_id: assistantMessageId,
         updated_count: saved.length,
         updated_fields: fields,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -964,7 +1478,7 @@ async function processMessage(db, cfg, log, details) {
         intentPlan,
         body.content
       );
-      taskService.updateTaskStatus(db, taskId, 'processing', 30, 'Codex 正在优化分镜提示词...');
+      taskService.updateTaskStatus(db, taskId, 'processing', 30, `${selectedEngineLabel}正在优化分镜提示词...`);
       codexChatEventBus.publish(sessionId, 'phase.changed', {
         task_id: taskId,
         phase: 'optimizing_storyboard_prompts',
@@ -981,6 +1495,7 @@ async function processMessage(db, cfg, log, details) {
           fields,
           body.content
         ),
+        sceneKey: assistantActions.getActionDefinition(intent).sceneKey,
         outputSchema: codexEditing.storyboardUpdateOutputSchema(targets, fields),
         timeoutMs: 5 * 60_000,
         onTurnStarted(turnId) {
@@ -997,12 +1512,13 @@ async function processMessage(db, cfg, log, details) {
         parsed,
         fields
       );
-      const reply = `${parsed.assistant_reply}\n\n已优化并写入 ${saved.length} 条分镜的提示词，更新字段：${fields.join('、')}。`;
-      const metadata = {
-        intent_plan: intentPlanMetadata,
+      const reply = withPreparationSummary(
+        `${parsed.assistant_reply}\n\n已优化并写入 ${saved.length} 条分镜的提示词，更新字段：${fields.join('、')}。`
+      );
+      const metadata = executionMetadata({
         storyboard_prompt_updates: saved,
         updated_fields: fields,
-      };
+      });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'storyboards',
@@ -1024,7 +1540,7 @@ async function processMessage(db, cfg, log, details) {
         message_id: assistantMessageId,
         updated_count: saved.length,
         updated_fields: fields,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1050,9 +1566,14 @@ async function processMessage(db, cfg, log, details) {
           threadId,
         }
       );
-      const reply = `${parsed.assistant_reply}\n\n已完整写入 ${saved.length} 条分镜。`;
-      const metadata = {
-        intent_plan: intentPlanMetadata,
+      const reply = [
+        generatedStoryStage
+          ? `已先生成并写入 ${generatedStoryStage.savedEpisodes.length} 集剧本。`
+          : '',
+        parsed.assistant_reply,
+        `已完整写入 ${saved.length} 条分镜。`,
+      ].filter(Boolean).join('\n\n');
+      const metadata = executionMetadata({
         storyboards: {
           count: saved.length,
           storyboard_ids: saved.map((item) => item.id),
@@ -1060,7 +1581,7 @@ async function processMessage(db, cfg, log, details) {
           video_duration: plan.videoDuration,
           clip_duration: plan.clipDuration,
         },
-      };
+      });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'storyboards',
@@ -1079,7 +1600,7 @@ async function processMessage(db, cfg, log, details) {
       aiRequestLogs.succeed(db, logRecord, {
         message_id: assistantMessageId,
         storyboard_count: saved.length,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1172,6 +1693,10 @@ async function processMessage(db, cfg, log, details) {
             taskId,
             threadId,
             text: prompt,
+            imageRequest: imageRequestForSession(db, session, prompt, {
+              storyboard: true,
+              target,
+            }),
             timeoutMs: 5 * 60_000,
             onTurnStarted(turnId) {
               updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
@@ -1179,10 +1704,10 @@ async function processMessage(db, cfg, log, details) {
           });
           assertTaskActive(db, taskId);
           const generated = turn.images.find(
-            (item) => item.status === 'completed' && item.savedPath
+            (item) => item.status === 'completed' && (item.savedPath || item.imageUrl)
           );
-          if (!generated) throw new Error('Codex 未返回分镜图片文件');
-          const image = await persistCodexImage(db, log, cfg, {
+          if (!generated) throw new Error('图片生成引擎未返回分镜图片');
+          const image = await persistAssistantImage(db, log, cfg, {
             ...target,
             dramaId: session.drama_id,
             episodeId: episode?.id || null,
@@ -1190,7 +1715,10 @@ async function processMessage(db, cfg, log, details) {
             prompt,
             revisedPrompt: generated.revisedPrompt,
             savedPath: generated.savedPath,
-            assetName: `${target.name} · Codex`,
+            imageUrl: generated.imageUrl,
+            provider: generated.provider,
+            model: generated.model,
+            assetName: `${target.name} · ${selectedEngineLabel}`,
           });
           const completedImage = {
             ...image,
@@ -1228,6 +1756,9 @@ async function processMessage(db, cfg, log, details) {
 
       const skipped = Math.max(0, allTargets.length - targets.length);
       const reply = [
+        generatedStoryStage
+          ? `已先生成并写入 ${generatedStoryStage.savedEpisodes.length} 集剧本。`
+          : '',
         generatedStoryboards
           ? `已先生成并写入 ${generatedStoryboards.saved.length} 条完整分镜。`
           : '',
@@ -1237,7 +1768,7 @@ async function processMessage(db, cfg, log, details) {
           ? `${failures.length} 条分镜图片生成失败，可再次发送“生成所有分镜图片”重试。`
           : '',
       ].filter(Boolean).join('\n');
-      const metadata = { intent_plan: intentPlanMetadata, images, failures, skipped };
+      const metadata = executionMetadata({ images, failures, skipped });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'image',
@@ -1260,7 +1791,7 @@ async function processMessage(db, cfg, log, details) {
         generated_count: images.length,
         failed_count: failures.length,
         skipped,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1281,16 +1812,21 @@ async function processMessage(db, cfg, log, details) {
         runtime,
         threadId,
       });
-      const reply = `${extracted.assistant_reply}\n\n已写入资源库：${resourceSummary(saved.counts)}。`;
-      const metadata = {
-        intent_plan: intentPlanMetadata,
+      const reply = [
+        generatedStoryStage
+          ? `已先生成并写入 ${generatedStoryStage.savedEpisodes.length} 集剧本。`
+          : '',
+        extracted.assistant_reply,
+        `已写入资源库：${resourceSummary(saved.counts)}。`,
+      ].filter(Boolean).join('\n\n');
+      const metadata = executionMetadata({
         resources: {
           counts: saved.counts,
           character_ids: saved.characters.map((item) => item.id),
           prop_ids: saved.props.map((item) => item.id),
           scene_ids: saved.scenes.map((item) => item.id),
         },
-      };
+      });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'resources',
@@ -1309,7 +1845,7 @@ async function processMessage(db, cfg, log, details) {
       aiRequestLogs.succeed(db, logRecord, {
         message_id: assistantMessageId,
         counts: saved.counts,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1403,6 +1939,10 @@ async function processMessage(db, cfg, log, details) {
             taskId,
             threadId,
             text: prompt,
+            imageRequest: imageRequestForSession(db, session, prompt, {
+              storyboard: false,
+              target,
+            }),
             timeoutMs: 5 * 60_000,
             onTurnStarted(turnId) {
               updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
@@ -1410,10 +1950,10 @@ async function processMessage(db, cfg, log, details) {
           });
           assertTaskActive(db, taskId);
           const generated = turn.images.find(
-            (item) => item.status === 'completed' && item.savedPath
+            (item) => item.status === 'completed' && (item.savedPath || item.imageUrl)
           );
-          if (!generated) throw new Error('Codex 未返回图片文件');
-          const image = await persistCodexImage(db, log, cfg, {
+          if (!generated) throw new Error('图片生成引擎未返回图片');
+          const image = await persistAssistantImage(db, log, cfg, {
             ...target,
             dramaId: session.drama_id,
             episodeId: episode?.id || null,
@@ -1421,7 +1961,10 @@ async function processMessage(db, cfg, log, details) {
             prompt,
             revisedPrompt: generated.revisedPrompt,
             savedPath: generated.savedPath,
-            assetName: `${target.name} · Codex`,
+            imageUrl: generated.imageUrl,
+            provider: generated.provider,
+            model: generated.model,
+            assetName: `${target.name} · ${selectedEngineLabel}`,
           });
           const completedImage = {
             ...image,
@@ -1451,6 +1994,9 @@ async function processMessage(db, cfg, log, details) {
 
       const skipped = Math.max(0, allTargets.length - targets.length);
       const reply = [
+        generatedStoryStage
+          ? `已先生成并写入 ${generatedStoryStage.savedEpisodes.length} 集剧本。`
+          : '',
         extractedDuringTask
           ? `已先提取并写入${resourceSummary(extractedDuringTask.saved.counts)}。`
           : '',
@@ -1458,7 +2004,7 @@ async function processMessage(db, cfg, log, details) {
         skipped ? `${skipped} 个已有图片的资源已跳过。` : '',
         failures.length ? `${failures.length} 个资源生成失败，可再次发送“生成资源图片”重试。` : '',
       ].filter(Boolean).join('\n');
-      const metadata = { intent_plan: intentPlanMetadata, images, failures, skipped };
+      const metadata = executionMetadata({ images, failures, skipped });
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'image',
@@ -1481,7 +2027,7 @@ async function processMessage(db, cfg, log, details) {
         generated_count: images.length,
         failed_count: failures.length,
         skipped,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1494,24 +2040,35 @@ async function processMessage(db, cfg, log, details) {
 
     if (intent === 'generate_image') {
       const target = validateImageTarget(db, session, body);
-      const prompt = [
-        '请使用 Codex 内置的原生图片生成能力，只生成一张图片。',
-        '不要使用 MCP、第三方图片服务或外部工具。',
+      const imagePrompt = [
+        '只生成一张图片。',
         '图片中不要出现文字、水印或标志，除非用户明确要求。',
         `项目：${dramaService.getDramaById(db, session.drama_id)?.title || ''}`,
         episode ? `当前剧集：第${episode.episode_number}集《${episode.title || ''}》` : '',
         `用户要求：${body.content}`,
       ].filter(Boolean).join('\n');
-      taskService.updateTaskStatus(db, taskId, 'processing', 25, 'Codex 正在生成图片...');
+      const prompt = session.engine === assistantSettings.ENGINE_CODEX
+        ? [
+          '请使用 Codex 内置的原生图片生成能力。',
+          '不要使用 MCP、第三方图片服务或外部工具。',
+          imagePrompt,
+        ].join('\n')
+        : imagePrompt;
+      taskService.updateTaskStatus(db, taskId, 'processing', 25, `${selectedEngineLabel}正在生成图片...`);
       codexChatEventBus.publish(sessionId, 'phase.changed', {
         task_id: taskId,
         phase: 'generating_image',
-        message: 'Codex 正在生成图片...',
+        message: `${selectedEngineLabel}正在生成图片...`,
       });
       const turn = await runtime.runTurn({
         taskId,
         threadId,
         text: prompt,
+        sceneKey: 'role_image_polish',
+        imageRequest: imageRequestForSession(db, session, imagePrompt, {
+          storyboard: !!target.storyboardId,
+          target,
+        }),
         timeoutMs: 5 * 60_000,
         onTurnStarted(turnId) {
           updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
@@ -1532,10 +2089,12 @@ async function processMessage(db, cfg, log, details) {
         },
       });
       assertTaskActive(db, taskId);
-      const generated = turn.images.find((item) => item.status === 'completed' && item.savedPath);
-      if (!generated) throw new Error('Codex 未生成图片');
+      const generated = turn.images.find(
+        (item) => item.status === 'completed' && (item.savedPath || item.imageUrl)
+      );
+      if (!generated) throw new Error('图片生成引擎未生成图片');
       taskService.updateTaskStatus(db, taskId, 'processing', 85, '正在保存图片...');
-      const imageResult = await persistCodexImage(db, log, cfg, {
+      const imageResult = await persistAssistantImage(db, log, cfg, {
         ...target,
         dramaId: session.drama_id,
         episodeId: episode?.id || null,
@@ -1543,15 +2102,20 @@ async function processMessage(db, cfg, log, details) {
         prompt: body.content,
         revisedPrompt: generated.revisedPrompt,
         savedPath: generated.savedPath,
-        assetName: body.asset_name || 'Codex 对话生成图片',
+        imageUrl: generated.imageUrl,
+        provider: generated.provider,
+        model: generated.model,
+        assetName: body.asset_name || 'AI 助手对话生成图片',
       });
-      const reply = turn.text || '图片已生成并保存到项目素材库。';
+      const reply = withPreparationSummary(
+        turn.text || '图片已生成并保存到项目素材库。'
+      );
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'image',
         action_type: intent,
         status: 'completed',
-        metadata: { intent_plan: intentPlanMetadata, image: imageResult },
+        metadata: executionMetadata({ image: imageResult }),
       });
       taskService.updateTaskResult(db, taskId, {
         session_id: sessionId,
@@ -1564,7 +2128,7 @@ async function processMessage(db, cfg, log, details) {
         message_id: assistantMessageId,
         image_generation_id: imageResult.image_generation_id,
         local_path: imageResult.local_path,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1574,62 +2138,26 @@ async function processMessage(db, cfg, log, details) {
     }
 
     if (intent === 'generate_story' || intent === 'rewrite_current_episode' || intent === 'continue_current_episode') {
-      const prompt = buildStoryPrompt(db, session, episode, body, taskId, intent);
-      taskService.updateTaskStatus(db, taskId, 'processing', 30, 'Codex 正在生成剧本...');
-      codexChatEventBus.publish(sessionId, 'phase.changed', {
-        task_id: taskId,
-        phase: 'generating_script',
-        message: 'Codex 正在生成剧本...',
-      });
-      const turn = await runtime.runTurn({
+      const { parsed, savedEpisodes } = await generateStoryWithAssistant(db, log, {
+        session,
+        episode,
+        body,
         taskId,
+        assistantMessageId,
+        runtime,
         threadId,
-        text: prompt,
-        outputSchema: SCRIPT_OUTPUT_SCHEMA,
-        timeoutMs: 3 * 60_000,
-        onTurnStarted(turnId) {
-          updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
-        },
-        onDelta(delta) {
-          codexChatEventBus.publish(sessionId, 'message.delta', {
-            task_id: taskId,
-            message_id: assistantMessageId,
-            delta,
-          });
-        },
+        intent,
       });
-      assertTaskActive(db, taskId);
-      const parsed = parseScriptResult(turn.text);
-      taskService.updateTaskStatus(db, taskId, 'processing', 85, '正在保存剧本...');
-      let savedEpisodes;
-      if (episode) {
-        const generated = parsed.episodes[0];
-        const saved = dramaService.updateEpisodeScript(db, log, session.drama_id, episode.id, {
-          title: generated.title || episode.title,
-          script_content: intent === 'continue_current_episode'
-            ? `${episode.script_content || ''}\n\n${generated.script_content}`.trim()
-            : generated.script_content,
-        });
-        if (!saved) throw new Error('保存当前剧集失败');
-        savedEpisodes = [saved];
-      } else {
-        const saved = dramaService.saveEpisodes(db, log, session.drama_id, {
-          episodes: parsed.episodes,
-        });
-        if (!saved) throw new Error('保存剧本失败');
-        savedEpisodes = parsed.episodes;
-      }
       const reply = parsed.assistant_reply || `已生成并保存 ${savedEpisodes.length} 集剧本。`;
       updateMessage(db, assistantMessageId, {
         content: reply,
         content_type: 'script',
         action_type: intent,
         status: 'completed',
-        metadata: {
-          intent_plan: intentPlanMetadata,
+        metadata: executionMetadata({
           episode_ids: savedEpisodes.map((item) => item.id).filter(Boolean),
           episode_count: savedEpisodes.length,
-        },
+        }),
       });
       taskService.updateTaskResult(db, taskId, {
         session_id: sessionId,
@@ -1642,7 +2170,7 @@ async function processMessage(db, cfg, log, details) {
       aiRequestLogs.succeed(db, logRecord, {
         message_id: assistantMessageId,
         episode_count: savedEpisodes.length,
-      }, { provider: CODEX_PROVIDER });
+      }, { provider: engineProvider });
       codexChatEventBus.publish(sessionId, 'message.completed', {
         task_id: taskId,
         refresh_drama: true,
@@ -1652,21 +2180,33 @@ async function processMessage(db, cfg, log, details) {
     }
 
     const context = buildConversationContext(db, session, episode);
-    const prompt = [
-      '请作为 LocalMiniDrama 的 Codex AI 创作助手直接回复用户。',
-      '本轮已经被宿主应用判定为咨询或讨论，不执行数据库写入，也不生成图片。',
-      '请结合项目上下文准确理解用户的代词和追问，回答应简洁、具体、可操作。',
-      '不要声称已经生成、保存、入库、更新或绑定任何项目数据。',
-      '如果用户其实是在询问如何让系统执行创作，可以告诉他直接自然地提出目标；可执行能力包括：生成/改写/续写剧本、提取角色道具场景、优化资源图生提示词、生成资源图片、生成或补充分镜、优化分镜原始/通用/视频提示词、生成分镜首帧、生成单张素材图。',
-      '如果需求存在会覆盖数据、范围不明确或缺少当前剧集等关键条件，请明确指出需要补充什么。',
-      `【项目上下文】\n${context}`,
-      `【用户消息】\n${body.content}`,
-    ].join('\n\n');
-    taskService.updateTaskStatus(db, taskId, 'processing', 30, 'Codex 正在回复...');
+    const chatPromptOptions = {
+      dramaId: session.drama_id,
+      taskId,
+    };
+    const chatSystemPrompt = promptTemplates.resolvePromptContent(
+      db,
+      'assistant.chat.system',
+      chatPromptOptions
+    );
+    const chatUserPrompt = promptTemplates.resolvePromptContent(
+      db,
+      'assistant.chat.user',
+      {
+        ...chatPromptOptions,
+        variables: {
+          conversation_context: context,
+          user_message: body.content,
+        },
+      }
+    );
+    const prompt = `${chatSystemPrompt}\n\n${chatUserPrompt}`;
+    taskService.updateTaskStatus(db, taskId, 'processing', 30, `${selectedEngineLabel}正在回复...`);
     const turn = await runtime.runTurn({
       taskId,
       threadId,
       text: prompt,
+      sceneKey: 'assistant_chat',
       timeoutMs: 2 * 60_000,
       onTurnStarted(turnId) {
         updateMessage(db, assistantMessageId, { codex_turn_id: turnId });
@@ -1680,13 +2220,13 @@ async function processMessage(db, cfg, log, details) {
       },
     });
     assertTaskActive(db, taskId);
-    const reply = turn.text || 'Codex 未返回文字内容。';
+    const reply = turn.text || `${selectedEngineLabel}未返回文字内容。`;
     updateMessage(db, assistantMessageId, {
       content: reply,
       content_type: 'text',
       action_type: intent,
       status: 'completed',
-      metadata: { intent_plan: intentPlanMetadata },
+      metadata: executionMetadata(),
     });
     taskService.updateTaskResult(db, taskId, {
       session_id: sessionId,
@@ -1694,7 +2234,7 @@ async function processMessage(db, cfg, log, details) {
       action: intent,
       intent_plan: intentPlanMetadata,
     });
-    aiRequestLogs.succeed(db, logRecord, { message_id: assistantMessageId }, { provider: CODEX_PROVIDER });
+    aiRequestLogs.succeed(db, logRecord, { message_id: assistantMessageId }, { provider: engineProvider });
     codexChatEventBus.publish(sessionId, 'message.completed', {
       task_id: taskId,
       message: rowToMessage(db.prepare('SELECT * FROM codex_chat_messages WHERE id = ?').get(assistantMessageId)),
@@ -1706,7 +2246,7 @@ async function processMessage(db, cfg, log, details) {
       status: cancelled ? 'cancelled' : 'failed',
     });
     taskService.updateTaskError(db, taskId, cancelled ? '用户已取消' : error.message);
-    aiRequestLogs.fail(db, logRecord, error, null, { provider: CODEX_PROVIDER });
+    aiRequestLogs.fail(db, logRecord, error, null, { provider: engineProvider });
     codexChatEventBus.publish(sessionId, cancelled ? 'turn.interrupted' : 'turn.failed', {
       task_id: taskId,
       message_id: assistantMessageId,
@@ -1770,6 +2310,7 @@ function startMessage(db, cfg, log, details) {
     content_type: 'text',
     action_type: intent,
     status: 'completed',
+    metadata: { engine: session.engine },
   });
   const assistantMessage = insertMessage(db, {
     session_id: session.id,
@@ -1779,6 +2320,7 @@ function startMessage(db, cfg, log, details) {
     action_type: intent,
     status: 'processing',
     task_id: task.id,
+    metadata: { engine: session.engine },
   });
   const now = new Date().toISOString();
   db.prepare(
@@ -1819,7 +2361,17 @@ function startMessage(db, cfg, log, details) {
 }
 
 async function cancelTask(db, log, taskId) {
-  const runtime = getCodexRuntime({ log });
+  const sessionRow = db.prepare(
+    `SELECT s.*
+       FROM codex_chat_sessions s
+       JOIN codex_chat_messages m ON m.session_id = s.id
+      WHERE m.task_id = ? AND m.deleted_at IS NULL
+      LIMIT 1`
+  ).get(String(taskId));
+  const session = rowToSession(sessionRow);
+  const runtime = session
+    ? runtimeForSession(db, log, session)
+    : getCodexRuntime({ log });
   let interrupted = false;
   try {
     interrupted = await runtime.interruptTask(taskId);
@@ -1850,9 +2402,12 @@ module.exports = {
   listMessages,
   startMessage,
   cancelTask,
+  extractStoryRequestMetadata,
   inferIntent,
+  isExplicitStoryGenerationRequest,
   parseScriptResult,
-  persistCodexImage,
+  persistAssistantImage,
+  persistCodexImage: persistAssistantImage,
   rowToSession,
   rowToMessage,
 };

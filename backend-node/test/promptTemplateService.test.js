@@ -145,15 +145,15 @@ describe('prompt template catalog and resolution', () => {
     const first = promptTemplates.ensurePromptCatalog(db);
     const second = promptTemplates.ensurePromptCatalog(db);
     const catalog = buildCatalog();
-    assert.equal(first.seeded, 94);
-    assert.equal(second.seeded, 94);
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 94);
+    assert.equal(first.seeded, 98);
+    assert.equal(second.seeded, 98);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 98);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM prompt_templates WHERE scope = 'system'").get().n,
-      94
+      98
     );
-    assert.equal(promptTemplates.listPrompts(db).length, 94);
-    assert.equal(new Set(catalog.map((item) => item.name)).size, 94);
+    assert.equal(promptTemplates.listPrompts(db).length, 98);
+    assert.equal(new Set(catalog.map((item) => item.name)).size, 98);
     assert.ok(catalog.every((item) => item.contents[0].content.trim().length > 0));
     assert.deepEqual(
       promptTemplates.listPrompts(db).map((item) => item.name),
@@ -205,7 +205,7 @@ describe('prompt template catalog and resolution', () => {
     assert.ok(listed.every((item) => item.workflow_stage));
     assert.deepEqual(
       [...new Set(listed.map((item) => item.category))],
-      ['剧本', '资产', '分镜', '视频']
+      ['AI 助手', '剧本', '资产', '分镜', '视频']
     );
     assert.deepEqual(
       Object.fromEntries(
@@ -215,6 +215,7 @@ describe('prompt template catalog and resolution', () => {
         ])
       ),
       {
+        'AI 助手': 4,
         剧本: 3,
         资产: 26,
         分镜: 43,
@@ -228,6 +229,7 @@ describe('prompt template catalog and resolution', () => {
           .map((item) => item.subcategory)
       ),
     ];
+    assert.deepEqual(subcategoriesFor('AI 助手'), ['意图与路由', '创作咨询']);
     assert.deepEqual(subcategoriesFor('剧本'), ['故事创作', '小说改编']);
     assert.deepEqual(subcategoriesFor('资产'), ['人物', '场景', '道具']);
     assert.deepEqual(
@@ -251,12 +253,17 @@ describe('prompt template catalog and resolution', () => {
     assert.ok(listed.filter((item) => item.category !== '资产')
       .every((item) => item.detail_category === ''));
     assert.ok(listed.every((item) => item.workflow_stage === item.category));
-    assert.ok(listed.every((item) => item.workflow_order === (
-      ['剧本', '资产', '分镜', '视频'].indexOf(item.category) + 1
-    )));
+    const workflowOrder = {
+      'AI 助手': 0,
+      剧本: 1,
+      资产: 2,
+      分镜: 3,
+      视频: 4,
+    };
+    assert.ok(listed.every((item) => item.workflow_order === workflowOrder[item.category]));
     assert.deepEqual(
       listed.map((item) => item.sort_order),
-      Array.from({ length: 94 }, (_, index) => index + 1)
+      Array.from({ length: 98 }, (_, index) => index + 1)
     );
     for (const item of listed.filter((row) => row.parent_prompt_key)) {
       const parent = listed.find((row) => row.prompt_key === item.parent_prompt_key);
@@ -275,7 +282,7 @@ describe('prompt template catalog and resolution', () => {
         ])
       ),
       {
-        main: 52,
+        main: 56,
         conditional_child: 39,
         independent_technical: 3,
       }
@@ -567,7 +574,7 @@ describe('prompt template catalog and resolution', () => {
         .get(...oldIds).n,
       0
     );
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 94);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 98);
     assert.equal(
       promptTemplates.resolvePrompt(db, 'frame.input.user', {
         variables: { frame_context: '镜头信息' },
@@ -726,7 +733,7 @@ Reiterate the same art style throughout the entire image and in every panel when
       systemCustomizationsMigrated: 7,
       projectOverridesMigrated: 4,
     });
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 94);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM prompt_definitions').get().n, 98);
     assert.equal(
       db.prepare(
         `SELECT COUNT(*) AS n FROM prompt_definitions
@@ -1055,7 +1062,7 @@ describe('prompt APIs and business scene registry', () => {
     const listRes = mockResponse();
     handlers.listProject({ params: { drama_id: '1' }, query: {} }, listRes);
     assert.equal(listRes.statusCode, 200);
-    assert.equal(listRes.payload.data.prompts.length, 94);
+    assert.equal(listRes.payload.data.prompts.length, 98);
 
     const classifiedListRes = mockResponse();
     handlers.listProject({
@@ -1129,7 +1136,7 @@ describe('prompt APIs and business scene registry', () => {
 
   it('publishes every supported scene key and includes the split routes', () => {
     const scenes = listBusinessScenes();
-    assert.equal(scenes.length, 22);
+    assert.equal(scenes.length, 24);
     const keys = new Set(scenes.map((item) => item.key));
     for (const key of [
       'role_extraction',
@@ -1153,10 +1160,10 @@ describe('prompt APIs and business scene registry', () => {
     const db = createDb();
     promptTemplates.ensurePromptCatalog(db);
     const overview = buildBusinessSceneOverview(db);
-    assert.equal(overview.length, 22);
+    assert.equal(overview.length, 24);
     assert.equal(
       overview.reduce((count, scene) => count + scene.prompt_count, 0),
-      94
+      98
     );
     const roleExtraction = overview.find((scene) => scene.key === 'role_extraction');
     assert.equal(roleExtraction.label, '人物 · 剧本提取');
@@ -1206,11 +1213,18 @@ describe('prompt APIs and business scene registry', () => {
       for (const match of source.matchAll(callRe)) {
         const callWindow = source.slice(match.index, match.index + 1200);
         const sceneMatch = callWindow.match(/scene_key\s*:\s*['"]([^'"]+)['"]/);
-        assert.ok(sceneMatch, `AI call missing scene_key in ${path.basename(file)}`);
+        const usesValidatedDynamicScene = /scene_key\s*:\s*sceneKey/.test(callWindow)
+          && source.includes('isRegisteredBusinessScene');
         assert.ok(
-          registryKeys.has(sceneMatch[1]),
-          `AI call uses unregistered scene_key ${sceneMatch[1]} in ${path.basename(file)}`
+          sceneMatch || usesValidatedDynamicScene,
+          `AI call missing scene_key in ${path.basename(file)}`
         );
+        if (sceneMatch) {
+          assert.ok(
+            registryKeys.has(sceneMatch[1]),
+            `AI call uses unregistered scene_key ${sceneMatch[1]} in ${path.basename(file)}`
+          );
+        }
       }
     }
   });

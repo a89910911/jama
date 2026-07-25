@@ -73,9 +73,15 @@ function createStoryboard(db, log, req) {
   const now = new Date().toISOString();
   const episodeId = Number(req.episode_id);
   const num = Number(req.storyboard_number ?? 0) || 0;
+  const creationMode = req.creation_mode === 'universal' ? 'universal' : 'classic';
+  const useFirstLastFrame = creationMode === 'universal'
+    ? 0
+    : req.use_first_last_frame == null
+      ? null
+      : (req.use_first_last_frame ? 1 : 0);
   const info = db.prepare(
-    `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, location, time, duration, dialogue, action, result, atmosphere, image_prompt, video_prompt, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+    `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, location, time, duration, dialogue, action, result, atmosphere, image_prompt, video_prompt, creation_mode, use_first_last_frame, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).run(
     episodeId,
     req.scene_id ?? null,
@@ -91,6 +97,8 @@ function createStoryboard(db, log, req) {
     req.atmosphere ?? null,
     req.image_prompt ?? null,
     req.video_prompt ?? null,
+    creationMode,
+    useFirstLastFrame,
     now,
     now
   );
@@ -101,7 +109,7 @@ function createStoryboard(db, log, req) {
 function updateStoryboard(db, log, id, req) {
   const row = db.prepare('SELECT id FROM storyboards WHERE id = ? AND deleted_at IS NULL').get(Number(id));
   if (!row) return null;
-  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'narration', 'action', 'result', 'atmosphere', 'image_prompt', 'polished_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'audio_local_path', 'narration_audio_local_path', 'status', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s', 'movement', 'segment_index', 'segment_title', 'creation_mode', 'universal_segment_text', 'layout_description', 'first_frame_image_id', 'last_frame_image_id', 'last_frame_image_url', 'last_frame_local_path'];
+  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'narration', 'action', 'result', 'atmosphere', 'image_prompt', 'polished_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'audio_local_path', 'narration_audio_local_path', 'status', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s', 'movement', 'segment_index', 'segment_title', 'creation_mode', 'universal_segment_text', 'use_first_last_frame', 'layout_description', 'first_frame_image_id', 'last_frame_image_id', 'last_frame_image_url', 'last_frame_local_path'];
   const updates = [];
   const params = [];
   // 前端可能传 character_ids，与 characters 统一：存为 JSON 字符串
@@ -117,7 +125,11 @@ function updateStoryboard(db, log, id, req) {
     if (key === 'characters') continue;
     if (req[key] !== undefined) {
       updates.push(key + ' = ?');
-      const val = key === 'duration' ? validateStoryboardDuration(req[key]) : req[key];
+      const val = key === 'duration'
+        ? validateStoryboardDuration(req[key])
+        : key === 'use_first_last_frame'
+          ? (req[key] == null ? null : (req[key] ? 1 : 0))
+          : req[key];
       params.push(val);
     }
   }
@@ -196,6 +208,7 @@ function getStoryboardById(db, id) {
     segment_title: r.segment_title ?? null,
     creation_mode: r.creation_mode === 'universal' ? 'universal' : 'classic',
     universal_segment_text: r.universal_segment_text ?? null,
+    use_first_last_frame: r.use_first_last_frame == null ? null : !!r.use_first_last_frame,
     layout_description: r.layout_description ?? null,
     first_frame_image_id: r.first_frame_image_id ?? null,
     last_frame_image_id: r.last_frame_image_id ?? null,
@@ -256,7 +269,7 @@ function saveFramePrompt(db, log, storyboardId, frameType, prompt, description, 
 /** 在指定分镜前插入一个空白分镜：先把同 episode 中 number >= target 的全部 +1，再创建新分镜 */
 function insertBeforeStoryboard(db, log, targetId) {
   const target = db.prepare(
-    'SELECT id, episode_id, storyboard_number, segment_index, segment_title FROM storyboards WHERE id = ? AND deleted_at IS NULL'
+    'SELECT id, episode_id, storyboard_number, segment_index, segment_title, creation_mode, use_first_last_frame FROM storyboards WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(targetId));
   if (!target) return null;
 
@@ -266,14 +279,20 @@ function insertBeforeStoryboard(db, log, targetId) {
 
   const now = new Date().toISOString();
   const info = db.prepare(
-    `INSERT INTO storyboards (episode_id, storyboard_number, segment_index, segment_title, duration, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
+    `INSERT INTO storyboards (episode_id, storyboard_number, segment_index, segment_title, duration, creation_mode, use_first_last_frame, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).run(
     target.episode_id,
     target.storyboard_number,
     target.segment_index ?? null,
     target.segment_title ?? null,
     STORYBOARD_MIN_DURATION,
+    target.creation_mode === 'universal' ? 'universal' : 'classic',
+    target.creation_mode === 'universal'
+      ? 0
+      : target.use_first_last_frame == null
+        ? null
+        : (target.use_first_last_frame ? 1 : 0),
     now,
     now
   );

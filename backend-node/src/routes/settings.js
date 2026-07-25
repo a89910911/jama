@@ -2,6 +2,7 @@ const settingsService = require('../services/settingsService');
 const response = require('../response');
 const { loadConfig } = require('../config');
 const { resolveVideoGenerationTimeoutMinutes } = require('../config/videoGeneration');
+const assistantSettingsService = require('../services/assistantSettingsService');
 
 /** GET /settings/generation — 获取生成相关全局设置 */
 function getGenerationSettings(db) {
@@ -42,9 +43,34 @@ function updateGenerationSettings(db) {
   };
 }
 
+function getAssistantSettings(db) {
+  return (req, res) => {
+    response.success(res, {
+      engine: assistantSettingsService.getAssistantEngine(db),
+      configured_api: assistantSettingsService.getConfiguredApiStatus(db),
+    });
+  };
+}
+
+function updateAssistantSettings(db) {
+  return (req, res) => {
+    const requested = String(req.body?.engine || '').trim();
+    if (!['codex', 'configured_api'].includes(requested)) {
+      return response.badRequest(res, '助手引擎必须是 codex 或 configured_api');
+    }
+    const engine = assistantSettingsService.setAssistantEngine(db, requested);
+    response.success(res, {
+      engine,
+      configured_api: assistantSettingsService.getConfiguredApiStatus(db),
+    });
+  };
+}
+
 module.exports = function settingsRoutes(db, cfg, log) {
   return {
     getGenerationSettings: getGenerationSettings(db),
     updateGenerationSettings: updateGenerationSettings(db),
+    getAssistantSettings: getAssistantSettings(db),
+    updateAssistantSettings: updateAssistantSettings(db),
   };
 };

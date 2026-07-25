@@ -2,16 +2,34 @@ const response = require('../response');
 const codexChatService = require('../services/codexChatService');
 const { codexChatEventBus } = require('../services/codexChatEventBus');
 const { getCodexRuntime } = require('../integrations/codex/codexRuntimeManager');
+const assistantSettings = require('../services/assistantSettingsService');
 
 module.exports = function codexChatRoutes(db, cfg, log) {
   return {
     status: async (req, res) => {
+      const engine = assistantSettings.getAssistantEngine(db);
+      if (engine === assistantSettings.ENGINE_CONFIGURED_API) {
+        const configured = assistantSettings.getConfiguredApiStatus(db);
+        return response.success(res, {
+          engine,
+          available: configured.text.available,
+          starting: false,
+          active_turns: 0,
+          error: configured.text.available ? null : configured.text.reason,
+          configured_api: configured,
+        });
+      }
       const runtime = getCodexRuntime({ log });
       try {
         await runtime.ensureReady();
-        response.success(res, runtime.status());
+        response.success(res, { engine, ...runtime.status() });
       } catch (error) {
-        response.success(res, { ...runtime.status(), available: false, error: error.message });
+        response.success(res, {
+          engine,
+          ...runtime.status(),
+          available: false,
+          error: error.message,
+        });
       }
     },
 

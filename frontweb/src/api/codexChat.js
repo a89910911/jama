@@ -2,7 +2,7 @@ import request from '@/utils/request'
 
 export const codexChatAPI = {
   status() {
-    return request.get('/codex/status')
+    return request.get('/ai-assistant/status')
   },
 
   listSessions(dramaId, episodeId) {

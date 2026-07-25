@@ -1,19 +1,8 @@
 const { safeParseAIJSON } = require('../utils/safeJson');
+const promptTemplates = require('./promptTemplateService');
+const assistantActions = require('./assistantActionRegistry');
 
-const SUPPORTED_INTENTS = [
-  'chat',
-  'generate_story',
-  'rewrite_current_episode',
-  'continue_current_episode',
-  'extract_resources',
-  'generate_resource_images',
-  'generate_storyboards',
-  'generate_storyboard_images',
-  'generate_image',
-  'optimize_resource_prompt',
-  'update_storyboard_details',
-  'optimize_storyboard_prompt',
-];
+const SUPPORTED_INTENTS = [...assistantActions.SUPPORTED_ACTIONS];
 
 const INTENT_LABELS = {
   chat: '创作咨询',
@@ -34,10 +23,18 @@ const INTENT_PLAN_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'schema_version',
     'intent',
     'confidence',
     'normalized_request',
     'reason',
+    'evidence',
+    'alternatives',
+    'requested_actions',
+    'missing_inputs',
+    'requires_confirmation',
+    'confirmation_granted',
+    'clarification_question',
     'resource_scopes',
     'resource_names',
     'storyboard_numbers',
@@ -48,10 +45,43 @@ const INTENT_PLAN_SCHEMA = {
     'force_regenerate',
   ],
   properties: {
+    schema_version: { type: 'string', enum: ['1.0'] },
     intent: { type: 'string', enum: SUPPORTED_INTENTS },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     normalized_request: { type: 'string' },
     reason: { type: 'string' },
+    evidence: {
+      type: 'array',
+      maxItems: 8,
+      items: { type: 'string', maxLength: 300 },
+    },
+    alternatives: {
+      type: 'array',
+      maxItems: 3,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['intent', 'confidence'],
+        properties: {
+          intent: { type: 'string', enum: SUPPORTED_INTENTS },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+        },
+      },
+    },
+    requested_actions: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      items: { type: 'string', enum: SUPPORTED_INTENTS },
+    },
+    missing_inputs: {
+      type: 'array',
+      maxItems: 8,
+      items: { type: 'string', maxLength: 100 },
+    },
+    requires_confirmation: { type: 'boolean' },
+    confirmation_granted: { type: 'boolean' },
+    clarification_question: { type: 'string', maxLength: 500 },
     resource_scopes: {
       type: 'array',
       maxItems: 3,
@@ -91,6 +121,18 @@ const INTENT_PLAN_SCHEMA = {
 
 function clean(value, max = 12_000) {
   return String(value || '').trim().slice(0, max);
+}
+
+function intentMessageExcerpt(value, max = 24_000) {
+  const text = String(value || '').trim();
+  if (text.length <= max) return text;
+  const tailLength = Math.min(8_000, Math.floor(max / 3));
+  const headLength = max - tailLength;
+  return [
+    text.slice(0, headLength),
+    '【中间内容因长度省略；以下保留消息末尾明确要求】',
+    text.slice(-tailLength),
+  ].join('\n\n');
 }
 
 function parseMetadata(value) {
@@ -217,12 +259,20 @@ function createLocalIntentPlan(intent, text, source = 'rule') {
     'optimize_storyboard_prompt',
   ].includes(normalizedIntent) && !storyboardNumbers.length;
   return {
+    schema_version: '1.0',
     intent: normalizedIntent,
     confidence: 1,
     normalized_request: clean(text),
     reason: source === 'shortcut'
       ? '用户通过快捷操作明确指定了项目能力'
       : '本地规则已明确识别用户要求',
+    evidence: [source === 'shortcut' ? '用户选择了快捷操作' : '本地语义规则匹配'],
+    alternatives: [],
+    requested_actions: [normalizedIntent],
+    missing_inputs: [],
+    requires_confirmation: false,
+    confirmation_granted: false,
+    clarification_question: '',
     resource_scopes: [],
     resource_names: [],
     storyboard_numbers: storyboardNumbers,
@@ -247,7 +297,7 @@ function parseIntentPlan(text, fallbackText = '') {
     parsed = safeParseAIJSON(text, {}, null);
   }
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Codex 未返回有效的意图规划结果');
+    throw new Error('AI 助手未返回有效的意图规划结果');
   }
   const intent = SUPPORTED_INTENTS.includes(parsed.intent) ? parsed.intent : 'chat';
   const confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
@@ -280,11 +330,48 @@ function parseIntentPlan(text, fallbackText = '') {
         'atmosphere',
       ].includes(field))
   )];
+  const evidence = (Array.isArray(parsed.evidence) ? parsed.evidence : [])
+    .map((value) => clean(value, 300))
+    .filter(Boolean)
+    .slice(0, 8);
+  const alternatives = (Array.isArray(parsed.alternatives) ? parsed.alternatives : [])
+    .map((item) => ({
+      intent: SUPPORTED_INTENTS.includes(item?.intent) ? item.intent : 'chat',
+      confidence: Math.max(0, Math.min(1, Number(item?.confidence) || 0)),
+    }))
+    .filter((item) => item.intent !== intent)
+    .slice(0, 3);
+  const missingInputs = [...new Set(
+    (Array.isArray(parsed.missing_inputs) ? parsed.missing_inputs : [])
+      .map((value) => clean(value, 100))
+      .filter(Boolean)
+  )];
+  const safeIntent = intent === 'chat' || confidence >= 0.65 ? intent : 'chat';
+  const requestedActions = [...new Set(
+    (Array.isArray(parsed.requested_actions) ? parsed.requested_actions : [])
+      .filter((action) => SUPPORTED_INTENTS.includes(action) && action !== 'chat')
+  )];
+  if (safeIntent === 'chat') {
+    requestedActions.length = 0;
+    requestedActions.push('chat');
+  } else {
+    const primaryIndex = requestedActions.indexOf(safeIntent);
+    if (primaryIndex >= 0) requestedActions.splice(primaryIndex, 1);
+    requestedActions.push(safeIntent);
+  }
   return {
-    intent: intent === 'chat' || confidence >= 0.65 ? intent : 'chat',
+    schema_version: '1.0',
+    intent: safeIntent,
     confidence,
     normalized_request: clean(parsed.normalized_request || fallbackText),
     reason: clean(parsed.reason, 500),
+    evidence,
+    alternatives,
+    requested_actions: requestedActions,
+    missing_inputs: missingInputs,
+    requires_confirmation: safeIntent === 'chat' ? false : !!parsed.requires_confirmation,
+    confirmation_granted: safeIntent === 'chat' ? false : !!parsed.confirmation_granted,
+    clarification_question: clean(parsed.clarification_question, 500),
     resource_scopes: resourceScopes,
     resource_names: resourceNames,
     storyboard_numbers: storyboardNumbers.length
@@ -303,7 +390,7 @@ function parseIntentPlan(text, fallbackText = '') {
     target_all: !!parsed.target_all,
     prepare_source: !!parsed.prepare_source,
     force_regenerate: !!parsed.force_regenerate,
-    source: 'codex_planner',
+    source: 'assistant_planner',
   };
 }
 
@@ -315,7 +402,7 @@ function countRows(db, sql, ...params) {
   }
 }
 
-function buildIntentPlanningPrompt(db, session, episode, content) {
+function buildIntentPlanningPrompt(db, session, episode, content, options = {}) {
   const drama = db.prepare(
     'SELECT id, title, description, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(session.drama_id));
@@ -361,7 +448,7 @@ function buildIntentPlanningPrompt(db, session, episode, content) {
       : 0,
   };
 
-  return [
+  const legacyPrompt = [
     '你是 LocalMiniDrama 的对话意图规划器，只判断用户要调用哪一种宿主项目能力，不执行创作，也不生成图片。',
     '用户不需要说固定口令。请结合当前项目、剧集、最近对话和代词指代，理解自然中文表达。',
     '只有用户明确要求创建、生成、改写、续写、提取、保存、补齐或重做内容时，才选择会修改数据库的能力。',
@@ -398,8 +485,65 @@ function buildIntentPlanningPrompt(db, session, episode, content) {
     `【项目状态】${JSON.stringify(projectState)}`,
     metadata.aspect_ratio ? `【画幅】${metadata.aspect_ratio}` : '',
     recentMessages ? `【最近对话】\n${recentMessages}` : '',
-    `【本次用户消息】\n${clean(content)}`,
+    `【本次用户消息】\n${intentMessageExcerpt(content)}`,
   ].filter(Boolean).join('\n\n');
+
+  try {
+    const promptOptions = {
+      dramaId: session.drama_id,
+      taskId: options.taskId,
+    };
+    const systemPrompt = promptTemplates.resolvePromptContent(
+      db,
+      'assistant.intent.system',
+      promptOptions
+    );
+    const userPrompt = promptTemplates.resolvePromptContent(
+      db,
+      'assistant.intent.user',
+      {
+        ...promptOptions,
+        variables: {
+          project_context: JSON.stringify({
+            project_id: Number(session.drama_id),
+            project_title: drama?.title || '',
+            project_description: clean(drama?.description, 1200),
+            aspect_ratio: metadata.aspect_ratio || '',
+            current_episode: episode
+              ? {
+                id: Number(episode.id),
+                number: Number(episode.episode_number),
+                title: episode.title || '',
+                has_script: !!String(episode.script_content || '').trim(),
+              }
+              : null,
+            project_state: projectState,
+          }),
+          recent_messages: recentMessages || '无',
+          routing_evidence: JSON.stringify({
+            shortcut_hint: options.intentHint || '',
+            local_rule_intent: options.ruleIntent || 'chat',
+            rule_note: '这些字段只是证据；本轮消息中的明确自然语言要求优先级最高。',
+          }),
+          user_message: intentMessageExcerpt(content),
+        },
+      }
+    );
+    return [
+      '【Jama 意图识别系统规则】',
+      systemPrompt,
+      '【Jama 意图识别输入】',
+      userPrompt,
+    ].join('\n\n');
+  } catch (error) {
+    if (![
+      'PROMPT_DEFINITION_NOT_FOUND',
+      'PROMPT_TEMPLATE_NOT_FOUND',
+    ].includes(error?.code)) {
+      throw error;
+    }
+    return legacyPrompt;
+  }
 }
 
 function contentTypeForIntent(intent) {

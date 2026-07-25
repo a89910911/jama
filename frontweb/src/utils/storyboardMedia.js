@@ -1,9 +1,28 @@
-import { assetImageUrl } from './mediaUrl'
-import { parseDramaMetadata } from './canvasLayout'
+import { assetImageUrl } from './mediaUrl.js'
+import { parseDramaMetadata } from './canvasLayout.js'
 
 export function dramaUsesFirstLastFrame(drama) {
   const meta = parseDramaMetadata(drama?.metadata)
   return !!meta.storyboard_use_first_last_frame
+}
+
+/**
+ * 逐镜首尾帧配置优先于项目全局配置；全能分镜不进入经典首尾帧链路。
+ * 旧数据没有 use_first_last_frame 时继续继承项目设置。
+ */
+export function storyboardUsesFirstLastFrame(sb, dramaOrGlobal = false) {
+  if (!sb || sb.creation_mode === 'universal') return false
+  if (sb.use_first_last_frame != null) {
+    if (typeof sb.use_first_last_frame === 'string') {
+      const normalized = sb.use_first_last_frame.trim().toLowerCase()
+      if (['0', 'false', 'off', 'no'].includes(normalized)) return false
+      if (['1', 'true', 'on', 'yes'].includes(normalized)) return true
+    }
+    return !!sb.use_first_last_frame
+  }
+  return typeof dramaOrGlobal === 'boolean'
+    ? dramaOrGlobal
+    : dramaUsesFirstLastFrame(dramaOrGlobal)
 }
 
 function isHttpVideoUrl(url) {
@@ -123,13 +142,14 @@ export function videoRecordUrl(record) {
 
 export function sbVideoFirstLastUrls(sb, imagesBySbId, useFirstLast) {
   const universal = sb?.creation_mode === 'universal'
+  const effectiveFirstLast = storyboardUsesFirstLastFrame(sb, !!useFirstLast)
   let first = ''
   let last = undefined
   if (!universal) {
-    const firstRec = useFirstLast ? resolveSbFirstImageRecord(sb, imagesBySbId) : resolveSbMainImageRecord(sb, imagesBySbId)
+    const firstRec = effectiveFirstLast ? resolveSbFirstImageRecord(sb, imagesBySbId) : resolveSbMainImageRecord(sb, imagesBySbId)
     first = imageRecordUrl(firstRec)
   }
-  if (useFirstLast && !universal) {
+  if (effectiveFirstLast && !universal) {
     const lastRec = resolveSbLastImageRecord(sb, imagesBySbId)
     const lu = imageRecordUrl(lastRec)
     if (lu) last = lu
@@ -140,7 +160,7 @@ export function sbVideoFirstLastUrls(sb, imagesBySbId, useFirstLast) {
 /** 分镜是否已有可用图片（与列表模式 hasSbImage 逻辑对齐） */
 export function hasStoryboardImage(sb, imagesBySbId, drama) {
   if (!sb) return false
-  if (dramaUsesFirstLastFrame(drama) && sb.creation_mode !== 'universal') {
+  if (storyboardUsesFirstLastFrame(sb, drama)) {
     return !!(resolveSbFirstImageRecord(sb, imagesBySbId) || sb.image_url || sb.local_path || sb.composed_image)
   }
   return !!(resolveSbMainImageRecord(sb, imagesBySbId) || sb.image_url || sb.local_path || sb.composed_image)

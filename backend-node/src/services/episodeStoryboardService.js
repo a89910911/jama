@@ -284,6 +284,7 @@ function getStoryboardsForEpisode(db, episodeId) {
       segment_title: r.segment_title ?? null,
       creation_mode: r.creation_mode === 'universal' ? 'universal' : 'classic',
       universal_segment_text: r.universal_segment_text ?? null,
+      use_first_last_frame: r.use_first_last_frame == null ? null : !!r.use_first_last_frame,
       characters: (() => {
         if (!r.characters) return [];
         if (typeof r.characters !== 'string') return Array.isArray(r.characters) ? r.characters : [];
@@ -733,6 +734,7 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
           segment_title: refreshed.segment_title ?? null,
           creation_mode: refreshed.creation_mode === 'universal' ? 'universal' : 'classic',
           universal_segment_text: refreshed.universal_segment_text ?? null,
+          use_first_last_frame: refreshed.use_first_last_frame == null ? null : !!refreshed.use_first_last_frame,
           characters: (() => { try { return JSON.parse(refreshed.characters || '[]'); } catch (_) { return []; } })(),
           prop_ids: propIds,
           status: refreshed.status,
@@ -1530,35 +1532,7 @@ function rebuildVideoPromptForStoryboard(db, log, storyboardId) {
 
   const videoRatio = dramaAspectRatio || cfg?.style?.default_video_ratio || '16:9';
 
-  let charNames = [];
-  if (row.characters) {
-    try {
-      const arr = typeof row.characters === 'string' ? JSON.parse(row.characters) : row.characters;
-      if (Array.isArray(arr)) {
-        charNames = arr
-          .map((c) => {
-            if (typeof c === 'string') return c;
-            if (c && typeof c === 'object') return c.name;
-            return null;
-          })
-          .filter(Boolean);
-      }
-    } catch (_) {}
-  }
-
-  const charRows = loadCharactersForStoryboardPrompt(db, sbId, charNames);
-  const characterAppearances = buildCharacterAppearanceText(db, sbId, charNames);
-  const characterVoiceMap = buildVoiceAnchorMap(charRows);
-  const characterVoiceAnchors = buildCharacterVoiceAnchors(db, sbId, charNames);
-
-  const sbForPrompt = {
-    ...row,
-    character_appearances: characterAppearances,
-    character_voice_map: characterVoiceMap,
-    character_voice_anchors: characterVoiceAnchors,
-  };
-
-  const videoPrompt = composeStoryboardVideoPrompt(db, sbForPrompt, finalStyle, videoRatio);
+  const videoPrompt = composeStoryboardVideoPrompt(db, row, finalStyle, videoRatio);
   const now = new Date().toISOString();
   db.prepare('UPDATE storyboards SET video_prompt = ?, updated_at = ? WHERE id = ?').run(videoPrompt, now, sbId);
 
@@ -1566,7 +1540,6 @@ function rebuildVideoPromptForStoryboard(db, log, storyboardId) {
     log.info('[分镜] 已按最新规则重建 video_prompt', {
       id: sbId,
       len: videoPrompt.length,
-      has_voice_anchors: !!characterVoiceAnchors,
     });
   }
 
@@ -1663,8 +1636,8 @@ function persistSplitStoryboardRow(db, episodeId, storyboardNumber, baseRow, pla
       location, time, duration, dialogue, narration, action, result, atmosphere,
       image_prompt, characters, shot_type, angle, angle_h, angle_v, angle_s,
       movement, lighting_style, depth_of_field, segment_index, segment_title,
-      creation_mode, universal_segment_text, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      creation_mode, universal_segment_text, use_first_last_frame, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).run(
     episodeId,
     baseRow.scene_id ?? null,
@@ -1694,6 +1667,7 @@ function persistSplitStoryboardRow(db, episodeId, storyboardNumber, baseRow, pla
     baseRow.segment_title ?? null,
     baseRow.creation_mode === 'universal' ? 'universal' : 'classic',
     null,
+    baseRow.use_first_last_frame == null ? null : (baseRow.use_first_last_frame ? 1 : 0),
     now,
     now
   );

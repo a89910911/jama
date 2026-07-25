@@ -279,6 +279,7 @@ function exportDrama(db, cfg, log, dramaId) {
             continuity_snapshot: sb.continuity_snapshot || null,
             creation_mode: sb.creation_mode === 'universal' ? 'universal' : 'classic',
             universal_segment_text: sb.universal_segment_text || null,
+            use_first_last_frame: sb.use_first_last_frame == null ? null : !!sb.use_first_last_frame,
             layout_description: sb.layout_description || null,
             // 用 original_id 记录首尾帧绑定的 image_generations 旧ID，导入时映射回新ID
             first_frame_image_original_id: sb.first_frame_image_id ?? null,

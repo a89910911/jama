@@ -7,6 +7,7 @@ const path = require('path');
 const sharp = require('sharp');
 const {
   SCRIPT_OUTPUT_SCHEMA,
+  extractStoryRequestMetadata,
   inferIntent,
   parseScriptResult,
   persistCodexImage,
@@ -32,6 +33,10 @@ const {
   needsContextualPlanning,
   parseIntentPlan,
 } = require('../src/services/codexIntentService');
+const {
+  compileActionPlan,
+  validateActionPlan,
+} = require('../src/services/assistantActionRegistry');
 const {
   listResourcePromptTargets,
   listStoryboardEditTargets,
@@ -221,6 +226,45 @@ describe('Codex chat intent and structured result', () => {
     assert.equal(inferIntent('重新生成凯尔角色图片'), 'generate_resource_images');
   });
 
+  it('prioritizes an explicit script request at the end of a pasted story document', () => {
+    const manuscript = [
+      '《财神爷》<br/>',
+      '一、人物小传<br/>',
+      '唐兮：女主，角色图片可参考青春校园风格。<br/>',
+      '二、大纲概述<br/>',
+      '女孩把反复分手当作发财秘诀，后来发现双向真心才是真正的好运。<br/>',
+      '三、题材分类<br/>',
+      '女频轻喜甜宠<br/>',
+      '四、剧本正文<br/>',
+      '第一集<br/>',
+      '场1-1 大学校园门口 日外<br/>',
+      '人物：唐兮、顾轻舟。<br/>',
+      '这是故事，需要生成剧本。',
+    ].join('');
+
+    assert.equal(
+      inferIntent(manuscript, 'generate_resource_images'),
+      'generate_story'
+    );
+  });
+
+  it('extracts story title, type, style and explicit episode count from pasted material', () => {
+    const metadata = extractStoryRequestMetadata([
+      '《财神爷》',
+      '题材分类：女频轻喜甜宠',
+      '总集数：24',
+      '剧本正文',
+      '第一集',
+    ].join('<br/>'));
+
+    assert.deepEqual(metadata, {
+      title: '财神爷',
+      story_type: '女频轻喜甜宠',
+      story_style: '女频轻喜甜宠',
+      episode_count: 24,
+    });
+  });
+
   it('parses the app-server output schema result', () => {
     const result = parseScriptResult(JSON.stringify({
       assistant_reply: '已完成',
@@ -267,7 +311,7 @@ describe('Codex natural-language intent planning', () => {
       force_regenerate: false,
     }), '让每一镜都有画面');
     assert.equal(plan.intent, 'generate_storyboard_images');
-    assert.equal(plan.source, 'codex_planner');
+    assert.equal(plan.source, 'assistant_planner');
     assert.deepEqual(plan.storyboard_numbers, [2]);
 
     const uncertain = parseIntentPlan(JSON.stringify({
@@ -311,6 +355,64 @@ describe('Codex natural-language intent planning', () => {
     assert.deepEqual(extractStoryboardNumbers('第二镜和第12条分镜都需要首帧'), [2, 12]);
     assert.equal(needsContextualPlanning('刚才那张角色图我不满意，重新生成一张'), true);
     assert.equal(needsContextualPlanning('重新生成凯尔角色图片'), false);
+  });
+
+  it('compiles dependency steps and blocks unsafe writes before execution', () => {
+    const db = createResourceDb();
+    const session = { drama_id: 5 };
+    const episode = db.prepare('SELECT * FROM episodes WHERE id = 13').get();
+    const decision = createLocalIntentPlan(
+      'generate_storyboard_images',
+      '先生成全部分镜，再生成所有分镜图片',
+      'rule'
+    );
+    decision.prepare_source = true;
+    const actionPlan = compileActionPlan(decision);
+    assert.deepEqual(
+      actionPlan.actions.map((item) => item.intent),
+      ['generate_storyboards', 'generate_storyboard_images']
+    );
+    assert.deepEqual(actionPlan.actions[1].depends_on, ['prepare_source']);
+    assert.equal(validateActionPlan(db, session, episode, decision).allowed, true);
+
+    const compound = createLocalIntentPlan(
+      'generate_resource_images',
+      '先生成剧本，再提取资源并生成资源图片',
+      'rule'
+    );
+    compound.requested_actions = [
+      'generate_story',
+      'extract_resources',
+      'generate_resource_images',
+    ];
+    assert.deepEqual(
+      compileActionPlan(compound).actions.map((item) => item.intent),
+      ['generate_story', 'extract_resources', 'generate_resource_images']
+    );
+
+    const missingEpisode = createLocalIntentPlan(
+      'generate_storyboards',
+      '生成全部分镜',
+      'rule'
+    );
+    const blocked = validateActionPlan(db, session, null, missingEpisode);
+    assert.equal(blocked.allowed, false);
+    assert.deepEqual(blocked.missing_inputs, ['current_episode']);
+    assert.match(blocked.clarification_question, /当前剧集/);
+
+    const replaceProjectStory = createLocalIntentPlan(
+      'generate_story',
+      '生成整个项目剧本',
+      'rule'
+    );
+    const confirmation = validateActionPlan(db, session, null, replaceProjectStory);
+    assert.equal(confirmation.requires_confirmation, true);
+    replaceProjectStory.confirmation_granted = true;
+    assert.equal(
+      validateActionPlan(db, session, null, replaceProjectStory).allowed,
+      true
+    );
+    db.close();
   });
 });
 
@@ -564,7 +666,7 @@ describe('dramaService.updateEpisodeScript', () => {
 });
 
 describe('persistCodexImage', () => {
-  it('copies an allowed Codex image into project storage and records generation plus asset', async () => {
+  it('persists both allowed Codex files and configured API image data', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jama-codex-image-test-'));
     const allowedRoot = path.join(root, 'generated_images');
     const storageRoot = path.join(root, 'storage');
@@ -681,6 +783,30 @@ describe('persistCodexImage', () => {
         }
       );
       assert.equal(fs.existsSync(path.join(storageRoot, ...result.local_path.split('/'))), true);
+
+      const apiResult = await persistCodexImage(
+        db,
+        { info() {}, warn() {} },
+        { storage: { local_path: storageRoot } },
+        {
+          dramaId: 4,
+          taskId: 'configured-api-image-task',
+          prompt: 'API 月光森林',
+          imageUrl: `data:image/png;base64,${fs.readFileSync(source).toString('base64')}`,
+          provider: 'configured-image-provider',
+          model: 'configured-image-model',
+        }
+      );
+      const apiGeneration = db.prepare(
+        'SELECT * FROM image_generations WHERE id = ?'
+      ).get(apiResult.image_generation_id);
+      assert.equal(apiGeneration.provider, 'configured-image-provider');
+      assert.equal(apiGeneration.model, 'configured-image-model');
+      assert.equal(apiGeneration.width, 12);
+      assert.equal(
+        fs.existsSync(path.join(storageRoot, ...apiResult.local_path.split('/'))),
+        true
+      );
     } finally {
       db.close();
       fs.rmSync(root, { recursive: true, force: true });

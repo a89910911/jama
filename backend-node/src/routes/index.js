@@ -312,6 +312,7 @@ function setupRouter(cfg, db, log) {
 
   // ---------- Codex AI chat ----------
   r.get('/codex/status', codexChat.status);
+  r.get('/ai-assistant/status', codexChat.status);
   r.get('/ai-chat/sessions/:session_id/messages', codexChat.listMessages);
   r.post('/ai-chat/sessions/:session_id/messages', codexChat.sendMessage);
   r.get('/ai-chat/sessions/:session_id/events', codexChat.events);
@@ -393,6 +394,8 @@ function setupRouter(cfg, db, log) {
   // ---------- settings ----------
   r.get('/settings/generation', settings.getGenerationSettings);
   r.put('/settings/generation', authService.requireSuperAdmin, settings.updateGenerationSettings);
+  r.get('/settings/assistant', settings.getAssistantSettings);
+  r.put('/settings/assistant', authService.requireSuperAdmin, settings.updateAssistantSettings);
 
   // ---------- prompt templates ----------
   r.get('/settings/prompts', authService.requireSuperAdmin, prompts.listSystem);

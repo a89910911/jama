@@ -8,6 +8,7 @@ import {
   resolveSbLastImageRecord,
   resolveSbMainImageRecord,
   resolveSbVideoRecord,
+  storyboardUsesFirstLastFrame,
   videoRecordUrl,
 } from './storyboardMedia'
 
@@ -247,7 +248,7 @@ function buildEpisodePipeline(episode, savedLayout, startY, options = {}) {
       mediaX += MEDIA_GAP_X
       pipelineTailId = txtId
 
-      const useFirstLast = useFirstLastFrame
+      const useFirstLast = storyboardUsesFirstLastFrame(sb, useFirstLastFrame)
 
       if (useFirstLast) {
         const firstUrl = imageRecordUrl(resolveSbFirstImageRecord(sb, imagesBySbId))

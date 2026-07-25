@@ -288,7 +288,7 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
         'dialogue', 'narration', 'action', 'atmosphere', 'result', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s',
         'movement', 'lighting_style', 'depth_of_field', 'image_prompt', 'polished_prompt', 'video_prompt', 'duration',
         'emotion', 'emotion_intensity', 'segment_index', 'segment_title', 'continuity_snapshot', 'creation_mode',
-        'universal_segment_text', 'layout_description', 'first_frame_image_id', 'last_frame_image_id',
+        'universal_segment_text', 'use_first_last_frame', 'layout_description', 'first_frame_image_id', 'last_frame_image_id',
         'last_frame_image_url', 'last_frame_local_path', 'image_url', 'local_path', 'characters',
         'audio_local_path', 'narration_audio_local_path', 'created_at', 'updated_at'
       ];
@@ -324,6 +324,7 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
         sb.continuity_snapshot || null,
         sb.creation_mode === 'universal' ? 'universal' : 'classic',
         sb.universal_segment_text || null,
+        sb.use_first_last_frame == null ? null : (sb.use_first_last_frame ? 1 : 0),
         sb.layout_description || null,
         null, // first_frame_image_id 后设
         null, // last_frame_image_id 后设

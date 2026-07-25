@@ -46,3 +46,12 @@ export const generationSettingsAPI = {
     return request.put('/settings/generation', data)
   },
 }
+
+export const assistantSettingsAPI = {
+  get() {
+    return request.get('/settings/assistant')
+  },
+  update(data) {
+    return request.put('/settings/assistant', data)
+  },
+}

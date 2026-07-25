@@ -19,6 +19,10 @@ const SENTINELS = {
 // 面向用户的名称必须直接说明“输入什么、生成什么、在哪一步使用”。
 // 与定义放在独立清单中，并在 buildCatalog 时校验完整性，避免新增提示词继续使用含糊名称。
 const PROMPT_DISPLAY_NAMES = {
+  'assistant.intent.system': '识别 AI 助手消息意图与写入风险（系统规则）',
+  'assistant.intent.user': 'AI 助手消息、项目上下文与路由证据（输入模板）',
+  'assistant.chat.system': '回答短剧创作咨询且禁止虚构写入结果（系统规则）',
+  'assistant.chat.user': 'AI 助手创作咨询的项目上下文与问题（输入模板）',
   'story.generation.system': '根据故事梗概生成分集短剧剧本（系统规则）',
   'story.generation.user': '故事梗概与剧本生成参数（输入模板）',
   'novel.import.user': '将小说章节改写为短剧剧本（输入模板）',
@@ -118,6 +122,20 @@ const PROMPT_DISPLAY_NAMES = {
 // 按用户可理解的制作链路组织全部提示词：
 // 一级分类（剧本/资产/分镜/视频）→ 二级分类 → 资产专用三级用途。
 const PROMPT_CLASSIFICATION_TREE = [
+  {
+    category: 'AI 助手',
+    order: 0,
+    groups: [
+      {
+        subcategory: '意图与路由',
+        keys: ['assistant.intent.system', 'assistant.intent.user'],
+      },
+      {
+        subcategory: '创作咨询',
+        keys: ['assistant.chat.system', 'assistant.chat.user'],
+      },
+    ],
+  },
   {
     category: '剧本',
     order: 1,
@@ -734,6 +752,86 @@ function buildCatalog() {
     d.sort_order = classification.sort_order;
     defs.push(d);
   };
+
+  add(definition({
+    key: 'assistant.intent.system',
+    name: 'AI 助手意图识别系统规则',
+    category: 'AI 助手',
+    role: 'system',
+    sceneKey: 'assistant_intent_planning',
+    contents: universal([
+      '你是 Jama（LocalMiniDrama）的消息意图规划器。只做意图、目标、风险和缺失条件判断，不创作内容、不生成图片，也不声称已经写入数据。',
+      '每条消息都必须输出一个决策。当前消息中明确、靠后的自然语言要求优先于快捷按钮、历史消息和文档正文里出现的能力词。',
+      '只有用户明确要求创建、生成、改写、续写、提取、保存、补齐、优化或重做项目内容时，才选择写入型意图。询问原因、用法、状态、评价、检查、分析或讨论创意时选择 chat。',
+      '支持意图：chat、generate_story、rewrite_current_episode、continue_current_episode、extract_resources、generate_resource_images、generate_storyboards、generate_storyboard_images、generate_image、optimize_resource_prompt、update_storyboard_details、optimize_storyboard_prompt。',
+      '能力边界：generate_story 生成剧本；extract_resources 只提取人物/道具/场景文字；generate_resource_images 生成资源图；generate_storyboards 生成结构化分镜；generate_storyboard_images 生成分镜首帧；generate_image 只生成单张普通素材图。',
+      '如果用户要求先准备资源或分镜文字再生成对应图片，选择最终图片意图，并把 prepare_source 设为 true。',
+      'requested_actions 按执行先后列出用户明确要求的全部动作，最后一项必须等于 intent。例如“先生成剧本，再提取资源并生成资源图”返回 [generate_story, extract_resources, generate_resource_images]；单一要求只返回 [intent]。',
+      '如果用户明确要求重新生成、覆盖或替换已有结果，把 force_regenerate 设为 true。覆盖、批量改写等高风险动作如果不是用户明确表达，requires_confirmation 必须为 true；普通消息的 confirmation_granted 必须为 false。',
+      '如果上一条助手消息正在请求确认，且用户明确回复“确认继续执行”等无歧义表达，应恢复上一条待确认的写入意图，把 requires_confirmation 设为 false，并把 confirmation_granted 设为 true；含糊的“好、行”仍应澄清。',
+      '用户给出长篇故事、人物小传、大纲或剧本样例，并在末尾明确要求“生成剧本”时，必须选择 generate_story，不能被正文中的“角色图片、分镜图片”等描述干扰。',
+      'confidence 低于 0.65 时选择 chat。信息不足且无法安全执行时填写 missing_inputs 和 clarification_question；创作风格、集数等可以从正文或项目默认值合理推断时不要阻断。',
+      'evidence 只摘录或概括本轮决策依据；alternatives 最多返回三个次选意图；没有次选、缺失项或澄清问题时返回空数组或空字符串。',
+      'resource_scopes 仅使用 character、prop、scene。storyboard_numbers 只放明确指定的分镜编号。prompt_fields 仅使用 image_prompt、polished_prompt、video_prompt。detail_fields 仅使用 title、description、layout_description、action、result、atmosphere。',
+      'target_all 只在用户明确要求全部、所有、每个、整集、批量或补齐缺失项时为 true。normalized_request 应补全代词但不得新增用户未提出的目标。',
+      '只返回符合 JSON Schema 的 JSON，不输出 Markdown。',
+    ].join('\n')),
+    risk: 'high',
+    source: 'codexIntentService.buildIntentPlanningPrompt',
+    seedVersion: 1,
+  }));
+  add(definition({
+    key: 'assistant.intent.user',
+    name: 'AI 助手意图识别输入模板',
+    category: 'AI 助手',
+    role: 'user_template',
+    sceneKey: 'assistant_intent_planning',
+    contents: universal([
+      '【项目上下文】{{project_context}}',
+      '【最近对话】\n{{recent_messages}}',
+      '【规则与快捷操作证据】{{routing_evidence}}',
+      '【本次用户消息】\n{{user_message}}',
+      '请输出 schema_version="1.0" 的完整意图决策。',
+    ].join('\n\n')),
+    variables: [
+      'project_context',
+      'recent_messages',
+      'routing_evidence',
+      'user_message',
+    ],
+    required: ['project_context', 'recent_messages', 'routing_evidence', 'user_message'],
+    risk: 'high',
+    source: 'codexIntentService.buildIntentPlanningPrompt',
+    seedVersion: 1,
+  }));
+  add(definition({
+    key: 'assistant.chat.system',
+    name: 'AI 助手创作咨询系统规则',
+    category: 'AI 助手',
+    role: 'system',
+    sceneKey: 'assistant_chat',
+    contents: universal([
+      '你是 Jama（LocalMiniDrama）的 AI 创作助手。',
+      '本轮意图已被宿主判定为咨询、讨论或需要澄清；只回答问题，不执行数据库写入，不生成图片。',
+      '结合项目上下文准确理解代词和追问，回答简洁、具体、可操作。',
+      '不得声称已经生成、保存、更新、绑定或删除任何项目数据。',
+      '如果用户想执行创作，说明需要明确的目标、范围或当前剧集；不要替用户假定覆盖操作。',
+    ].join('\n')),
+    source: 'codexChatService chat response',
+    seedVersion: 1,
+  }));
+  add(definition({
+    key: 'assistant.chat.user',
+    name: 'AI 助手创作咨询输入模板',
+    category: 'AI 助手',
+    role: 'user_template',
+    sceneKey: 'assistant_chat',
+    contents: universal('【项目上下文】\n{{conversation_context}}\n\n【用户消息】\n{{user_message}}'),
+    variables: ['conversation_context', 'user_message'],
+    required: ['conversation_context', 'user_message'],
+    source: 'codexChatService chat response',
+    seedVersion: 1,
+  }));
 
   add(definition({
     key: 'story.generation.system',

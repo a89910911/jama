@@ -150,6 +150,40 @@
       </el-tab-pane>
       <el-tab-pane label="生成设置" name="generation">
         <div class="tab-content generation-settings">
+          <div class="gs-section-title">🤖 AI 创作助手</div>
+          <p class="gs-desc">
+            开启后，对话、结构化创作和图片生成使用本机 Codex；关闭后，文本走“文本/对话”，普通资源图走“文本生成图片”，分镜图走“分镜图片生成”配置。
+            切换后立即保存并作用于新对话，已有对话保持原引擎。
+          </p>
+          <div class="gs-row assistant-engine-row">
+            <span class="gs-label">启用 Codex 引擎</span>
+            <el-switch
+              v-model="codexAssistantEnabled"
+              inline-prompt
+              active-text="Codex"
+              inactive-text="API"
+              :loading="assistantEngineSaving"
+              :disabled="assistantEngineSaving"
+              style="--el-switch-on-color: #6d5dfc"
+              @change="saveAssistantEngine"
+            />
+            <span class="gs-unit">
+              {{
+                assistantEngineSaving
+                  ? '正在保存…'
+                  : codexAssistantEnabled ? '使用 Codex 额度' : '使用 AI 配置中的 API'
+              }}
+            </span>
+          </div>
+          <el-alert
+            v-if="!codexAssistantEnabled && assistantConfigWarning"
+            type="warning"
+            :title="assistantConfigWarning"
+            :closable="false"
+            show-icon
+            style="margin: 12px 0 20px"
+          />
+
           <div class="gs-section-title">⚡ 一键生成并发设置</div>
           <p class="gs-desc">控制「一键生成视频」和「补全并生成」流水线中，各类任务同时并行生成的数量。并发数越高速度越快，但过高可能触发 API 限流（429 错误）。建议根据你的 API 额度选择。</p>
 
@@ -201,7 +235,7 @@
               size="small"
               :loading="genSettingSaving"
               @click="saveGenerationSettings"
-            >保存</el-button>
+            >保存并发设置</el-button>
           </div>
           <el-alert
             v-if="genSettingSaved"
@@ -1350,7 +1384,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key, Microphone, Folder } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
-import { generationSettingsAPI } from '@/api/prompts'
+import { assistantSettingsAPI, generationSettingsAPI } from '@/api/prompts'
 import { groupModelOptions } from '@/config/aiModelCatalog'
 import PromptEditor from '@/components/PromptEditor.vue'
 import SceneModelMap from '@/components/SceneModelMap.vue'
@@ -1376,14 +1410,33 @@ watch(activeTab, (value) => {
 // ---- 生成设置 ----
 const genConcurrencyInput = ref(3)
 const genVideoConcurrencyInput = ref(3)
+const codexAssistantEnabled = ref(false)
+const assistantConfiguredStatus = ref(null)
+const assistantEngineSaving = ref(false)
 const genSettingSaving = ref(false)
 const genSettingSaved = ref(false)
 
+const assistantConfigWarning = computed(() => {
+  const configured = assistantConfiguredStatus.value
+  if (!configured) return ''
+  const missing = [
+    ['text', '文本/对话'],
+    ['image', '文本生成图片'],
+    ['storyboard_image', '分镜图片生成'],
+  ].filter(([key]) => !configured[key]?.available).map(([, label]) => label)
+  return missing.length ? `尚未配置：${missing.join('、')}。对应能力暂不可用。` : ''
+})
+
 async function loadGenerationSettings() {
   try {
-    const res = await generationSettingsAPI.get()
-    genConcurrencyInput.value = res?.concurrency ?? 3
-    genVideoConcurrencyInput.value = res?.video_concurrency ?? 3
+    const [generation, assistant] = await Promise.all([
+      generationSettingsAPI.get(),
+      assistantSettingsAPI.get(),
+    ])
+    genConcurrencyInput.value = generation?.concurrency ?? 3
+    genVideoConcurrencyInput.value = generation?.video_concurrency ?? 3
+    codexAssistantEnabled.value = assistant?.engine === 'codex'
+    assistantConfiguredStatus.value = assistant?.configured_api || null
   } catch (_) {}
 }
 
@@ -1395,6 +1448,30 @@ function onConcurrencyChange(val) {
 function onVideoConcurrencyChange(val) {
   const n = Number(val)
   if (!isNaN(n) && n >= 1) genVideoConcurrencyInput.value = Math.min(20, Math.max(1, Math.round(n)))
+}
+
+async function saveAssistantEngine(enabled) {
+  if (assistantEngineSaving.value) return
+  assistantEngineSaving.value = true
+  try {
+    const assistant = await assistantSettingsAPI.update({
+      engine: enabled ? 'codex' : 'configured_api',
+    })
+    if (assistant?.engine) {
+      codexAssistantEnabled.value = assistant.engine === 'codex'
+    }
+    assistantConfiguredStatus.value = assistant?.configured_api || assistantConfiguredStatus.value
+    ElMessage.success(
+      codexAssistantEnabled.value
+        ? '已切换为 Codex 引擎，新对话将使用 Codex 额度'
+        : '已切换为 AI 配置 API，新对话将使用对应 API'
+    )
+  } catch (e) {
+    codexAssistantEnabled.value = !enabled
+    ElMessage.error('切换助手引擎失败：' + (e?.message || ''))
+  } finally {
+    assistantEngineSaving.value = false
+  }
 }
 
 async function saveGenerationSettings() {
@@ -1411,7 +1488,10 @@ async function saveGenerationSettings() {
   genSettingSaving.value = true
   genSettingSaved.value = false
   try {
-    await generationSettingsAPI.update({ concurrency: Math.round(n), video_concurrency: Math.round(nv) })
+    await generationSettingsAPI.update({
+      concurrency: Math.round(n),
+      video_concurrency: Math.round(nv),
+    })
     genSettingSaved.value = true
     setTimeout(() => { genSettingSaved.value = false }, 2000)
   } catch (e) {

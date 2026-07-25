@@ -307,11 +307,11 @@ function parseStoryboardResult(text, expectedCount) {
   }
   const rows = Array.isArray(parsed) ? parsed : parsed?.storyboards;
   if (!Array.isArray(rows) || !rows.length) {
-    throw new Error('Codex 未返回有效分镜数据');
+    throw new Error('AI 助手未返回有效分镜数据');
   }
   const expected = Math.max(1, Number(expectedCount) || rows.length);
   if (rows.length !== expected) {
-    throw new Error(`Codex 返回 ${rows.length} 条分镜，但完整任务要求 ${expected} 条，未写入数据库`);
+    throw new Error(`AI 助手返回 ${rows.length} 条分镜，但完整任务要求 ${expected} 条，未写入数据库`);
   }
   const storyboards = rows.map((row, index) => {
     const normalized = {
@@ -474,14 +474,14 @@ function listStoryboardImageTargets(db, session, options = {}) {
       .filter(Number.isFinite);
     const characters = characterIds.length
       ? db.prepare(
-        `SELECT id, name, appearance, description, polished_prompt
+        `SELECT id, name, appearance, description, polished_prompt, image_url, local_path
            FROM characters
           WHERE id IN (${characterIds.map(() => '?').join(',')})
             AND drama_id = ? AND deleted_at IS NULL`
       ).all(...characterIds, Number(session.drama_id))
       : [];
     const props = db.prepare(
-      `SELECT p.id, p.name, p.description, p.prompt
+      `SELECT p.id, p.name, p.description, p.prompt, p.image_url, p.local_path
          FROM storyboard_props sp
          JOIN props p ON p.id = sp.prop_id
         WHERE sp.storyboard_id = ? AND p.deleted_at IS NULL
@@ -489,7 +489,7 @@ function listStoryboardImageTargets(db, session, options = {}) {
     ).all(row.id);
     const scene = row.scene_id
       ? db.prepare(
-        `SELECT id, location, time, prompt, polished_prompt
+        `SELECT id, location, time, prompt, polished_prompt, image_url, local_path
            FROM scenes WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
       ).get(row.scene_id, Number(session.drama_id))
       : null;
@@ -560,7 +560,7 @@ function buildStoryboardImagePrompt(db, session, episode, target) {
     ].filter(Boolean).join('；')
     : [target.location, target.time].filter(Boolean).join('；');
   return [
-    '必须调用 Codex 原生图片生成能力并保存一张图片，不能只回复说明或提示词。',
+    '生成并保存一张独立的影视分镜首帧，不能只回复说明或提示词。',
     '本次只生成一张独立的影视分镜首帧，禁止生成分镜表、接触表、拼贴、宫格、多画格或多张图片。',
     `项目：${drama?.title || session.drama_id}`,
     episode ? `剧集：第${episode.episode_number}集《${episode.title || ''}》` : '',

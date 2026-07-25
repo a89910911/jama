@@ -183,6 +183,7 @@ function ensureAllColumns(database) {
     { name: 'narration_audio_local_path', type: 'TEXT' },         // 解说旁白 TTS 本地路径
     { name: 'creation_mode',     type: 'TEXT DEFAULT \'classic\'' }, // classic | universal
     { name: 'universal_segment_text', type: 'TEXT' },              // 全能模式片段描述（@ 引用等）
+    { name: 'use_first_last_frame', type: 'INTEGER' },              // NULL 跟随项目；0/1 为本分镜覆盖
     { name: 'first_frame_image_id', type: 'INTEGER' },
     { name: 'last_frame_image_id',  type: 'INTEGER' },
     { name: 'last_frame_image_url', type: 'TEXT' },
@@ -556,6 +557,7 @@ function ensureAllColumns(database) {
       drama_id INTEGER NOT NULL DEFAULT 0,
       episode_id INTEGER,
       user_id INTEGER,
+      engine TEXT,
       codex_thread_id TEXT,
       title TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'active',
@@ -592,6 +594,7 @@ function ensureAllColumns(database) {
     { name: 'drama_id',       type: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'episode_id',     type: 'INTEGER' },
     { name: 'user_id',        type: 'INTEGER' },
+    { name: 'engine',         type: 'TEXT' },
     { name: 'codex_thread_id', type: 'TEXT' },
     { name: 'title',          type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'status',         type: 'TEXT NOT NULL DEFAULT \'active\'' },

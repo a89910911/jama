@@ -14,6 +14,7 @@ function createDb() {
       duration REAL,
       status TEXT,
       characters TEXT,
+      use_first_last_frame INTEGER,
       deleted_at TEXT,
       updated_at TEXT
     );
@@ -44,6 +45,21 @@ test('manual storyboard updates accept only integer durations from 4 to 15', () 
 
     storyboardService.updateStoryboard(db, log, 1, { duration: 15 });
     assert.equal(db.prepare('SELECT duration FROM storyboards WHERE id = 1').get().duration, 15);
+  } finally {
+    db.close();
+  }
+});
+
+test('manual storyboard updates persist the per-shot first/last-frame override', () => {
+  const db = createDb();
+  try {
+    const enabled = storyboardService.updateStoryboard(db, log, 1, { use_first_last_frame: true });
+    assert.equal(enabled.use_first_last_frame, true);
+    assert.equal(db.prepare('SELECT use_first_last_frame FROM storyboards WHERE id = 1').get().use_first_last_frame, 1);
+
+    const disabled = storyboardService.updateStoryboard(db, log, 1, { use_first_last_frame: false });
+    assert.equal(disabled.use_first_last_frame, false);
+    assert.equal(db.prepare('SELECT use_first_last_frame FROM storyboards WHERE id = 1').get().use_first_last_frame, 0);
   } finally {
     db.close();
   }

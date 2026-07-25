@@ -9,7 +9,10 @@ import {
   getDramaGenerationOptions,
   toAbsoluteMediaUrl,
 } from '@/utils/canvasWorkflow'
-import { dramaUsesFirstLastFrame, sbVideoFirstLastUrls } from '@/utils/storyboardMedia'
+import {
+  sbVideoFirstLastUrls,
+  storyboardUsesFirstLastFrame,
+} from '@/utils/storyboardMedia'
 
 async function pollTaskSimple(taskId, options = {}) {
   if (!taskId) return { status: 'failed', error: '缺少 task_id' }
@@ -32,23 +35,46 @@ async function pollTaskSimple(taskId, options = {}) {
 }
 
 export async function runImageStep(drama, sb, genOpts, hooks = {}) {
-  const prompt = sb.polished_prompt || sb.image_prompt || sb.description || sb.action || ''
-  if (!prompt.trim()) throw new Error(`分镜 #${sb.storyboard_number ?? sb.id} 缺少图片提示词`)
-  const res = await imagesAPI.create({
-    storyboard_id: sb.id,
-    drama_id: drama.id,
-    prompt,
-    style: genOpts.style || undefined,
-    aspect_ratio: genOpts.aspectRatio,
-  })
-  if (res?.task_id) {
-    const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
-    if (polled.status !== 'completed') throw new Error(polled.error || '分镜图生成失败')
+  const basePrompt = sb.polished_prompt || sb.image_prompt || sb.description || sb.action || ''
+  if (!basePrompt.trim()) throw new Error(`分镜 #${sb.storyboard_number ?? sb.id} 缺少图片提示词`)
+  const useFirstLast = storyboardUsesFirstLastFrame(sb, drama)
+  const frameSlots = useFirstLast ? ['first', 'last'] : [null]
+
+  for (const slot of frameSlots) {
+    let prompt = basePrompt
+    if (slot) {
+      const framePromptTask = await storyboardsAPI.generateFramePrompt(sb.id, { frame_type: slot })
+      if (!framePromptTask?.task_id) throw new Error(`${slot === 'last' ? '尾帧' : '首帧'}专业提示词任务未创建`)
+      const framePromptResult = await pollTaskSimple(framePromptTask.task_id, { onProgress: hooks.onProgress })
+      if (framePromptResult.status !== 'completed') {
+        throw new Error(framePromptResult.error || `${slot === 'last' ? '尾帧' : '首帧'}专业提示词生成失败`)
+      }
+      prompt = framePromptResult.result?.response?.single_frame?.prompt || ''
+      if (!String(prompt).trim()) {
+        const cached = await storyboardsAPI.getFramePrompts(sb.id)
+        prompt = (cached?.frame_prompts || []).find((row) => row.frame_type === slot)?.prompt || ''
+      }
+      if (!String(prompt).trim()) throw new Error(`${slot === 'last' ? '尾帧' : '首帧'}专业提示词为空`)
+    }
+
+    const res = await imagesAPI.create({
+      storyboard_id: sb.id,
+      drama_id: drama.id,
+      prompt,
+      style: genOpts.style || undefined,
+      frame_type: slot ? `storyboard_${slot}` : undefined,
+      aspect_ratio: genOpts.aspectRatio,
+      use_first_frame_layout_lock: slot === 'last' ? true : undefined,
+    })
+    if (res?.task_id) {
+      const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
+      if (polled.status !== 'completed') throw new Error(polled.error || '分镜图生成失败')
+    }
   }
 }
 
 export async function runVideoStep(drama, sb, genOpts, hooks = {}) {
-  const useFirstLast = dramaUsesFirstLastFrame(drama)
+  const useFirstLast = storyboardUsesFirstLastFrame(sb, drama)
   const imagesBySbId = genOpts?.imagesBySbId || {}
   const { first, last } = sbVideoFirstLastUrls(sb, imagesBySbId, useFirstLast)
   const imgPath = first || storyboardImageUrl(sb)

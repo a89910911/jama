@@ -4,6 +4,7 @@ import { dramaAPI } from '@/api/drama'
 import { storyboardsAPI } from '@/api/storyboards'
 import { sceneAPI } from '@/api/scenes'
 import { propAPI } from '@/api/props'
+import { parseDramaMetadata } from '@/utils/canvasLayout'
 
 /** 合并 drama 级与本集已关联角色，避免 drama.characters 被布局保存截断后漏传 */
 function collectExistingCharacters(dramaData, episodeId) {
@@ -95,12 +96,16 @@ export function useCanvasCrud(deps) {
     const maxNum = boards.reduce((max, sb) => Math.max(max, sb.storyboard_number || 0), 0)
     const nextNum = maxNum + 1
     const title = (form.title || '').trim() || `镜头 ${nextNum}`
+    const metadata = parseDramaMetadata(drama.value?.metadata)
+    const universal = !!metadata.storyboard_universal_omni
 
     const sb = await storyboardsAPI.create({
       episode_id: episodeId,
       storyboard_number: nextNum,
       title,
       description: (form.description || '').trim() || '',
+      creation_mode: universal ? 'universal' : 'classic',
+      use_first_last_frame: universal ? false : !!metadata.storyboard_use_first_last_frame,
     })
 
     const nodeId = `sb:${sb.id}`

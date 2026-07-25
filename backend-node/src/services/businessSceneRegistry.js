@@ -1,5 +1,27 @@
 const SCENES = [
   {
+    key: 'assistant_intent_planning',
+    label: 'AI 助手 · 意图识别',
+    category: 'AI 助手',
+    subcategory: '意图与路由',
+    detail_category: '',
+    order: 90,
+    service_type: 'text',
+    description: '识别每条自然语言消息的执行意图、范围、风险和缺失条件',
+    prompt_keys: ['assistant.intent.system', 'assistant.intent.user'],
+  },
+  {
+    key: 'assistant_chat',
+    label: 'AI 助手 · 创作咨询',
+    category: 'AI 助手',
+    subcategory: '创作咨询',
+    detail_category: '',
+    order: 91,
+    service_type: 'text',
+    description: '结合项目和对话上下文回答创作问题，不执行数据库写入',
+    prompt_keys: ['assistant.chat.system', 'assistant.chat.user'],
+  },
+  {
     key: 'story_generation',
     label: '故事创作',
     category: '剧本',

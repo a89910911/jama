@@ -7,10 +7,10 @@
       @click="openPanel"
     >
       <el-icon><ChatDotRound /></el-icon>
-      Codex AI 助手
+      AI 创作助手
     </el-button>
     <span v-if="!compact" class="codex-launcher-tip">
-      对话生成文字和图片，不使用 AI 设置中的模型
+      {{ engineTip }}
     </span>
 
     <el-drawer
@@ -25,7 +25,7 @@
         <header class="codex-chat-header">
           <div>
             <div class="codex-chat-title">
-              Codex AI 助手
+              AI 创作助手
               <span :class="['codex-status-dot', statusClass]" />
             </div>
             <div class="codex-chat-context">
@@ -46,7 +46,7 @@
                 </el-button>
               </template>
               <div class="codex-help">
-                <strong>怎样说，Codex 更容易准确执行？</strong>
+                <strong>怎样说，AI 助手更容易准确执行？</strong>
                 <ol>
                   <li v-for="tip in conversationTips" :key="tip">{{ tip }}</li>
                 </ol>
@@ -69,7 +69,7 @@
           </div>
           <div v-else-if="!messages.length" class="codex-empty">
             <el-icon :size="34"><MagicStick /></el-icon>
-            <p>告诉 Codex 你想创作什么。</p>
+            <p>告诉 AI 助手你想创作什么。</p>
             <span>例如：一个少女在森林里遇见会说话的狐狸，帮我生成当前集剧本。</span>
           </div>
 
@@ -79,10 +79,10 @@
             :class="['codex-message', `is-${message.role}`]"
           >
             <div class="codex-message-role">
-              {{ message.role === 'user' ? '你' : 'Codex' }}
+              {{ message.role === 'user' ? '你' : messageEngineLabel(message) }}
               <el-tooltip
                 v-if="messageActionLabel(message)"
-                :content="message.metadata?.intent_plan?.reason || '本次对话识别出的执行方式'"
+                :content="messageIntentTooltip(message)"
                 placement="top"
               >
                 <span class="codex-action-badge">
@@ -95,6 +95,20 @@
               </span>
               <span v-else-if="message.status === 'failed'" class="codex-failed">生成失败</span>
               <span v-else-if="message.status === 'cancelled'" class="codex-cancelled">已停止</span>
+            </div>
+            <div
+              v-if="message.role === 'assistant' && messageActionSteps(message).length"
+              class="codex-action-plan"
+            >
+              <span>执行计划</span>
+              <ol>
+                <li
+                  v-for="action in messageActionSteps(message)"
+                  :key="action.id"
+                >
+                  {{ action.label }}
+                </li>
+              </ol>
             </div>
             <GenerationProgressBar
               v-if="message.status === 'processing' && message.task_id === runningTaskId"
@@ -119,7 +133,7 @@
                 <img
                   class="codex-generated-image"
                   :src="image.url"
-                  :alt="image.name || 'Codex 生成图片'"
+                  :alt="image.name || 'AI 助手生成图片'"
                 />
                 <figcaption v-if="image.name">
                   {{ image.name }}
@@ -161,7 +175,7 @@
               <button
                 type="button"
                 :class="{ active: intentHint === item.value }"
-                :disabled="!!runningTaskId"
+                :disabled="!!runningTaskId || !status.available"
                 :aria-label="`${item.label}：${item.description}`"
                 @click="applyIntent(item)"
               >
@@ -170,7 +184,7 @@
             </el-tooltip>
           </div>
           <div class="codex-intent-tip">
-            快捷按钮会填入可编辑示例；修改示例后，Codex 会重新理解你的自然语言需求。
+            快捷按钮会填入可编辑示例；修改示例后，AI 助手会重新理解你的自然语言需求。
           </div>
           <el-input
             ref="inputRef"
@@ -180,7 +194,7 @@
             resize="none"
             maxlength="50000"
             placeholder="输入你的创作要求…"
-            :disabled="!!runningTaskId || !sessionId"
+            :disabled="!!runningTaskId || !sessionId || !status.available"
             @input="onInputChanged"
             @keydown.ctrl.enter.prevent="send"
             @keydown.meta.enter.prevent="send"
@@ -199,7 +213,7 @@
             <el-button
               v-else
               type="primary"
-              :disabled="!input.trim() || !sessionId"
+              :disabled="!input.trim() || !sessionId || !status.available"
               @click="send"
             >
               发送
@@ -251,7 +265,7 @@ const emit = defineEmits(['completed'])
 
 const visible = ref(false)
 const loading = ref(false)
-const status = ref({ available: false, starting: false, error: '' })
+const status = ref({ engine: '', available: false, starting: false, error: '' })
 const sessionId = ref('')
 const messages = ref([])
 const input = ref('')
@@ -286,10 +300,26 @@ const statusClass = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (status.value.available) return 'Codex 已连接'
-  if (status.value.starting) return 'Codex 启动中'
-  return status.value.error || 'Codex 未连接'
+  const label = status.value.engine === 'configured_api'
+    ? 'AI 配置 API'
+    : status.value.engine === 'codex' ? 'Codex' : 'AI 助手'
+  if (status.value.available) return `${label} 已连接`
+  if (status.value.starting) return `${label} 启动中`
+  return status.value.error || `${label} 未连接`
 })
+
+const engineTip = computed(() => {
+  if (status.value.engine === 'configured_api') {
+    return '文本走文本/对话 API，图片按类型走图片 API'
+  }
+  if (status.value.engine === 'codex') return '文本和图片由 Codex 生成'
+  return '文本和图片按当前配置的助手引擎生成'
+})
+
+function messageEngineLabel(message) {
+  const engine = message?.metadata?.engine || status.value.engine
+  return engine === 'configured_api' ? 'AI 配置 API' : 'Codex'
+}
 
 function upsertMessage(message) {
   messages.value = upsertChatMessage(messages.value, message)
@@ -319,6 +349,19 @@ function messageImages(message) {
 
 function messageActionLabel(message) {
   return codexActionLabel(message?.action_type)
+}
+
+function messageActionSteps(message) {
+  const metadata = message?.metadata || {}
+  const plan = metadata.action_plan || metadata.intent_plan?.action_plan
+  return Array.isArray(plan?.actions) ? plan.actions : []
+}
+
+function messageIntentTooltip(message) {
+  const decision = message?.metadata?.intent_decision || message?.metadata?.intent_plan || {}
+  const evidence = Array.isArray(decision.evidence) ? decision.evidence.filter(Boolean) : []
+  return [decision.reason, ...evidence].filter(Boolean).join('；')
+    || '本次对话识别出的执行方式'
 }
 
 async function applyIntent(item) {
@@ -359,7 +402,9 @@ async function ensureSession(forceNew = false) {
   if (!props.dramaId) return
   if (!forceNew) {
     const sessions = await codexChatAPI.listSessions(props.dramaId, props.episodeId)
-    if (sessions?.length) sessionId.value = sessions[0].id
+    const currentEngine = status.value.engine || 'configured_api'
+    const matched = sessions?.find((item) => item.engine === currentEngine)
+    sessionId.value = matched?.id || ''
   }
   if (!sessionId.value || forceNew) {
     const created = await codexChatAPI.createSession(props.dramaId, {
@@ -375,7 +420,7 @@ async function checkStatus() {
   try {
     status.value = await codexChatAPI.status()
   } catch (error) {
-    status.value = { available: false, error: error.message || 'Codex 不可用' }
+    status.value = { available: false, error: error.message || 'AI 助手不可用' }
   }
 }
 
@@ -383,9 +428,10 @@ async function openPanel() {
   visible.value = true
   loading.value = true
   try {
-    await Promise.all([checkStatus(), ensureSession(false)])
+    await checkStatus()
+    await ensureSession(false)
   } catch (error) {
-    ElMessage.error(error.message || '加载 Codex 对话失败')
+    ElMessage.error(error.message || '加载 AI 助手对话失败')
   } finally {
     loading.value = false
   }
@@ -470,10 +516,18 @@ function connectEvents() {
     })
   }
   source.onerror = () => {
-    status.value = { ...status.value, available: false, error: '事件连接正在重试' }
+    status.value = {
+      ...status.value,
+      error: status.value.available
+        ? '事件连接正在重试'
+        : status.value.error || '事件连接正在重试',
+    }
   }
   source.onopen = () => {
-    status.value = { ...status.value, available: true, error: '' }
+    status.value = {
+      ...status.value,
+      error: status.value.available ? '' : status.value.error,
+    }
   }
   eventSource.value = source
 }
@@ -489,7 +543,9 @@ async function send() {
   try {
     const result = await codexChatAPI.sendMessage(sessionId.value, {
       content,
-      intent_hint: intentHint.value || undefined,
+      intent_hint: intentHint.value && content === intentExample.value
+        ? intentHint.value
+        : undefined,
       episode_count: props.episodeId ? 1 : props.episodeCount,
       style: props.storyStyle || undefined,
       type: props.storyType || undefined,
@@ -732,6 +788,32 @@ onBeforeUnmount(() => {
   background: var(--el-color-primary-light-9);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.codex-action-plan {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.codex-action-plan > span {
+  flex: none;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+
+.codex-action-plan ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding-left: 16px;
 }
 
 .codex-processing,

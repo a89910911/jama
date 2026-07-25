@@ -1,21 +1,34 @@
 <template>
-  <div class="generation-dock">
+  <div
+    ref="dockRef"
+    class="generation-dock"
+    :class="[`dock-${dockSide}`, { dragging: isDragging }]"
+    :style="dockStyle"
+  >
     <button
+      ref="toggleRef"
       class="generation-toggle"
       type="button"
       :class="{ active: mediaTasks.length > 0, expanded }"
       :aria-expanded="expanded"
       aria-controls="global-generation-progress"
-      title="显示或隐藏素材生成进度"
-      @click="expanded = !expanded"
+      title="拖动调整位置，点击显示或隐藏素材生成进度"
+      @click="onKeyboardClick"
+      @keydown.enter.prevent="toggleExpanded"
+      @keydown.space.prevent="toggleExpanded"
+      @pointerdown="onPointerDown"
     >
       <span class="generation-toggle-dot" />
-      <span>素材生成进度</span>
+      <span class="generation-toggle-label">素材生成进度</span>
       <span class="generation-toggle-count">{{ mediaTasks.length }}</span>
-      <span class="generation-toggle-arrow">⌄</span>
+      <span class="generation-toggle-arrow">{{ dockSide === 'right' ? '‹' : '›' }}</span>
     </button>
 
-    <Transition name="generation-panel">
+    <Transition
+      name="generation-panel"
+      @after-enter="constrainDockToViewport"
+      @after-leave="constrainDockToViewport"
+    >
       <aside
         v-if="expanded"
         id="global-generation-progress"
@@ -46,61 +59,265 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useGenerationTaskStore } from '@/stores/generationTaskStore'
 import { isMediaGenerationResourceType, isVideoGenerationKind } from '@/utils/generationProgress'
 import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 
+const EDGE_GAP = 12
+const DRAG_THRESHOLD = 8
+const POSITION_STORAGE_KEY = 'jama:generation-progress-position'
+
 const generationStore = useGenerationTaskStore()
+const dockRef = ref(null)
+const toggleRef = ref(null)
 const expanded = ref(false)
+const dockSide = ref('right')
+const dockY = ref(null)
+const preferredDockY = ref(null)
+const isDragging = ref(false)
+const dragPoint = ref(null)
+let pointerState = null
 
 const mediaTasks = computed(() => generationStore.runningTasks
   .filter((task) => isMediaGenerationResourceType(task.resourceType))
   .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)))
 
+const dockStyle = computed(() => {
+  const top = `${dockY.value ?? (typeof window !== 'undefined' ? window.innerHeight / 2 : 0)}px`
+  if (isDragging.value && dragPoint.value && pointerState) {
+    if (dockSide.value === 'left') {
+      return {
+        top,
+        left: `${dragPoint.value.x - pointerState.width / 2}px`,
+        right: 'auto',
+      }
+    }
+    return {
+      top,
+      right: `${window.innerWidth - dragPoint.value.x - pointerState.width / 2}px`,
+      left: 'auto',
+    }
+  }
+  return {
+    top,
+    left: dockSide.value === 'left' ? `${EDGE_GAP}px` : 'auto',
+    right: dockSide.value === 'right' ? `${EDGE_GAP}px` : 'auto',
+  }
+})
+
 function defaultLabel(task) {
   return isVideoGenerationKind(task.resourceType) ? '视频素材' : '图片素材'
+}
+
+function clamp(value, min, max) {
+  if (min > max) return (min + max) / 2
+  return Math.min(Math.max(value, min), max)
+}
+
+function getToggleSize() {
+  const rect = toggleRef.value?.getBoundingClientRect()
+  return {
+    width: rect?.width || 42,
+    height: rect?.height || 166,
+  }
+}
+
+function constrainDockToViewport() {
+  if (typeof window === 'undefined' || isDragging.value) return
+  const dockHeight = dockRef.value?.offsetHeight || getToggleSize().height
+  const halfHeight = Math.min(dockHeight / 2, window.innerHeight / 2 - EDGE_GAP)
+  const preferred = preferredDockY.value ?? window.innerHeight / 2
+  dockY.value = clamp(preferred, halfHeight + EDGE_GAP, window.innerHeight - halfHeight - EDGE_GAP)
+}
+
+function persistDockPosition() {
+  try {
+    localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify({
+      side: dockSide.value,
+      yRatio: preferredDockY.value / window.innerHeight,
+    }))
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function restoreDockPosition() {
+  let savedPosition = null
+  try {
+    savedPosition = JSON.parse(localStorage.getItem(POSITION_STORAGE_KEY))
+  } catch {
+    savedPosition = null
+  }
+  if (savedPosition?.side === 'left' || savedPosition?.side === 'right') {
+    dockSide.value = savedPosition.side
+  }
+  const savedRatio = Number(savedPosition?.yRatio)
+  const yRatio = Number.isFinite(savedRatio) ? clamp(savedRatio, 0, 1) : 0.5
+  preferredDockY.value = yRatio * window.innerHeight
+  constrainDockToViewport()
+}
+
+function toggleExpanded() {
+  expanded.value = !expanded.value
+}
+
+function onKeyboardClick(event) {
+  // Pointer clicks are handled on pointerup so they cannot race with drag handling.
+  if (event.detail === 0) toggleExpanded()
+}
+
+function onPointerDown(event) {
+  if (event.button !== 0 || pointerState) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  pointerState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    offsetX: event.clientX - (rect.left + rect.width / 2),
+    offsetY: event.clientY - (rect.top + rect.height / 2),
+    width: rect.width,
+    height: rect.height,
+  }
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerCancel)
+}
+
+function onPointerMove(event) {
+  if (!pointerState || event.pointerId !== pointerState.pointerId) return
+  const distance = Math.hypot(
+    event.clientX - pointerState.startX,
+    event.clientY - pointerState.startY
+  )
+  if (!isDragging.value && distance < DRAG_THRESHOLD) return
+  if (!isDragging.value) {
+    isDragging.value = true
+    expanded.value = false
+  }
+  const centerX = event.clientX - pointerState.offsetX
+  const centerY = event.clientY - pointerState.offsetY
+  dragPoint.value = {
+    x: clamp(
+      centerX,
+      pointerState.width / 2 + EDGE_GAP,
+      window.innerWidth - pointerState.width / 2 - EDGE_GAP
+    ),
+    y: clamp(
+      centerY,
+      pointerState.height / 2 + EDGE_GAP,
+      window.innerHeight - pointerState.height / 2 - EDGE_GAP
+    ),
+  }
+  dockY.value = dragPoint.value.y
+}
+
+function onPointerUp(event) {
+  if (!pointerState || event.pointerId !== pointerState.pointerId) return
+  if (isDragging.value && dragPoint.value) {
+    dockSide.value = dragPoint.value.x < window.innerWidth / 2 ? 'left' : 'right'
+    preferredDockY.value = dragPoint.value.y
+    dockY.value = dragPoint.value.y
+    persistDockPosition()
+  } else {
+    toggleExpanded()
+  }
+  finishPointerInteraction()
+}
+
+function onPointerCancel(event) {
+  if (!pointerState || event.pointerId !== pointerState.pointerId) return
+  if (isDragging.value && dragPoint.value) {
+    dockSide.value = dragPoint.value.x < window.innerWidth / 2 ? 'left' : 'right'
+    preferredDockY.value = dragPoint.value.y
+    dockY.value = dragPoint.value.y
+    persistDockPosition()
+  }
+  finishPointerInteraction()
+}
+
+function finishPointerInteraction() {
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerCancel)
+  pointerState = null
+  dragPoint.value = null
+  isDragging.value = false
+  constrainDockToViewport()
 }
 
 function onKeydown(event) {
   if (event.key === 'Escape') expanded.value = false
 }
 
-onMounted(() => document.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
+function onResize() {
+  const ratio = preferredDockY.value / window.innerHeight
+  preferredDockY.value = clamp(ratio, 0, 1) * window.innerHeight
+  constrainDockToViewport()
+}
+
+watch(expanded, async (isExpanded) => {
+  if (!isExpanded) return
+  await nextTick()
+  constrainDockToViewport()
+})
+
+onMounted(() => {
+  restoreDockPosition()
+  document.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', onResize)
+})
+onBeforeUnmount(() => {
+  finishPointerInteraction()
+  document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', onResize)
+})
 </script>
 
 <style scoped>
 .generation-dock {
+  --generation-progress-height: min(166px, calc(100vh - 24px));
   position: fixed;
-  top: 0;
-  left: 50%;
   z-index: 3500;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  width: min(360px, calc(100vw - 28px));
-  transform: translateX(-50%);
+  transform: translateY(-50%);
   pointer-events: none;
 }
+.generation-dock.dock-right {
+  flex-direction: row-reverse;
+}
+.generation-dock.dock-left {
+  flex-direction: row;
+}
 .generation-toggle {
-  display: inline-flex;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  padding: 4px 11px 5px;
+  justify-content: center;
+  gap: 6px;
+  width: 42px;
+  height: var(--generation-progress-height);
+  min-height: var(--generation-progress-height);
+  padding: 8px 6px;
   border: 1px solid var(--el-border-color-light, rgba(113, 113, 122, 0.3));
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
+  border-radius: 14px;
   color: var(--el-text-color-regular, #52525b);
   background: color-mix(in srgb, var(--el-bg-color, #fff) 96%, transparent);
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.13);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
+  cursor: grab;
   backdrop-filter: blur(12px);
+  touch-action: none;
+  user-select: none;
   pointer-events: auto;
+}
+.generation-dock.dragging .generation-toggle {
+  cursor: grabbing;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 .generation-toggle:hover,
 .generation-toggle.expanded {
@@ -108,6 +325,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   border-color: color-mix(in srgb, var(--el-color-primary, #6366f1) 55%, transparent);
 }
 .generation-toggle-dot {
+  flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -118,9 +336,16 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-success, #22c55e) 18%, transparent);
   animation: generation-dot-pulse 1.6s ease-in-out infinite;
 }
+.generation-toggle-label {
+  letter-spacing: 2px;
+  line-height: 1;
+  text-orientation: upright;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
 .generation-toggle-count {
-  min-width: 19px;
-  padding: 1px 6px;
+  min-width: 22px;
+  padding: 2px 4px;
   border-radius: 999px;
   color: #fff;
   background: var(--el-color-primary, #6366f1);
@@ -130,16 +355,20 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 }
 .generation-toggle-arrow {
   display: inline-block;
-  margin-top: -3px;
-  font-size: 14px;
+  height: 16px;
+  font-size: 20px;
+  line-height: 1;
   transition: transform 0.2s ease;
 }
 .generation-toggle.expanded .generation-toggle-arrow {
-  transform: rotate(180deg) translateY(-2px);
+  transform: rotate(180deg);
 }
 .generation-center {
-  width: 100%;
-  margin-top: 7px;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 76px));
+  height: var(--generation-progress-height);
   overflow: hidden;
   border: 1px solid var(--el-border-color-light, rgba(113, 113, 122, 0.28));
   border-radius: 12px;
@@ -147,6 +376,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(12px);
   pointer-events: auto;
+}
+.dock-right .generation-center {
+  margin-right: 8px;
+}
+.dock-left .generation-center {
+  margin-left: 8px;
 }
 .generation-center-head {
   display: flex;
@@ -175,7 +410,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   background: var(--el-fill-color-light, rgba(113, 113, 122, 0.12));
 }
 .generation-center-list {
-  max-height: min(52vh, 440px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .generation-center-item {
@@ -194,6 +430,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   white-space: nowrap;
 }
 .generation-center-empty {
+  display: grid;
+  flex: 1;
+  place-items: center;
   padding: 24px 16px;
   color: var(--el-text-color-secondary, #71717a);
   font-size: 12px;
@@ -202,12 +441,23 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .generation-panel-enter-active,
 .generation-panel-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;
-  transform-origin: top center;
+  transform-origin: right center;
+}
+.dock-left .generation-panel-enter-active,
+.dock-left .generation-panel-leave-active {
+  transform-origin: left center;
 }
 .generation-panel-enter-from,
 .generation-panel-leave-to {
   opacity: 0;
-  transform: translateY(-8px) scale(0.98);
+}
+.dock-right .generation-panel-enter-from,
+.dock-right .generation-panel-leave-to {
+  transform: translateX(8px) scale(0.98);
+}
+.dock-left .generation-panel-enter-from,
+.dock-left .generation-panel-leave-to {
+  transform: translateX(-8px) scale(0.98);
 }
 @keyframes generation-dot-pulse {
   50% { opacity: 0.55; }

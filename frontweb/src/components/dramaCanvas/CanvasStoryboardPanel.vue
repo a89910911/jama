@@ -98,6 +98,21 @@
           <el-input-number v-model="form.duration" :min="1" :max="120" controls-position="right" @change="saveMeta" />
         </el-form-item>
       </div>
+      <div class="storyboard-mode-row">
+        <span>本镜配置优先全局</span>
+        <el-checkbox
+          v-model="form.use_first_last_frame"
+          :disabled="isUniversal"
+        >
+          首尾帧参考图
+        </el-checkbox>
+        <el-checkbox
+          :model-value="isUniversal"
+          @change="onUniversalModeChange"
+        >
+          全能分镜
+        </el-checkbox>
+      </div>
 
       <template v-if="isUniversal">
         <el-form-item label="全能词">
@@ -188,6 +203,8 @@ import {
 import { runImageStep, runVideoStep, runAudioStep } from '@/composables/useCanvasWorkflowRunner'
 import { findStoryboardInDrama, getDramaGenerationOptions } from '@/utils/canvasWorkflow'
 import { resolveGenerationProgress } from '@/utils/generationProgress'
+import { dramaUsesFirstLastFrame } from '@/utils/storyboardMedia'
+import { saveStoryboardWorkspace } from '@/utils/storyboardWorkspaceSave'
 
 const props = defineProps({
   storyboard: { type: Object, required: true },
@@ -209,13 +226,15 @@ const form = reactive({
   image_prompt: '',
   video_prompt: '',
   universal_segment_text: '',
+  creation_mode: 'classic',
+  use_first_last_frame: false,
   shot_type: '',
   duration: 5,
 })
 
 const sbNodeId = computed(() => props.nodeId || (props.storyboard?.id ? `sb:${props.storyboard.id}` : ''))
 
-const isUniversal = computed(() => props.storyboard?.creation_mode === 'universal')
+const isUniversal = computed(() => form.creation_mode === 'universal')
 const characters = computed(() => ctx?.drama?.value?.characters || [])
 const scenes = computed(() => ctx?.drama?.value?.scenes || [])
 const propsList = computed(() => ctx?.drama?.value?.props || [])
@@ -233,6 +252,10 @@ function syncForm(sb) {
   form.image_prompt = sb?.image_prompt || sb?.polished_prompt || ''
   form.video_prompt = sb?.video_prompt || ''
   form.universal_segment_text = sb?.universal_segment_text || ''
+  form.creation_mode = sb?.creation_mode === 'universal' ? 'universal' : 'classic'
+  form.use_first_last_frame = sb?.use_first_last_frame == null
+    ? dramaUsesFirstLastFrame(ctx?.drama?.value)
+    : !!sb.use_first_last_frame
   form.shot_type = sb?.shot_type || ''
   form.duration = sb?.duration != null ? Number(sb.duration) : 5
   characterIds.value = parseStoryboardCharacterIds(sb)
@@ -245,6 +268,11 @@ watch(() => props.storyboard, (sb) => syncForm(sb), { immediate: true, deep: tru
 function onSelectVisibleChange(open) {
   if (open) ctx?.suppressPaneClick?.()
   else ctx?.suppressPaneClick?.(400)
+}
+
+function onUniversalModeChange(enabled) {
+  form.creation_mode = enabled ? 'universal' : 'classic'
+  if (enabled) form.use_first_last_frame = false
 }
 
 function closePanel() {
@@ -293,10 +321,15 @@ async function saveMeta() {
   }
 }
 
-async function persistForm(silent = false) {
+async function persistForm(silent = false, options = {}) {
   if (!props.storyboard?.id) return
+  const modePayload = {
+    creation_mode: isUniversal.value ? 'universal' : 'classic',
+    use_first_last_frame: isUniversal.value ? false : !!form.use_first_last_frame,
+  }
   const payload = isUniversal.value
     ? {
+        ...modePayload,
         title: form.title.trim() || null,
         universal_segment_text: form.universal_segment_text.trim() || null,
         video_prompt: form.video_prompt.trim() || null,
@@ -304,6 +337,7 @@ async function persistForm(silent = false) {
         duration: form.duration ?? 5,
       }
     : {
+        ...modePayload,
         title: form.title.trim() || null,
         action: form.action.trim() || null,
         dialogue: form.dialogue.trim() || null,
@@ -312,8 +346,19 @@ async function persistForm(silent = false) {
         shot_type: form.shot_type.trim() || null,
         duration: form.duration ?? 5,
       }
-  await storyboardsAPI.update(props.storyboard.id, payload)
-  if (!silent) ElMessage.success('已保存')
+  let result = { rebuiltVideoPrompt: false, storyboard: null }
+  if (options.rebuildClassicVideoPrompt) {
+    result = await saveStoryboardWorkspace(storyboardsAPI, props.storyboard.id, payload)
+    if (result.storyboard?.video_prompt != null) {
+      form.video_prompt = result.storyboard.video_prompt
+    }
+  } else {
+    await storyboardsAPI.update(props.storyboard.id, payload)
+  }
+  if (!silent) {
+    ElMessage.success(result.rebuiltVideoPrompt ? '已保存并更新视频提示词' : '已保存')
+  }
+  return result.storyboard
 }
 
 async function saveFields() {
@@ -321,7 +366,7 @@ async function saveFields() {
   saving.value = true
   ctx?.nodeStatus?.set(sbNodeId.value, { step: 'save', message: CANVAS_NODE_STATUS_LABELS.save })
   try {
-    await persistForm(false)
+    await persistForm(false, { rebuildClassicVideoPrompt: true })
     await ctx?.refreshDrama?.(true)
   } catch (e) {
     ElMessage.error(e?.message || '保存失败')
@@ -371,9 +416,12 @@ async function runStep(step) {
   const sbId = props.storyboard?.id
   if (!drama || !sbId) return
 
+  let savedStoryboard = null
   if (step !== 'audio') {
     try {
-      await persistForm(true)
+      savedStoryboard = await persistForm(true, {
+        rebuildClassicVideoPrompt: step === 'video',
+      })
     } catch (e) {
       ElMessage.error(e?.message || '保存失败')
       return
@@ -405,7 +453,7 @@ async function runStep(step) {
   updateProgress({ status: 'processing', progress: 0 })
   try {
     const found = findStoryboardInDrama(drama, sbId)
-    const sb = found?.storyboard || props.storyboard
+    const sb = savedStoryboard || found?.storyboard || props.storyboard
     const genOpts = ctx?.getGenerationOptions?.() || getDramaGenerationOptions(drama)
     if (step === 'image') await runImageStep(drama, sb, genOpts, { onProgress: updateProgress })
     else if (step === 'video') await runVideoStep(drama, sb, genOpts, { onProgress: updateProgress })
@@ -495,6 +543,17 @@ async function runStep(step) {
 .meta-row {
   display: flex;
   gap: 10px;
+}
+.storyboard-mode-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 10px 36px;
+}
+.storyboard-mode-row > span {
+  color: var(--canvas-text-muted, #8b8fa3);
+  font-size: 11px;
 }
 .meta-item { flex: 1; min-width: 0; }
 .meta-item.narrow { max-width: 140px; flex: 0 0 140px; }

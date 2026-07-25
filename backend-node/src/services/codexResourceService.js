@@ -77,9 +77,13 @@ function detectResourceScopes(text) {
 
 function isResourceImageRequest(text) {
   const input = String(text || '');
-  return /(图|图片|形象照|设定图|资源图|image)/i.test(input)
-    && /(资源|角色|人物|道具|物品|场景|环境|背景|character|prop|scene)/i.test(input)
-    && /(生成|制作|创建|画|补齐|配图|出图|来一?张|想要|重做|重新)/i.test(input);
+  const resource = '(?:资源|角色|人物|道具|物品|场景|环境|背景|character|prop|scene)';
+  const image = '(?:图片|图像|形象照|设定图|资源图|角色图|人物图|道具图|场景图|image)';
+  const action = '(?:生成|制作|创建|画|补齐|配图|出图|来一?张|想要|重做|重新生成)';
+  return new RegExp(`${action}.{0,20}${resource}.{0,16}${image}`, 'i').test(input)
+    || new RegExp(`${resource}.{0,20}${action}.{0,16}${image}`, 'i').test(input)
+    || new RegExp(`${action}.{0,20}(?:资源图|角色图|人物图|道具图|场景图)`, 'i').test(input)
+    || new RegExp(`${resource}.{0,12}(?:配图|出图|补图|重做图片)`, 'i').test(input);
 }
 
 function isResourceExtractionRequest(text) {
@@ -135,7 +139,7 @@ function parseResourceResult(text) {
   } catch (_) {
     parsed = safeParseAIJSON(text, {}, null);
   }
-  if (!parsed || typeof parsed !== 'object') throw new Error('Codex 未返回有效资源数据');
+  if (!parsed || typeof parsed !== 'object') throw new Error('AI 助手未返回有效资源数据');
   const characters = (Array.isArray(parsed.characters) ? parsed.characters : [])
     .slice(0, 20)
     .map((item) => ({
@@ -166,7 +170,7 @@ function parseResourceResult(text) {
     }))
     .filter((item) => item.location);
   if (!characters.length && !props.length && !scenes.length) {
-    throw new Error('Codex 未提取到角色、道具或场景');
+    throw new Error('AI 助手未提取到角色、道具或场景');
   }
   return {
     assistant_reply: clean(parsed.assistant_reply) || '资源文本已提取并保存。',
@@ -355,6 +359,7 @@ function listResourceImageTargets(db, session, scopes, options = {}) {
         description: row.appearance || row.description || '',
         imagePrompt: row.polished_prompt || row.appearance || row.description || '',
         imageUrl: row.image_url || '',
+        localPath: row.local_path || '',
       });
     }
   }
@@ -379,6 +384,7 @@ function listResourceImageTargets(db, session, scopes, options = {}) {
         description: [row.type, row.description].filter(Boolean).join('；'),
         imagePrompt: row.prompt || row.description || '',
         imageUrl: row.image_url || '',
+        localPath: row.local_path || '',
       });
     }
   }
@@ -405,6 +411,7 @@ function listResourceImageTargets(db, session, scopes, options = {}) {
         description: [row.time, row.prompt].filter(Boolean).join('；'),
         imagePrompt: row.polished_prompt || row.prompt || '',
         imageUrl: row.image_url || '',
+        localPath: row.local_path || '',
       });
     }
   }
@@ -430,7 +437,7 @@ function buildResourceImagePrompt(db, session, episode, target) {
     scene: '只生成这个场景的纯环境资源图，无人物、无角色、无身体部位、无人群。',
   };
   return [
-    '必须调用 Codex 原生图片生成能力生成并保存一张图片，不能只回复文字或生成提示词。',
+    '生成并保存一张独立资源图片，不能只回复文字或生成提示词。',
     `资源类型：${target.targetType}`,
     `资源名称：${target.name}`,
     target.description ? `资源说明：${target.description}` : '',
