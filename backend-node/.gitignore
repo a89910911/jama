@@ -3,3 +3,5 @@ dist/
 data/
 *.db
 .env
+.env.mysql.*
+!.env.mysql.*.example

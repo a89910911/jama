@@ -50,7 +50,8 @@ function publicUser(row) {
 }
 
 function ensureAuthSystem(db) {
-  db.exec(`
+  if (db.dialect !== 'mysql') {
+    db.exec(`
     CREATE TABLE IF NOT EXISTS user_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -69,7 +70,8 @@ function ensureAuthSystem(db) {
       value TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT ''
     );
-  `);
+    `);
+  }
 
   const existingAdmin = db
     .prepare('SELECT id FROM user_accounts WHERE username = ? COLLATE NOCASE')

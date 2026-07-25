@@ -6,11 +6,19 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "start:mysql:test": "node --env-file=.env.mysql.test src/server.js",
+    "dev:mysql:test": "node --watch --env-file=.env.mysql.test src/server.js",
+    "start:mysql:prod": "node --env-file=.env.mysql.prod src/server.js",
+    "db:migrate:mysql": "node tools/migrate-sqlite-to-mysql.js",
+    "db:migrate:mysql:test": "node --env-file=.env.mysql.test tools/migrate-sqlite-to-mysql.js",
+    "db:migrate:mysql:prod": "node --env-file=.env.mysql.prod tools/migrate-sqlite-to-mysql.js",
+    "db:verify:mysql:test": "node --env-file=.env.mysql.test tools/migrate-sqlite-to-mysql.js --verify-only",
+    "db:verify:mysql:prod": "node --env-file=.env.mysql.prod tools/migrate-sqlite-to-mysql.js --verify-only",
     "migrate": "node src/db/migrate.js",
     "migrate:07": "node scripts/run-migration-07.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6"
   },
   "dependencies": {
     "@openai/codex": "0.144.6",
@@ -23,6 +31,7 @@
     "jsonrepair": "^3.13.3",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.23.1",
     "sharp": "^0.34.5",
     "uuid": "^10.0.0"
   }

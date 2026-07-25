@@ -23,6 +23,16 @@ function loadConfig() {
   if (!parsed?.app?.name) {
     throw new Error('Invalid config: missing app section');
   }
+  parsed.database = {
+    ...(parsed.database || {}),
+    type: process.env.JAMA_DB_TYPE || parsed.database?.type || 'sqlite',
+    host: process.env.JAMA_DB_HOST || parsed.database?.host,
+    port: Number(process.env.JAMA_DB_PORT || parsed.database?.port || 3306),
+    user: process.env.JAMA_DB_USER || parsed.database?.user,
+    password: process.env.JAMA_DB_PASSWORD || parsed.database?.password,
+    database: process.env.JAMA_DB_NAME || parsed.database?.database,
+    charset: process.env.JAMA_DB_CHARSET || parsed.database?.charset || 'utf8mb4',
+  };
   return parsed;
 }
 
