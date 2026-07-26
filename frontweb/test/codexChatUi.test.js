@@ -2,6 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CODEX_CONVERSATION_TIPS,
+  assistantEngineLabel,
+  assistantEngineTip,
+  assistantStatusText,
   codexActionLabel,
   codexIntentOptions,
   codexMessageImages,
@@ -9,6 +12,23 @@ import {
   shouldRefreshDrama,
   upsertChatMessage,
 } from '../src/utils/codexChatUi.js'
+
+test('assistant status uses the actual backend engine instead of always claiming Codex', () => {
+  assert.equal(assistantEngineLabel('configured_api'), 'AI 配置 API')
+  assert.equal(
+    assistantStatusText({ engine: 'configured_api', available: true }),
+    'AI 配置 API 已连接'
+  )
+  assert.equal(
+    assistantStatusText({ engine: 'codex', starting: true }),
+    'Codex 启动中'
+  )
+  assert.equal(
+    assistantStatusText({ engine: '', available: false }),
+    'AI 助手 未连接'
+  )
+  assert.match(assistantEngineTip('configured_api'), /文本\/对话 API/)
+})
 
 test('Codex chat messages are inserted once and replaced by id', () => {
   const first = upsertChatMessage([], { id: 'm1', status: 'processing' })
@@ -87,5 +107,6 @@ test('Codex assistant exposes recognized action labels and conversation guidance
   assert.equal(codexActionLabel('unknown'), '')
   assert.ok(CODEX_CONVERSATION_TIPS.length >= 5)
   assert.ok(CODEX_CONVERSATION_TIPS.some((tip) => tip.includes('重新生成并覆盖')))
+  assert.ok(CODEX_CONVERSATION_TIPS.some((tip) => tip.includes('当前助手引擎')))
   assert.ok(CODEX_CONVERSATION_TIPS.some((tip) => tip.includes('不会修改数据库')))
 })

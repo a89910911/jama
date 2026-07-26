@@ -340,16 +340,17 @@ SSH password for root@101.35.214.179
 
 1. 运行后端测试；
 2. 运行前端测试；
-3. 执行 `frontweb` 的生产构建；
-4. 打包最新后端代码和 `frontweb/dist`；
-5. 通过 SSH 上传发布包；
-6. 保留服务器上的生产配置和 MySQL 环境文件；
-7. 执行后端 `npm ci --omit=dev`；
-8. 把当前线上前后端备份到 `.deploy/backups`；
-9. 原子切换到新版本；
-10. 重启 `jama.service`；
-11. 检查本机后端和 HTTPS 域名；
-12. 发布失败时自动恢复旧版本。
+3. 通过 npm 官方安全接口审计后端生产依赖；
+4. 执行 `frontweb` 的生产构建并检查 JavaScript 包体积；
+5. 打包最新后端代码和 `frontweb/dist`；
+6. 通过 SSH 上传发布包；
+7. 保留服务器上的生产配置和 MySQL 环境文件；
+8. 执行后端 `npm ci --omit=dev`；
+9. 把当前线上前后端备份到 `.deploy/backups`；
+10. 原子切换到新版本；
+11. 重启 `jama.service`；
+12. 验证本机和 HTTPS 健康响应均包含 `status: ok`，并检查 HTTPS 首页；
+13. 发布失败时自动恢复旧版本。
 
 ### 6.4 使用 SSH 私钥发布
 
@@ -361,9 +362,37 @@ SSH password for root@101.35.214.179
 
 脚本会校验服务器 SSH 主机指纹，指纹不一致时会拒绝继续，避免把代码上传到错误服务器。
 
-### 6.5 跳过测试发布
+### 6.5 预检、依赖审计和包体积保护
 
-只有在当前代码已经完整测试过时才使用：
+正式连接服务器前，可以只执行本地预检：
+
+```powershell
+.\deploy.ps1 -PreflightOnly
+```
+
+预检会运行测试、生产依赖审计、前端构建和包体积检查，结束后不会请求 SSH 密码，也不会修改服务器。
+
+依赖审计默认报告风险但不阻断现有发布。需要把高危或严重漏洞作为强制发布门禁时运行：
+
+```powershell
+.\deploy.ps1 -StrictAudit
+```
+
+如果 npm 安全接口临时不可用，并且依赖风险已经通过其他方式确认，可以显式跳过：
+
+```powershell
+.\deploy.ps1 -SkipAudit
+```
+
+`-SkipAudit` 与 `-StrictAudit` 不能同时使用。
+
+前端单个 JavaScript 文件默认超过 500 KiB 时警告，超过 2048 KiB 时停止发布。可以调整阈值：
+
+```powershell
+.\deploy.ps1 -BundleWarningKb 750 -BundleLimitKb 2500
+```
+
+只有在当前代码已经完整测试过时才跳过测试：
 
 ```powershell
 .\deploy.ps1 -SkipTests
@@ -382,6 +411,10 @@ SSH password for root@101.35.214.179
 服务器发布成功时会输出类似：
 
 ```text
+Backend health check passed after 4 attempt(s)
+HTTPS health check passed (status=ok)
+HTTPS homepage check passed
+jama.service is active
 DEPLOYMENT_SUCCESS release=20260725-110321-2630247c31-dirty backup=/www/wwwroot/jama.artisoul.top/.deploy/backups/20260725-110321-2630247c31-dirty
 Deployment completed successfully: https://jama.artisoul.top
 ```
@@ -392,7 +425,7 @@ Deployment completed successfully: https://jama.artisoul.top
 - `backup` 是发布前线上版本的备份目录；
 - `-dirty` 表示发布时本地存在未提交修改，不代表发布失败。
 
-后端启动后的最初几次健康探测可能短暂出现连接失败；脚本会持续重试。最终出现 `DEPLOYMENT_SUCCESS` 才表示发布完成。
+后端启动后的最初几次健康探测可能暂时无法连接；脚本会安静重试并输出最终通过的次数，不再把正常启动等待显示成 `curl` 错误。最终出现 `DEPLOYMENT_SUCCESS` 才表示发布完成。
 
 ### 6.7 发布后服务器检查
 

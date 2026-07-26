@@ -243,6 +243,9 @@ import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
 import { applyGenerationProgress } from '@/utils/generationProgress'
 import {
   CODEX_CONVERSATION_TIPS,
+  assistantEngineLabel,
+  assistantEngineTip,
+  assistantStatusText,
   codexActionLabel,
   codexIntentOptions,
   codexMessageImages,
@@ -299,26 +302,13 @@ const statusClass = computed(() => {
   return 'is-error'
 })
 
-const statusText = computed(() => {
-  const label = status.value.engine === 'configured_api'
-    ? 'AI 配置 API'
-    : status.value.engine === 'codex' ? 'Codex' : 'AI 助手'
-  if (status.value.available) return `${label} 已连接`
-  if (status.value.starting) return `${label} 启动中`
-  return status.value.error || `${label} 未连接`
-})
+const statusText = computed(() => assistantStatusText(status.value))
 
-const engineTip = computed(() => {
-  if (status.value.engine === 'configured_api') {
-    return '文本走文本/对话 API，图片按类型走图片 API'
-  }
-  if (status.value.engine === 'codex') return '文本和图片由 Codex 生成'
-  return '文本和图片按当前配置的助手引擎生成'
-})
+const engineTip = computed(() => assistantEngineTip(status.value.engine))
 
 function messageEngineLabel(message) {
   const engine = message?.metadata?.engine || status.value.engine
-  return engine === 'configured_api' ? 'AI 配置 API' : 'Codex'
+  return assistantEngineLabel(engine)
 }
 
 function upsertMessage(message) {

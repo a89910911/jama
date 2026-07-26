@@ -344,9 +344,12 @@ chown -h jama:jama "$CURRENT_BACKEND/data"
 echo "[5/6] Starting $SERVICE and checking health"
 systemctl start "$SERVICE"
 healthy=0
+healthy_attempt=0
 for _attempt in $(seq 1 30); do
-  if curl -fsS --max-time 3 http://127.0.0.1:5679/health >/dev/null; then
+  if local_health="$(curl -fs --max-time 3 http://127.0.0.1:5679/health 2>/dev/null)" &&
+     printf '%s' "$local_health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
     healthy=1
+    healthy_attempt="$_attempt"
     break
   fi
   sleep 1
@@ -355,13 +358,23 @@ if [ "$healthy" != "1" ]; then
   echo "Backend health check failed" >&2
   exit 1
 fi
-curl -fsS --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" \
-  "https://$DOMAIN/health" >/dev/null
+echo "Backend health check passed after $healthy_attempt attempt(s)"
+
+public_health="$(curl -fsS --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" \
+  "https://$DOMAIN/health")"
+if ! printf '%s' "$public_health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+  echo "HTTPS health endpoint did not report status=ok" >&2
+  exit 1
+fi
+echo "HTTPS health check passed (status=ok)"
+
 curl -fsS --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" \
   "https://$DOMAIN/" >/dev/null
+echo "HTTPS homepage check passed"
 
 echo "[6/6] Finalizing deployment"
 systemctl is-active --quiet "$SERVICE"
+echo "$SERVICE is active"
 rm -rf -- "$INCOMING"
 
 mapfile -t old_backups < <(

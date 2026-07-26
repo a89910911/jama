@@ -49,13 +49,34 @@ export function codexActionLabel(intent) {
   return CODEX_ACTION_LABELS[intent] || ''
 }
 
+export function assistantEngineLabel(engine) {
+  if (engine === 'configured_api') return 'AI 配置 API'
+  if (engine === 'codex') return 'Codex'
+  return 'AI 助手'
+}
+
+export function assistantStatusText(status = {}) {
+  const label = assistantEngineLabel(status.engine)
+  if (status.available) return `${label} 已连接`
+  if (status.starting) return `${label} 启动中`
+  return status.error || `${label} 未连接`
+}
+
+export function assistantEngineTip(engine) {
+  if (engine === 'configured_api') {
+    return '文本走文本/对话 API，图片按类型走图片 API'
+  }
+  if (engine === 'codex') return '文本和图片由 Codex 生成'
+  return '文本和图片按当前配置的助手引擎生成'
+}
+
 export const CODEX_CONVERSATION_TIPS = [
   '可以直接用自然语言描述目标，不必背固定口令；说明要生成、改写、续写、提取还是配图。',
   '尽量写清范围，例如“当前集全部分镜”“第 3 个分镜”“角色凯尔”“尚未生成图片的场景”。',
   '需要覆盖已有内容时明确说“重新生成并覆盖”；未说明时会保留已有图片，只补缺失项。',
   '资源图和分镜图会逐项生成并绑定入库；普通“生成一张图”只会保存为单张项目素材。',
   '只想改提示词时请说清资源名称或分镜编号，并注明“图生提示词、原始提示词、通用优化提示词、视频提示词”中的哪一种。',
-  '“重新生成图片”会调用 Codex 重新出图；“优化提示词”只更新编辑字段，不会自动生成图片。',
+  '“重新生成图片”会调用当前助手引擎重新出图；“优化提示词”只更新编辑字段，不会自动生成图片。',
   '复杂流程建议按剧本 → 资源说明 → 资源图片 → 分镜 → 分镜图片分步发送，便于检查和失败重试。',
   '提问、分析和讨论不会修改数据库；执行完成后请以对话中的“已写入/已绑定”结果提示为准。',
 ]
