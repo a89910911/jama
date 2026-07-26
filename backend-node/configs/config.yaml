@@ -11,7 +11,14 @@ server:
   write_timeout: 600
   insecure_tls: true
 database:
-  type: sqlite
+  type: mysql
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: ''
+  database: jama
+  charset: utf8mb4
+  # 打包后的桌面应用会通过 JAMA_DESKTOP_PACKAGED=1 强制使用此 SQLite 文件。
   path: ./data/drama_generator.db
   max_idle: 10
   max_open: 100

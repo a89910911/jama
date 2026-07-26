@@ -10,6 +10,7 @@ const storageLayout = require('./storageLayout');
 const taskService = require('./taskService');
 const { loadConfig } = require('../config');
 const { postJSONWithTimeout } = require('./aiClient');
+const { replaceIntoSql } = require('../db/portableSql');
 const {
   isFalConfig,
   falDirectBase,
@@ -1585,9 +1586,10 @@ async function getProxyCacheValidated(db, cacheKey, log, tag) {
 /** 写入 image_proxy_cache 缓存记录 */
 function setProxyCache(db, cacheKey, proxyUrl) {
   try {
-    db.prepare(
-      'INSERT OR REPLACE INTO image_proxy_cache (cache_key, proxy_url, created_at) VALUES (?, ?, ?)'
-    ).run(cacheKey, proxyUrl, new Date().toISOString());
+    db.prepare(replaceIntoSql(
+      db,
+      'INSERT INTO image_proxy_cache (cache_key, proxy_url, created_at) VALUES (?, ?, ?)'
+    )).run(cacheKey, proxyUrl, new Date().toISOString());
   } catch (_) {}
 }
 

@@ -122,12 +122,13 @@ function buildIndexes(table) {
     if (seen.has(signature)) continue;
     seen.add(signature);
     generatedIndex += 1;
+    const unique = Boolean(index.unique) && !Boolean(index.partial);
     const rawName = index.name.startsWith('sqlite_autoindex_')
-      ? `${index.unique ? 'uq' : 'idx'}_${table.name}_${generatedIndex}`
+      ? `${unique ? 'uq' : 'idx'}_${table.name}_${generatedIndex}`
       : index.name;
     const name = rawName.slice(0, 64);
     statements.push(
-      `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${quoteIdentifier(name)} ` +
+      `CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${quoteIdentifier(name)} ` +
       `ON ${quoteIdentifier(table.name)} (${index.columns.map(quoteIdentifier).join(', ')})`
     );
   }

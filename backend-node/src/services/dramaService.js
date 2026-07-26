@@ -3,6 +3,7 @@
 const storageLayout = require('./storageLayout');
 const { resolveStylePreset } = require('../constants/generationStylePresets');
 const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
+const { insertIgnoreSql } = require('../db/portableSql');
 
 /**
  * 清理 image_url：如果数据库中存储的是 base64 data URL，则返回 null。
@@ -728,7 +729,10 @@ function saveCharacters(db, log, dramaId, req) {
   }
   if (req.episode_id && characterIds.length > 0) {
     db.prepare('DELETE FROM episode_characters WHERE episode_id = ?').run(req.episode_id);
-    const ins = db.prepare('INSERT OR IGNORE INTO episode_characters (episode_id, character_id) VALUES (?, ?)');
+    const ins = db.prepare(insertIgnoreSql(
+      db,
+      'INSERT INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
+    ));
     for (const cid of characterIds) ins.run(req.episode_id, cid);
   }
   db.prepare('UPDATE dramas SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), did);

@@ -1,6 +1,6 @@
 # LocalMiniDrama 后端服务
 
-**Node.js + Express + SQLite · 纯 JavaScript · 无 TypeScript**
+**Node.js + Express + MySQL（默认）/ SQLite（仅打包桌面端）· 纯 JavaScript · 无 TypeScript**
 
 → [项目主页](../README.md) | [快速开始](../docs/quickstart.md) | [AI 配置](../docs/configuration.md) | [版本历史](../docs/changelog.md) | [作者故事](../docs/story.md) | [English](../docs/en.md)
 
@@ -76,7 +76,7 @@ backend-node/
 │   ├── config.example.yaml     # 配置模板（提交到 Git）
 │   └── config.yaml             # 实际配置（不提交，自行创建）
 ├── data/
-│   ├── drama_generator.db      # SQLite 数据库
+│   ├── drama_generator.db      # SQLite 数据库（仅打包桌面端）
 │   └── storage/                # 生成的图片/视频本地文件
 │       ├── images/             # 分镜生成图
 │       ├── characters/         # 角色图
@@ -95,7 +95,7 @@ backend-node/
 │   ├── config/
 │   │   └── index.js            # YAML 配置加载
 │   ├── db/
-│   │   ├── index.js            # better-sqlite3 连接
+│   │   ├── index.js            # MySQL / SQLite 连接
 │   │   └── migrate.js          # 启动时自动补列（ensureColumns）
 │   ├── routes/
 │   │   ├── index.js            # 路由总入口
@@ -138,7 +138,14 @@ server:
   port: 5679                      # HTTP 服务端口
 
 database:
-  path: ./data/drama_generator.db # SQLite 文件路径
+  type: mysql
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: ""
+  database: jama
+  charset: utf8mb4
+  path: ./data/drama_generator.db # 仅打包桌面端使用
 
 storage:
   local_path: ./data/storage      # 图片/视频本地存储根目录
@@ -285,7 +292,7 @@ style:
 
 ## 数据库说明
 
-使用 better-sqlite3（同步 API），数据库文件为单个 SQLite 文件。
+服务端和源码开发默认使用 MySQL，通过 `JAMA_DB_*` 环境变量配置。打包后的 Electron 桌面应用会强制使用 better-sqlite3 和本地 SQLite 文件。
 
 **主要数据表：**
 

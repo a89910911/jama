@@ -8,6 +8,15 @@ const configPaths = [
   path.join(__dirname, '..', '..', 'configs', 'config.yaml'),
 ];
 
+const DEFAULT_DATABASE_TYPE = 'mysql';
+
+function resolveDatabaseType(databaseConfig = {}, env = process.env) {
+  if (String(env.JAMA_DESKTOP_PACKAGED || '') === '1') return 'sqlite';
+  return String(
+    env.JAMA_DB_TYPE || databaseConfig.type || DEFAULT_DATABASE_TYPE
+  ).trim().toLowerCase();
+}
+
 function loadConfig() {
   let raw = null;
   for (const p of configPaths) {
@@ -25,7 +34,7 @@ function loadConfig() {
   }
   parsed.database = {
     ...(parsed.database || {}),
-    type: process.env.JAMA_DB_TYPE || parsed.database?.type || 'sqlite',
+    type: resolveDatabaseType(parsed.database),
     host: process.env.JAMA_DB_HOST || parsed.database?.host,
     port: Number(process.env.JAMA_DB_PORT || parsed.database?.port || 3306),
     user: process.env.JAMA_DB_USER || parsed.database?.user,
@@ -36,4 +45,8 @@ function loadConfig() {
   return parsed;
 }
 
-module.exports = { loadConfig };
+module.exports = {
+  DEFAULT_DATABASE_TYPE,
+  loadConfig,
+  resolveDatabaseType,
+};

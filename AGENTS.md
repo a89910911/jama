@@ -10,7 +10,7 @@ LocalMiniDrama (本地短剧助手) — an AI-powered local short drama creation
 
 | Service | Directory | Port | Start Command |
 |---------|-----------|------|---------------|
-| Backend (Express + SQLite) | `backend-node/` | 5679 | `npm run dev` |
+| Backend (Express + MySQL; SQLite for packaged desktop only) | `backend-node/` | 5679 | `npm run dev` |
 | Frontend (Vite + Vue 3) | `frontweb/` | 3013 | `npm run dev` |
 
 Frontend proxies `/api` and `/static` to backend via Vite config.
@@ -37,7 +37,8 @@ cd frontweb && npm run build
 
 - Pure JavaScript (no TypeScript) throughout.
 - Backend uses `node --watch` for hot reloading in dev mode (`npm run dev`).
-- Database is SQLite (embedded via `better-sqlite3`), auto-created in `backend-node/data/`.
+- Backend and source development default to MySQL. Configure it with `JAMA_DB_*`.
+- Packaged Electron builds set `JAMA_DESKTOP_PACKAGED=1` and use the embedded SQLite database in `backend-node/data/`.
 - Migrations run automatically on backend startup (`ensureColumns()`); explicit `npm run migrate` only needed for first-time setup or after adding new migration SQL files.
 - Config file at `backend-node/configs/config.yaml` already exists in the repo — no need to copy from example.
 - AI content generation requires external API keys (configured via the app's "AI 配置" page), but the app fully functions without them for development/testing purposes.

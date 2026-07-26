@@ -212,6 +212,11 @@ async function startBackend() {
   const backendCwd = getBackendCwd();
   ensureBackendCwd(backendCwd);
   ensureFfmpeg(backendCwd);
+  if (app.isPackaged) {
+    // Server and source development default to MySQL. A packaged desktop build
+    // is the only runtime mode that must always use the embedded SQLite file.
+    process.env.JAMA_DESKTOP_PACKAGED = '1';
+  }
   process.env.WEB_DIST_PATH = getWebDistPath();
   if (app.isPackaged) {
     process.env.LOG_FILE = path.join(backendCwd, 'logs', 'app.log');

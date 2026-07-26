@@ -1,4 +1,5 @@
 const { buildCatalog } = require('./promptCatalog');
+const { upsertSql } = require('../db/portableSql');
 
 const LEGACY_KEY_MAP = {
   story_expansion_system: 'story.generation.system',
@@ -149,16 +150,18 @@ function getGlobalSetting(db, key) {
 
 function setGlobalSetting(db, key, value) {
   const now = nowIso();
-  db.prepare(
+  db.prepare(upsertSql(db,
     `INSERT INTO global_settings (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-  ).run(key, String(value), now);
+    `,
+    ['key'],
+    ['value', 'updated_at']
+  )).run(key, String(value), now);
 }
 
 function seedCatalog(db) {
   const catalog = buildCatalog();
   const now = nowIso();
-  const insertDef = db.prepare(`
+  const insertDef = db.prepare(upsertSql(db, `
     INSERT INTO prompt_definitions
       (prompt_key, name, description, category, subcategory, detail_category,
        workflow_stage, workflow_order,
@@ -166,25 +169,25 @@ function seedCatalog(db) {
        variable_schema, risk_level, allow_project_override, sort_order, is_active,
        source_ref, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-    ON CONFLICT(prompt_key) DO UPDATE SET
-      name = excluded.name,
-      description = excluded.description,
-      category = excluded.category,
-      subcategory = excluded.subcategory,
-      detail_category = excluded.detail_category,
-      workflow_stage = excluded.workflow_stage,
-      workflow_order = excluded.workflow_order,
-      message_role = excluded.message_role,
-      content_type = excluded.content_type,
-      service_type = excluded.service_type,
-      scene_key = excluded.scene_key,
-      variable_schema = excluded.variable_schema,
-      risk_level = excluded.risk_level,
-      allow_project_override = excluded.allow_project_override,
-      sort_order = excluded.sort_order,
-      source_ref = excluded.source_ref,
-      updated_at = excluded.updated_at
-  `);
+  `, ['prompt_key'], [
+    'name',
+    'description',
+    'category',
+    'subcategory',
+    'detail_category',
+    'workflow_stage',
+    'workflow_order',
+    'message_role',
+    'content_type',
+    'service_type',
+    'scene_key',
+    'variable_schema',
+    'risk_level',
+    'allow_project_override',
+    'sort_order',
+    'source_ref',
+    'updated_at',
+  ]));
   const getDef = db.prepare('SELECT id FROM prompt_definitions WHERE prompt_key = ?');
   const getSystem = db.prepare(
     `SELECT id, content, seed_content, seed_version, version FROM prompt_templates

@@ -3,6 +3,7 @@ const promptTemplates = require('./promptTemplateService');
 const dramaService = require('./dramaService');
 const propService = require('./propService');
 const sceneService = require('./sceneService');
+const { insertIgnoreSql } = require('../db/portableSql');
 
 const RESOURCE_SCOPES = ['character', 'prop', 'scene'];
 
@@ -225,9 +226,10 @@ function persistExtractedResources(db, log, session, extracted) {
         row = { id: Number(info.lastInsertRowid) };
       }
       if (episodeId) {
-        db.prepare(
-          'INSERT OR IGNORE INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
-        ).run(episodeId, row.id);
+        db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
+        )).run(episodeId, row.id);
       }
       characters.push(db.prepare(
         `SELECT id, name, role, description, personality, appearance, polished_prompt

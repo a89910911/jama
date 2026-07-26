@@ -7,6 +7,7 @@ const safeJson = require('../utils/safeJson');
 const { safeParseAIJSON, extractJsonCandidate, repairTruncatedJsonArray, extractFirstArray } = safeJson;
 const loadConfig = require('../config').loadConfig;
 const angleService = require('./angleService');
+const { insertIgnoreSql } = require('../db/portableSql');
 const {
   STORYBOARD_MIN_DURATION,
   clampStoryboardDuration,
@@ -554,7 +555,10 @@ function updateStoryboardRowFromDerived(db, existingId, episodeIdNum, d, sb, now
   try {
     db.prepare('DELETE FROM storyboard_props WHERE storyboard_id = ?').run(existingId);
     if (d.propIds.length > 0) {
-      const insProp = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+      const insProp = db.prepare(insertIgnoreSql(
+        db,
+        'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+      ));
       for (const pid of d.propIds) insProp.run(existingId, pid);
     }
   } catch (_) {}
@@ -573,7 +577,7 @@ function insertOneStoryboard(db, episodeIdNum, sb, style, videoRatio, now, deriv
   );
   const shotNumber = d.shotNumber;
   try {
-    db.prepare(
+    const insertInfo = db.prepare(
       `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, layout_description, location, time, duration, dialogue, narration, action, result, atmosphere, image_prompt, video_prompt, characters, shot_type, angle, angle_h, angle_v, angle_s, movement, lighting_style, depth_of_field, segment_index, segment_title, creation_mode, universal_segment_text, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(
@@ -587,10 +591,13 @@ function insertOneStoryboard(db, episodeIdNum, sb, style, videoRatio, now, deriv
       d.universalSegmentText != null ? d.universalSegmentText : null,
       now, now
     );
-    const newId = db.prepare('SELECT last_insert_rowid() as id').get().id;
+    const newId = insertInfo.lastInsertRowid;
     if (d.propIds.length > 0) {
       try {
-        const insProp = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+        const insProp = db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+        ));
         for (const pid of d.propIds) insProp.run(newId, pid);
       } catch (_) {}
     }
@@ -761,8 +768,9 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
       deriveOpts
     );
 
+    let insertInfo;
     try {
-      db.prepare(
+      insertInfo = db.prepare(
         `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, layout_description, location, time, duration, dialogue, narration, action, result, atmosphere, image_prompt, video_prompt, characters, shot_type, angle, angle_h, angle_v, angle_s, movement, lighting_style, depth_of_field, segment_index, segment_title, creation_mode, universal_segment_text, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       ).run(
@@ -778,7 +786,7 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
       );
     } catch (e) {
       if ((e.message || '').includes('shot_type') || (e.message || '').includes('angle') || (e.message || '').includes('movement') || (e.message || '').includes('result') || (e.message || '').includes('segment') || (e.message || '').includes('narration')) {
-        db.prepare(
+        insertInfo = db.prepare(
           `INSERT INTO storyboards (episode_id, scene_id, storyboard_number, title, description, layout_description, location, time, duration, dialogue, action, atmosphere, image_prompt, video_prompt, characters, creation_mode, universal_segment_text, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
         ).run(
@@ -794,10 +802,13 @@ function saveStoryboards(db, log, episodeId, storyboards, cfg, styleOverride, sk
         throw e;
       }
     }
-    const id = db.prepare('SELECT last_insert_rowid() as id').get().id;
+    const id = insertInfo.lastInsertRowid;
     if (d.propIds.length > 0) {
       try {
-        const insProp = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+        const insProp = db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+        ));
         for (const pid of d.propIds) insProp.run(id, pid);
       } catch (_) {}
     }
@@ -1553,14 +1564,18 @@ function copyStoryboardAssetLinks(db, fromSbId, toSbId) {
   const now = new Date().toISOString();
   try {
     const chars = db.prepare('SELECT character_id FROM storyboard_characters WHERE storyboard_id = ?').all(from);
-    const insC = db.prepare(
-      'INSERT OR IGNORE INTO storyboard_characters (storyboard_id, character_id, created_at) VALUES (?, ?, ?)'
-    );
+    const insC = db.prepare(insertIgnoreSql(
+      db,
+      'INSERT INTO storyboard_characters (storyboard_id, character_id, created_at) VALUES (?, ?, ?)'
+    ));
     for (const c of chars) insC.run(to, c.character_id, now);
   } catch (_) {}
   try {
     const props = db.prepare('SELECT prop_id FROM storyboard_props WHERE storyboard_id = ?').all(from);
-    const insP = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+    const insP = db.prepare(insertIgnoreSql(
+      db,
+      'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+    ));
     for (const p of props) insP.run(to, p.prop_id);
   } catch (_) {}
 }

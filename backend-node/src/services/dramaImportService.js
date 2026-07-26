@@ -4,6 +4,7 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 const { randomUUID } = require('crypto');
 const storageLayout = require('./storageLayout');
+const { insertIgnoreSql } = require('../db/portableSql');
 
 function getStoragePath(cfg) {
   const raw = cfg?.storage?.local_path || './data/storage';
@@ -202,7 +203,10 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
 
   // ---- 关联角色到所有集（episode_characters） ----
   if (charNewIds.length > 0 && episodeIdList.length > 0) {
-    const insEC = db.prepare('INSERT OR IGNORE INTO episode_characters (episode_id, character_id) VALUES (?, ?)');
+    const insEC = db.prepare(insertIgnoreSql(
+      db,
+      'INSERT INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
+    ));
     for (const charId of charNewIds) {
       if (!charId) continue;
       for (const epId of episodeIdList) {
@@ -349,7 +353,10 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
 
       // 还原 storyboard_props（分镜与道具的关联）
       if (sbPropNewIds.length > 0) {
-        const insSP = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+        const insSP = db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+        ));
         for (const pid of sbPropNewIds) insSP.run(sbId, pid);
       }
 

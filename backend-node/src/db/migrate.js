@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getDb, closeDb } = require('./index.js');
 const { loadConfig } = require('../config/index.js');
 const { forceVideoAudioSettings } = require('../services/videoAudioPolicy');
+const { tableColumns } = require('./portableSql');
 
 function stripLeadingComments(sql) {
   return sql
@@ -162,7 +163,7 @@ function runMigrations(database, options = {}) {
 function ensureColumns(database, table, columns) {
   let existing;
   try {
-    existing = database.prepare(`PRAGMA table_info(${table})`).all();
+    existing = tableColumns(database, table);
   } catch (err) {
     if ((err.message || '').toLowerCase().includes('no such table')) {
       console.log(`ensureColumns: table ${table} not found, skip`);
@@ -797,6 +798,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  splitSqlStatements,
   runMigrations,
   runMigrationsAndEnsure,
   ensureColumns,

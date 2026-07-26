@@ -3,6 +3,7 @@ const {
   STORYBOARD_MIN_DURATION,
   STORYBOARD_MAX_DURATION,
 } = require('./storyboardDurationPlanner');
+const { insertIgnoreSql } = require('../db/portableSql');
 
 function validateStoryboardDuration(value) {
   const duration = Number(value);
@@ -49,7 +50,10 @@ function syncStoryboardCharacterLinks(db, storyboardId, dramaCharacterIds) {
   ).get(sid);
   const dramaId = sb?.drama_id != null ? Number(sb.drama_id) : null;
   const now = new Date().toISOString();
-  const ins = db.prepare('INSERT OR IGNORE INTO storyboard_characters (storyboard_id, character_id, created_at) VALUES (?, ?, ?)');
+  const ins = db.prepare(insertIgnoreSql(
+    db,
+    'INSERT INTO storyboard_characters (storyboard_id, character_id, created_at) VALUES (?, ?, ?)'
+  ));
   for (const cid of ids.slice(0, 20)) {
     const crow = db.prepare('SELECT name FROM characters WHERE id = ? AND deleted_at IS NULL').get(cid);
     const name = (crow?.name || '').trim();
@@ -151,7 +155,10 @@ function updateStoryboard(db, log, id, req) {
   if (req.prop_ids !== undefined) {
     const propIds = Array.isArray(req.prop_ids) ? req.prop_ids : [];
     db.prepare('DELETE FROM storyboard_props WHERE storyboard_id = ?').run(Number(id));
-    const ins = db.prepare('INSERT OR IGNORE INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)');
+    const ins = db.prepare(insertIgnoreSql(
+      db,
+      'INSERT INTO storyboard_props (storyboard_id, prop_id) VALUES (?, ?)'
+    ));
     for (const pid of propIds) ins.run(Number(id), Number(pid));
   }
   log.info('Storyboard updated', { id });

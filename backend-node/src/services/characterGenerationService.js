@@ -5,6 +5,7 @@ const promptTemplates = require('./promptTemplateService');
 const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 const characterLibraryService = require('./characterLibraryService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
+const { insertIgnoreSql } = require('../db/portableSql');
 
 /**
  * 从角色外貌描述中提炼 6层视觉锚点，写入 characters.identity_anchors
@@ -196,7 +197,10 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
     const episodeId = Number(req.episode_id);
     for (const c of characters) {
       try {
-        db.prepare('INSERT OR IGNORE INTO episode_characters (episode_id, character_id) VALUES (?, ?)').run(episodeId, c.id);
+        db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
+        )).run(episodeId, c.id);
       } catch (_) {}
     }
   }

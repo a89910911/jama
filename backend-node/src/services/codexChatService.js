@@ -175,7 +175,7 @@ function listMessages(db, sessionId) {
   return db.prepare(
     `SELECT * FROM codex_chat_messages
       WHERE session_id = ? AND deleted_at IS NULL
-      ORDER BY created_at ASC, rowid ASC`
+      ORDER BY created_at ASC, id ASC`
   ).all(String(sessionId)).map(rowToMessage);
 }
 

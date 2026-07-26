@@ -411,7 +411,7 @@ function buildIntentPlanningPrompt(db, session, episode, content, options = {}) 
     `SELECT role, content, action_type
        FROM codex_chat_messages
       WHERE session_id = ? AND status = 'completed' AND deleted_at IS NULL
-      ORDER BY created_at DESC, rowid DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 8`
   ).all(String(session.id))
     .reverse()

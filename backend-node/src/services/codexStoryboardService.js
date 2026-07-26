@@ -1,6 +1,7 @@
 const { safeParseAIJSON } = require('../utils/safeJson');
 const promptTemplates = require('./promptTemplateService');
 const episodeStoryboardService = require('./episodeStoryboardService');
+const { insertIgnoreSql } = require('../db/portableSql');
 const {
   STORYBOARD_MIN_DURATION,
   STORYBOARD_MAX_DURATION,
@@ -403,11 +404,12 @@ function persistGeneratedStoryboards(db, cfg, log, session, episode, parsed, pla
       null,
       { durationMode: plan.durationMode, fixedDuration: plan.clipDuration }
     );
-    const insertCharacterLink = db.prepare(
-      `INSERT OR IGNORE INTO storyboard_characters
+    const insertCharacterLink = db.prepare(insertIgnoreSql(
+      db,
+      `INSERT INTO storyboard_characters
         (storyboard_id, character_id, created_at)
        VALUES (?, ?, ?)`
-    );
+    ));
     const now = new Date().toISOString();
     for (const storyboard of saved) {
       db.prepare('DELETE FROM storyboard_characters WHERE storyboard_id = ?')

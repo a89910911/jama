@@ -456,7 +456,7 @@ function stats(db, dramaId) {
        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
-       CAST(AVG(CASE WHEN status != 'processing' THEN duration_ms END) AS INTEGER) AS avg_duration_ms
+       CAST(AVG(CASE WHEN status != 'processing' THEN duration_ms END) AS SIGNED) AS avg_duration_ms
      FROM ai_request_logs
      WHERE ${scope.sql}`
   ).get(new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), ...scope.params);

@@ -104,14 +104,71 @@ function splitStatements(sql) {
   return statements;
 }
 
+function addMysqlTextIndexPrefixes(database, sql) {
+  const match = String(sql).match(
+    /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+`?[A-Za-z_][A-Za-z0-9_]*`?\s+ON\s+`?([A-Za-z_][A-Za-z0-9_]*)`?\s*\(([\s\S]+)\)\s*;?\s*$/i
+  );
+  if (!match) return sql;
+
+  const table = match[1];
+  const columns = match[2].split(',').map((item) => item.trim());
+  const parsed = columns.map((item) => {
+    const columnMatch = item.match(
+      /^(`?)([A-Za-z_][A-Za-z0-9_]*)\1(?:\((\d+)\))?(\s+(?:ASC|DESC))?$/i
+    );
+    return columnMatch
+      ? {
+          raw: item,
+          quote: columnMatch[1],
+          name: columnMatch[2],
+          prefix: columnMatch[3],
+          order: columnMatch[4] || '',
+        }
+      : null;
+  });
+  if (parsed.some((column) => !column)) return sql;
+
+  const metadata = database.query(
+    `SELECT COLUMN_NAME AS name, DATA_TYPE AS data_type
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table]
+  );
+  const types = new Map(
+    (metadata || []).map((row) => [String(row.name).toLowerCase(), String(row.data_type).toLowerCase()])
+  );
+  const textTypes = new Set([
+    'tinytext',
+    'text',
+    'mediumtext',
+    'longtext',
+    'tinyblob',
+    'blob',
+    'mediumblob',
+    'longblob',
+  ]);
+  const rewritten = parsed.map((column) => {
+    if (column.prefix || !textTypes.has(types.get(column.name.toLowerCase()))) {
+      return column.raw;
+    }
+    return `${column.quote}${column.name}${column.quote}(191)${column.order}`;
+  });
+
+  const start = match.index + match[0].indexOf(match[2]);
+  return `${sql.slice(0, start)}${rewritten.join(', ')}${sql.slice(start + match[2].length)}`;
+}
+
 class MysqlDatabase {
   constructor(config) {
-    const required = ['host', 'user', 'password', 'database'];
+    const required = ['host', 'user', 'database'];
     for (const name of required) {
       if (config[name] == null || String(config[name]).trim() === '') {
         throw new Error(`MySQL configuration is missing database.${name}`);
       }
     }
+    // Empty passwords are valid for some local MySQL development installations.
+    // Production deployments should always provide JAMA_DB_PASSWORD.
+    if (config.password == null) config.password = '';
     this.dialect = 'mysql';
     this.config = { ...config };
     this.transactionDepth = 0;
@@ -161,7 +218,8 @@ class MysqlDatabase {
   exec(sql) {
     let result = null;
     for (const statement of splitStatements(sql)) {
-      result = this.query(translateSqliteSqlToMysql(statement));
+      const translated = translateSqliteSqlToMysql(statement);
+      result = this.query(addMysqlTextIndexPrefixes(this, translated));
     }
     return result;
   }
@@ -218,6 +276,7 @@ function assertMysqlSchema(database) {
 }
 
 module.exports = {
+  addMysqlTextIndexPrefixes,
   MysqlDatabase,
   assertMysqlSchema,
   REQUIRED_TABLES,

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { tableColumns } = require('../db/portableSql');
 
 const KNOWN_TABLES = new Set([
   'character_libraries',
@@ -23,7 +24,7 @@ function hasColumn(db, table, column) {
   }
   const key = `${table}.${column}`;
   if (tableCache.has(key)) return tableCache.get(key);
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  const columns = tableColumns(db, table);
   const found = columns.some((row) => row.name === column);
   tableCache.set(key, found);
   return found;

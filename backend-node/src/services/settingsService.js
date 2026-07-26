@@ -1,3 +1,5 @@
+const { upsertSql } = require('../db/portableSql');
+
 /**
  * 从 global_settings 表读取一个键值，返回解析后的值，不存在时返回 defaultValue。
  */
@@ -15,10 +17,12 @@ function getGlobalSetting(db, key, defaultValue = null) {
 function setGlobalSetting(db, key, value) {
   const now = new Date().toISOString();
   const str = JSON.stringify(value);
-  db.prepare(
+  db.prepare(upsertSql(db,
     `INSERT INTO global_settings (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-  ).run(key, str, now);
+    `,
+    ['key'],
+    ['value', 'updated_at']
+  )).run(key, str, now);
 }
 
 module.exports = {

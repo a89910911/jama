@@ -231,7 +231,7 @@ cd frontweb && npm install && npm run dev
 
 ```
 LocalMiniDrama/
-├── backend-node/     # Express + SQLite，生成/合成/导入导出
+├── backend-node/     # Express + MySQL（服务端默认）/ SQLite（打包桌面端）
 ├── frontweb/         # Vue 3 + Element Plus + @vue-flow/core
 │   └── views/        # FilmList · DramaDetail · FilmCreate · DramaCanvas
 ├── desktop/          # Electron 打包 exe
@@ -241,7 +241,7 @@ LocalMiniDrama/
 | 层 | 技术 |
 |----|------|
 | 前端 | Vue 3 · Vite · Element Plus · Pinia · @vue-flow/core |
-| 后端 | Node.js · Express · SQLite (better-sqlite3) |
+| 后端 | Node.js · Express · MySQL（默认）· SQLite（仅打包桌面端） |
 | 桌面 | Electron 28 · electron-builder |
 
 ---

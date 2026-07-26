@@ -149,10 +149,10 @@ You can also double-click `run_dev.bat` at the project root to **start both serv
 
 ```
 LocalMiniDrama/
-├── backend-node/          # Node.js backend (Express + SQLite)
+├── backend-node/          # Node.js backend (MySQL by default; SQLite for packaged desktop)
 │   ├── src/
 │   │   ├── config/        # YAML config loader
-│   │   ├── db/            # SQLite connection & migrations
+│   │   ├── db/            # MySQL/SQLite adapters and migrations
 │   │   ├── services/      # Business logic (generation, export/import…)
 │   │   └── routes/        # REST API routes
 │   └── configs/           # config.yaml lives here
@@ -175,7 +175,7 @@ LocalMiniDrama/
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Vue 3 + Vite + Element Plus + Pinia + Axios |
-| Backend | Node.js + Express + SQLite (better-sqlite3) |
+| Backend | Node.js + Express + MySQL (default) + SQLite (packaged desktop only) |
 | Desktop | Electron 28 + electron-builder |
 | Language | Plain JavaScript (no TypeScript) |
 

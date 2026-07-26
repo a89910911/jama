@@ -39,7 +39,7 @@ function quoteMysqlReservedIdentifiers(sql) {
   return replaceOutsideQuoted(sql, (segment) =>
     segment.replace(/\bkey\b/gi, (match, offset, full) => {
       const before = full.slice(Math.max(0, offset - 16), offset).toLowerCase();
-      if (/\b(primary|foreign|unique)\s+$/.test(before)) return match.toUpperCase();
+      if (/\b(primary|foreign|unique|duplicate)\s+$/.test(before)) return match.toUpperCase();
       return '`key`';
     })
   );
@@ -83,6 +83,10 @@ function translateSqliteSqlToMysql(input) {
     (_whole, table) =>
       `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}'`
   );
+  sql = sql.replace(
+    /\bTEXT\s+((?:NOT\s+NULL\s+)?DEFAULT\s+)((?:'(?:''|[^'])*')|(?:"(?:""|[^"])*")|(?:[^\s,)]+))/gi,
+    'LONGTEXT $1($2)'
+  );
   sql = quoteMysqlReservedIdentifiers(sql);
   sql = replaceOutsideQuoted(sql, (segment) =>
     segment
@@ -92,7 +96,6 @@ function translateSqliteSqlToMysql(input) {
       .replace(/\bTEXT\s+PRIMARY\s+KEY\b/gi, 'VARCHAR(191) PRIMARY KEY')
       .replace(/\bTEXT\s+NOT\s+NULL\s+UNIQUE\b/gi, 'VARCHAR(191) NOT NULL UNIQUE')
       .replace(/\bTEXT\s+UNIQUE\b/gi, 'VARCHAR(191) UNIQUE')
-      .replace(/\bTEXT\s+((?:NOT\s+NULL\s+)?DEFAULT\b)/gi, 'VARCHAR(255) $1')
       .replace(/\bAS\s+TEXT\b/gi, 'AS CHAR')
       .replace(/\s+COLLATE\s+NOCASE\b/gi, '')
   );

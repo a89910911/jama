@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { upsertSql } = require('../db/portableSql');
 
 const SUPER_ADMIN_USERNAME = 'zhangzexing';
 const SUPER_ADMIN_ROLE = 'super_admin';
@@ -54,7 +55,7 @@ function ensureAuthSystem(db) {
     db.exec(`
     CREATE TABLE IF NOT EXISTS user_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user',
       is_active INTEGER NOT NULL DEFAULT 1,
@@ -64,7 +65,7 @@ function ensureAuthSystem(db) {
       updated_at TEXT NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_accounts_username
-      ON user_accounts(username COLLATE NOCASE);
+      ON user_accounts(LOWER(username));
     CREATE TABLE IF NOT EXISTS global_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT '',
@@ -74,7 +75,7 @@ function ensureAuthSystem(db) {
   }
 
   const existingAdmin = db
-    .prepare('SELECT id FROM user_accounts WHERE username = ? COLLATE NOCASE')
+    .prepare('SELECT id FROM user_accounts WHERE LOWER(username) = LOWER(?)')
     .get(SUPER_ADMIN_USERNAME);
   const now = nowIso();
   if (!existingAdmin) {
@@ -101,7 +102,7 @@ function ensureAuthSystem(db) {
   db.prepare(`
     UPDATE user_accounts
     SET role = 'user', updated_at = ?
-    WHERE role = ? AND username != ? COLLATE NOCASE
+    WHERE role = ? AND LOWER(username) != LOWER(?)
   `).run(now, SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME);
 
   let secret = db
@@ -109,11 +110,10 @@ function ensureAuthSystem(db) {
     .get(JWT_SECRET_KEY)?.value;
   if (!secret || secret.length < 32) {
     secret = crypto.randomBytes(48).toString('base64url');
-    db.prepare(`
+    db.prepare(upsertSql(db, `
       INSERT INTO global_settings (key, value, updated_at)
       VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-    `).run(JWT_SECRET_KEY, secret, now);
+    `, ['key'], ['value', 'updated_at'])).run(JWT_SECRET_KEY, secret, now);
   }
 }
 
@@ -154,7 +154,7 @@ function issueToken(db, user) {
 
 function findUserByUsername(db, username) {
   return db
-    .prepare('SELECT * FROM user_accounts WHERE username = ? COLLATE NOCASE')
+    .prepare('SELECT * FROM user_accounts WHERE LOWER(username) = LOWER(?)')
     .get(String(username || '').trim());
 }
 
@@ -198,7 +198,7 @@ function listAccounts(db) {
   return db.prepare(`
     SELECT id, username, role, is_active, last_login_at, created_at, updated_at
     FROM user_accounts
-    ORDER BY CASE WHEN username = ? COLLATE NOCASE THEN 0 ELSE 1 END, id ASC
+    ORDER BY CASE WHEN LOWER(username) = LOWER(?) THEN 0 ELSE 1 END, id ASC
   `).all(SUPER_ADMIN_USERNAME).map(publicUser);
 }
 

@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { tableExists } = require('../db/portableSql');
 
 const ACTIVE_TASK_STATUSES = ['pending', 'processing', 'running'];
 const DEFAULT_ORPHAN_STALE_MS = 60 * 1000;
@@ -299,9 +300,7 @@ function failOrphanedAsyncTasksOnStartup(db, log, options = {}) {
     ? 0
     : positiveNumber(options.staleAfterMs, orphanStaleMs());
   const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
-  const hasVideoGenerationsTable = !!db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'video_generations'"
-  ).get();
+  const hasVideoGenerationsTable = tableExists(db, 'video_generations');
   const resumableVideoFilter = hasVideoGenerationsTable
     ? `AND NOT (
          type = 'video_generation'
