@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 
 const {
+  allTableColumns,
   insertIgnoreSql,
   readBatch,
   replaceIntoSql,
@@ -64,6 +65,31 @@ test('portable schema helpers and conflict statements work with SQLite', () => {
     [{ value: 'updated' }, [{ code: 'one' }]]
   );
   db.close();
+});
+
+test('loads all MySQL column metadata in one information_schema query', () => {
+  let queryCount = 0;
+  const mysql = {
+    dialect: 'mysql',
+    prepare(sql) {
+      queryCount += 1;
+      assert.match(sql, /information_schema\.COLUMNS/);
+      return {
+        all() {
+          return [
+            { table_name: 'characters', name: 'id', type: 'int', notnull: 1, pk: 1 },
+            { table_name: 'characters', name: 'name', type: 'text', notnull: 0, pk: 0 },
+            { table_name: 'dramas', name: 'id', type: 'int', notnull: 1, pk: 1 },
+          ];
+        },
+      };
+    },
+  };
+
+  const columns = allTableColumns(mysql);
+  assert.equal(queryCount, 1);
+  assert.deepEqual(columns.get('characters').map((column) => column.name), ['id', 'name']);
+  assert.deepEqual(columns.get('dramas').map((column) => column.name), ['id']);
 });
 
 test('chat messages use a cross-database deterministic order', () => {

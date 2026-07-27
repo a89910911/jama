@@ -61,6 +61,35 @@ function tableColumns(database, table) {
   return database.prepare(`PRAGMA table_info(${safeTable})`).all();
 }
 
+function allTableColumns(database) {
+  if (!isMysql(database)) return null;
+  const rows = database.prepare(
+    `SELECT
+       TABLE_NAME AS table_name,
+       COLUMN_NAME AS name,
+       COLUMN_TYPE AS type,
+       CASE WHEN IS_NULLABLE = 'NO' THEN 1 ELSE 0 END AS notnull,
+       COLUMN_DEFAULT AS dflt_value,
+       CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END AS pk
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     ORDER BY TABLE_NAME, ORDINAL_POSITION`
+  ).all();
+  const byTable = new Map();
+  for (const row of rows) {
+    const tableName = String(row.table_name || '');
+    if (!byTable.has(tableName)) byTable.set(tableName, []);
+    byTable.get(tableName).push({
+      name: row.name,
+      type: row.type,
+      notnull: row.notnull,
+      dflt_value: row.dflt_value,
+      pk: row.pk,
+    });
+  }
+  return byTable;
+}
+
 function tableExists(database, table) {
   const safeTable = assertIdentifier(table, 'table name');
   if (isMysql(database)) {
@@ -103,6 +132,7 @@ function readBatch(database, statements) {
 }
 
 module.exports = {
+  allTableColumns,
   insertIgnoreSql,
   isMysql,
   readBatch,

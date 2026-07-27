@@ -39,13 +39,19 @@ test('records migrations by version and skips them on the next startup pass', ()
   fs.writeFileSync(path.join(migrationsDir, '02_add_name.sql'), 'ALTER TABLE demo ADD COLUMN name TEXT;');
 
   const db = new FakeDatabase();
-  runMigrations(db, { migrationsDir });
+  const first = runMigrations(db, { migrationsDir });
+  assert.deepEqual(first.applied, [1, 2]);
   assert.deepEqual(db.rows.map((row) => row.version), [1, 2]);
   assert.deepEqual(db.rows.map((row) => row.name), ['01_init.sql', '02_add_name.sql']);
 
   const businessExecs = () => db.execs.filter((sql) => !sql.includes('schema_migrations')).length;
   const firstBusinessExecCount = businessExecs();
-  runMigrations(db, { migrationsDir });
+  const second = runMigrations(db, { migrationsDir });
+  assert.deepEqual(second.applied, []);
   assert.equal(db.rows.length, 2);
   assert.equal(businessExecs(), firstBusinessExecCount);
+  assert.equal(
+    db.execs.filter((sql) => sql.includes('CREATE TABLE IF NOT EXISTS schema_migrations')).length,
+    0
+  );
 });

@@ -4,7 +4,19 @@ const crypto = require('crypto');
 const { getDb, closeDb } = require('./index.js');
 const { loadConfig } = require('../config/index.js');
 const { forceVideoAudioSettings } = require('../services/videoAudioPolicy');
-const { tableColumns } = require('./portableSql');
+const {
+  allTableColumns,
+  tableColumns,
+  upsertSql,
+} = require('./portableSql');
+
+// Increment a job version only when its callback must run again for every database.
+// A completed version is persisted in startup_maintenance and skipped on later boots.
+const STARTUP_MAINTENANCE_JOBS = Object.freeze({
+  schemaColumns: { key: 'schema_columns', version: 1 },
+  characterWardrobe: { key: 'character_wardrobe', version: 1 },
+  legacyAiConfigs: { key: 'legacy_ai_configs', version: 1 },
+});
 
 function stripLeadingComments(sql) {
   return sql
@@ -77,11 +89,27 @@ function ensureMigrationTable(database) {
   `);
 }
 
+function isMissingTableError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.errno === 1146
+    || error?.code === 'ER_NO_SUCH_TABLE'
+    || message.includes('no such table')
+    || message.includes("doesn't exist");
+}
+
 function getAppliedMigrations(database) {
-  ensureMigrationTable(database);
-  const rows = database.prepare(
-    'SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC'
-  ).all();
+  let rows;
+  try {
+    rows = database.prepare(
+      'SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC'
+    ).all();
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+    ensureMigrationTable(database);
+    rows = database.prepare(
+      'SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC'
+    ).all();
+  }
   return new Map(rows.map((row) => [Number(row.version), row]));
 }
 
@@ -122,10 +150,11 @@ function runMigrations(database, options = {}) {
   const migrationsDir = options.migrationsDir || path.join(__dirname, '..', '..', 'migrations');
   if (!fs.existsSync(migrationsDir)) {
     console.log('Migrations dir missing, skipping:', migrationsDir);
-    return;
+    return { applied: [], total: 0 };
   }
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
   const applied = getAppliedMigrations(database);
+  const appliedNow = [];
   for (const file of files) {
     const fullPath = path.join(migrationsDir, file);
     const sql = fs.readFileSync(fullPath, 'utf8');
@@ -155,8 +184,10 @@ function runMigrations(database, options = {}) {
       console.log('Installed current prompt catalog:', installed);
     }
     recordMigration(database, migration);
+    appliedNow.push(migration.version);
     console.log('Recorded migration:', `${migration.version} ${file}`);
   }
+  return { applied: appliedNow, total: files.length };
 }
 
 /**
@@ -165,10 +196,14 @@ function runMigrations(database, options = {}) {
  * @param {string} table - 表名
  * @param {Array<{name:string, type:string}>} columns - 要确保存在的列
  */
-function ensureColumns(database, table, columns) {
+function ensureColumns(database, table, columns, columnsByTable = null) {
   let existing;
   try {
-    existing = tableColumns(database, table);
+    existing = columnsByTable?.get(table);
+    if (!existing) {
+      existing = tableColumns(database, table);
+      columnsByTable?.set(table, existing);
+    }
   } catch (err) {
     if ((err.message || '').toLowerCase().includes('no such table')) {
       console.log(`ensureColumns: table ${table} not found, skip`);
@@ -181,6 +216,7 @@ function ensureColumns(database, table, columns) {
     if (names.has(col.name)) continue;
     try {
       database.exec(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${col.type}`);
+      existing.push({ name: col.name, type: col.type });
       console.log(`ensureColumns: added ${table}.${col.name} (${col.type})`);
     } catch (e) {
       if ((e.message || '').toLowerCase().includes('duplicate column')) {
@@ -208,9 +244,10 @@ const CHARACTER_LOOK_LONGTEXT_COLUMNS = [
   'error_msg',
 ];
 
-function ensureCharacterLookMysqlTextCapacity(database) {
+function ensureCharacterLookMysqlTextCapacity(database, columnsByTable = null) {
   if (String(database?.dialect || '').toLowerCase() !== 'mysql') return [];
-  const existing = tableColumns(database, 'character_looks');
+  const existing = columnsByTable?.get('character_looks')
+    || tableColumns(database, 'character_looks');
   const byName = new Map(existing.map((column) => [
     String(column.name || '').toLowerCase(),
     String(column.type || '').toLowerCase(),
@@ -235,9 +272,11 @@ function ensureCharacterLookMysqlTextCapacity(database) {
  * SQLite 不支持 ALTER TABLE ADD COLUMN ... NOT NULL（无默认值），
  * 所以原 schema 中 NOT NULL 的列在这里用 DEFAULT 兜底。
  */
-function ensureAllColumns(database) {
+function ensureAllColumns(database, columnsByTable = allTableColumns(database)) {
+  const ensure = (table, columns) =>
+    ensureColumns(database, table, columns, columnsByTable);
   // --- dramas ---
-  ensureColumns(database, 'dramas', [
+  ensure('dramas', [
     { name: 'title',          type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'description',    type: 'TEXT' },
     { name: 'genre',          type: 'TEXT' },
@@ -254,7 +293,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- episodes ---
-  ensureColumns(database, 'episodes', [
+  ensure('episodes', [
     { name: 'drama_id',       type: 'INTEGER DEFAULT 0' },
     { name: 'episode_number', type: 'INTEGER DEFAULT 0' },
     { name: 'title',          type: 'TEXT DEFAULT \'\'' },
@@ -270,7 +309,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- storyboards ---
-  ensureColumns(database, 'storyboards', [
+  ensure('storyboards', [
     { name: 'episode_id',        type: 'INTEGER DEFAULT 0' },
     { name: 'scene_id',          type: 'INTEGER' },
     { name: 'storyboard_number', type: 'INTEGER DEFAULT 0' },
@@ -328,7 +367,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- characters ---
-  ensureColumns(database, 'characters', [
+  ensure('characters', [
     { name: 'drama_id',          type: 'INTEGER DEFAULT 0' },
     { name: 'name',              type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'role',              type: 'TEXT' },
@@ -359,7 +398,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- scenes ---
-  ensureColumns(database, 'scenes', [
+  ensure('scenes', [
     { name: 'drama_id',         type: 'INTEGER DEFAULT 0' },
     { name: 'episode_id',       type: 'INTEGER' },
     { name: 'location',         type: 'TEXT' },
@@ -380,7 +419,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- props ---
-  ensureColumns(database, 'props', [
+  ensure('props', [
     { name: 'drama_id',    type: 'INTEGER DEFAULT 0' },
     { name: 'episode_id',  type: 'INTEGER' },
     { name: 'name',        type: 'TEXT NOT NULL DEFAULT \'\'' },
@@ -420,7 +459,7 @@ function ensureAllColumns(database) {
       deleted_at    TEXT
     )`);
   } catch (_) {}
-  ensureColumns(database, 'ai_service_configs', [
+  ensure('ai_service_configs', [
     { name: 'service_type',   type: 'TEXT NOT NULL DEFAULT \'text\'' },
     { name: 'provider',       type: 'TEXT DEFAULT \'\'' },
     { name: 'name',           type: 'TEXT DEFAULT \'\'' },
@@ -497,7 +536,7 @@ function ensureAllColumns(database) {
     database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_ai_scene_maps_owner_key
       ON user_ai_scene_model_maps(user_id, scene_key)`);
   } catch (_) {}
-  ensureColumns(database, 'user_ai_configs', [
+  ensure('user_ai_configs', [
     { name: 'user_id',             type: 'INTEGER' },
     { name: 'service_type',        type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
     { name: 'name',                type: 'VARCHAR(255) NOT NULL DEFAULT \'\'' },
@@ -509,7 +548,7 @@ function ensureAllColumns(database) {
     { name: 'updated_at',          type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
     { name: 'deleted_at',          type: 'VARCHAR(32)' },
   ]);
-  ensureColumns(database, 'user_ai_config_revisions', [
+  ensure('user_ai_config_revisions', [
     { name: 'config_id',        type: 'INTEGER' },
     { name: 'user_id',          type: 'INTEGER' },
     { name: 'revision_no',      type: 'INTEGER NOT NULL DEFAULT 1' },
@@ -525,14 +564,14 @@ function ensureAllColumns(database) {
     { name: 'settings_json',    type: 'TEXT' },
     { name: 'created_at',       type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
   ]);
-  ensureColumns(database, 'user_ai_config_defaults', [
+  ensure('user_ai_config_defaults', [
     { name: 'user_id',      type: 'INTEGER' },
     { name: 'service_type', type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
     { name: 'config_id',    type: 'INTEGER' },
     { name: 'created_at',   type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
     { name: 'updated_at',   type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
   ]);
-  ensureColumns(database, 'user_ai_scene_model_maps', [
+  ensure('user_ai_scene_model_maps', [
     { name: 'user_id',        type: 'INTEGER' },
     { name: 'scene_key',      type: 'VARCHAR(191) NOT NULL DEFAULT \'\'' },
     { name: 'service_type',   type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
@@ -553,7 +592,7 @@ function ensureAllColumns(database) {
       updated_at        VARCHAR(32) NOT NULL DEFAULT ''
     )`);
   } catch (_) {}
-  ensureColumns(database, 'user_ai_preferences', [
+  ensure('user_ai_preferences', [
     { name: 'assistant_engine',  type: 'VARCHAR(64) NOT NULL DEFAULT \'configured_api\'' },
     { name: 'image_concurrency', type: 'INTEGER NOT NULL DEFAULT 3' },
     { name: 'video_concurrency', type: 'INTEGER NOT NULL DEFAULT 3' },
@@ -581,7 +620,7 @@ function ensureAllColumns(database) {
   }
 
   // --- async_tasks ---
-  ensureColumns(database, 'async_tasks', [
+  ensure('async_tasks', [
     { name: 'type',         type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'status',       type: 'TEXT NOT NULL DEFAULT \'pending\'' },
     { name: 'progress',     type: 'INTEGER DEFAULT 0' },
@@ -600,7 +639,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- image_generations ---
-  ensureColumns(database, 'image_generations', [
+  ensure('image_generations', [
     { name: 'storyboard_id',    type: 'INTEGER' },
     { name: 'drama_id',         type: 'INTEGER' },
     { name: 'episode_id',       type: 'INTEGER' },
@@ -639,7 +678,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- video_generations ---
-  ensureColumns(database, 'video_generations', [
+  ensure('video_generations', [
     { name: 'drama_id',             type: 'INTEGER' },
     { name: 'storyboard_id',        type: 'INTEGER' },
     { name: 'provider',             type: 'TEXT' },
@@ -679,7 +718,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- video_merges ---
-  ensureColumns(database, 'video_merges', [
+  ensure('video_merges', [
     { name: 'episode_id',   type: 'INTEGER' },
     { name: 'drama_id',     type: 'INTEGER' },
     { name: 'title',        type: 'TEXT' },
@@ -701,7 +740,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- assets ---
-  ensureColumns(database, 'assets', [
+  ensure('assets', [
     { name: 'drama_id',     type: 'INTEGER' },
     { name: 'name',         type: 'TEXT' },
     { name: 'type',         type: 'TEXT' },
@@ -721,7 +760,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- character_libraries ---
-  ensureColumns(database, 'character_libraries', [
+  ensure('character_libraries', [
     { name: 'drama_id',          type: 'INTEGER' },   // NULL = 全局素材库；有值 = 本剧专属
     { name: 'name',              type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'category',          type: 'TEXT' },
@@ -742,7 +781,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- scene_libraries ---
-  ensureColumns(database, 'scene_libraries', [
+  ensure('scene_libraries', [
     { name: 'drama_id',    type: 'INTEGER' },   // NULL = 全局素材库
     { name: 'location',    type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'time',        type: 'TEXT' },
@@ -760,7 +799,7 @@ function ensureAllColumns(database) {
   ]);
 
   // --- prop_libraries ---
-  ensureColumns(database, 'prop_libraries', [
+  ensure('prop_libraries', [
     { name: 'drama_id',    type: 'INTEGER' },   // NULL = 全局素材库
     { name: 'name',        type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'description', type: 'TEXT' },
@@ -809,7 +848,7 @@ function ensureAllColumns(database) {
     database.exec(`CREATE INDEX IF NOT EXISTS idx_ai_request_logs_related
       ON ai_request_logs(related_type, related_id, created_at DESC)`);
   } catch (_) {}
-  ensureColumns(database, 'ai_request_logs', [
+  ensure('ai_request_logs', [
     { name: 'request_uuid',     type: 'TEXT' },
     { name: 'drama_id',         type: 'INTEGER' },
     { name: 'user_id',          type: 'INTEGER' },
@@ -834,10 +873,10 @@ function ensureAllColumns(database) {
     { name: 'updated_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
   ]);
 
-  ensureColumns(database, 'redraw_jobs', [
+  ensure('redraw_jobs', [
     { name: 'user_id', type: 'INTEGER' },
   ]);
-  ensureColumns(database, 'action_migration_jobs', [
+  ensure('action_migration_jobs', [
     { name: 'user_id', type: 'INTEGER' },
   ]);
 
@@ -881,7 +920,7 @@ function ensureAllColumns(database) {
     database.exec(`CREATE INDEX IF NOT EXISTS idx_codex_chat_messages_task
       ON codex_chat_messages(task_id)`);
   } catch (_) {}
-  ensureColumns(database, 'codex_chat_sessions', [
+  ensure('codex_chat_sessions', [
     { name: 'drama_id',       type: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'episode_id',     type: 'INTEGER' },
     { name: 'user_id',        type: 'INTEGER' },
@@ -894,7 +933,7 @@ function ensureAllColumns(database) {
     { name: 'updated_at',     type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'deleted_at',     type: 'TEXT' },
   ]);
-  ensureColumns(database, 'codex_chat_messages', [
+  ensure('codex_chat_messages', [
     { name: 'session_id',     type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'role',           type: 'TEXT NOT NULL DEFAULT \'user\'' },
     { name: 'content_type',   type: 'TEXT NOT NULL DEFAULT \'text\'' },
@@ -918,7 +957,7 @@ function ensureAllColumns(database) {
       created_at TEXT NOT NULL
     )`);
   } catch (_) {}
-  ensureColumns(database, 'image_proxy_cache', [
+  ensure('image_proxy_cache', [
     { name: 'cache_key',  type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'proxy_url',  type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'created_at', type: 'TEXT NOT NULL DEFAULT \'\'' },
@@ -937,7 +976,7 @@ function ensureAllColumns(database) {
       updated_at     TEXT NOT NULL DEFAULT ''
     )`);
   } catch (_) {}
-  ensureColumns(database, 'ai_model_map', [
+  ensure('ai_model_map', [
     { name: 'key',            type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'service_type',   type: 'TEXT NOT NULL DEFAULT \'text\'' },
     { name: 'config_id',      type: 'INTEGER' },
@@ -967,17 +1006,110 @@ function ensureAllColumns(database) {
   } catch (_) {}
 }
 
-/** 对已打开的 database 执行迁移与兜底补列（供 app 启动时调用） */
-function runMigrationsAndEnsure(database) {
-  runMigrations(database);
-  ensureAllColumns(database);
-  ensureCharacterLookMysqlTextCapacity(database);
+function ensureStartupMaintenanceTable(database) {
+  database.exec(`CREATE TABLE IF NOT EXISTS startup_maintenance (
+    job_key TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    completed_at TEXT NOT NULL,
+    details TEXT
+  )`);
+}
+
+function getStartupMaintenanceVersions(database) {
+  let rows;
   try {
-    const characterLookService = require('../services/characterLookService');
-    characterLookService.backfillAllCharacters(database, console);
+    rows = database.prepare(
+      'SELECT job_key, version, completed_at, details FROM startup_maintenance'
+    ).all();
   } catch (error) {
-    console.warn('character wardrobe backfill failed:', error.message);
+    if (!isMissingTableError(error)) throw error;
+    ensureStartupMaintenanceTable(database);
+    rows = [];
   }
+  return new Map(rows.map((row) => [String(row.job_key), Number(row.version)]));
+}
+
+function recordStartupMaintenance(database, job, details) {
+  const sql = upsertSql(
+    database,
+    `INSERT INTO startup_maintenance (job_key, version, completed_at, details)
+     VALUES (?, ?, ?, ?)`,
+    ['job_key'],
+    ['version', 'completed_at', 'details']
+  );
+  database.prepare(sql).run(
+    job.key,
+    job.version,
+    new Date().toISOString(),
+    details == null ? null : JSON.stringify(details)
+  );
+}
+
+function runStartupMaintenanceJob(database, versions, job, log, callback, options = {}) {
+  const startedAt = Date.now();
+  const currentVersion = Number(versions.get(job.key) || 0);
+  if (currentVersion >= job.version) {
+    log?.info?.('Startup maintenance checked', {
+      job: job.key,
+      version: job.version,
+      executed: false,
+      duration_ms: Date.now() - startedAt,
+    });
+    return { executed: false, version: currentVersion };
+  }
+  try {
+    const details = callback();
+    recordStartupMaintenance(database, job, details);
+    versions.set(job.key, job.version);
+    log?.info?.('Startup maintenance complete', {
+      job: job.key,
+      version: job.version,
+      executed: true,
+      duration_ms: Date.now() - startedAt,
+    });
+    return { executed: true, version: job.version, details };
+  } catch (error) {
+    log?.warn?.('Startup maintenance failed', {
+      job: job.key,
+      version: job.version,
+      duration_ms: Date.now() - startedAt,
+      error: error.message,
+    });
+    if (options.fatal !== false) throw error;
+    return { executed: false, version: currentVersion, error: error.message };
+  }
+}
+
+/** 对已打开的 database 执行版本化 SQL 迁移与一次性启动维护。 */
+function runMigrationsAndEnsure(database, options = {}) {
+  const log = options.log || console;
+  const migrationResult = runMigrations(database, options);
+  const versions = getStartupMaintenanceVersions(database);
+  const maintenance = {};
+  maintenance.schemaColumns = runStartupMaintenanceJob(
+    database,
+    versions,
+    STARTUP_MAINTENANCE_JOBS.schemaColumns,
+    log,
+    () => {
+      const columnsByTable = allTableColumns(database);
+      ensureAllColumns(database, columnsByTable);
+      const widened = ensureCharacterLookMysqlTextCapacity(database, columnsByTable);
+      return { widened_character_look_columns: widened };
+    }
+  );
+  maintenance.characterWardrobe = runStartupMaintenanceJob(
+    database,
+    versions,
+    STARTUP_MAINTENANCE_JOBS.characterWardrobe,
+    log,
+    () => {
+      const characterLookService = require('../services/characterLookService');
+      return characterLookService.backfillAllCharacters(database, log);
+    },
+    { fatal: false }
+  );
+  return { migrations: migrationResult, maintenance, versions };
 }
 
 function main() {
@@ -996,9 +1128,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  STARTUP_MAINTENANCE_JOBS,
   ensureCharacterLookMysqlTextCapacity,
   splitSqlStatements,
   runMigrations,
   runMigrationsAndEnsure,
+  runStartupMaintenanceJob,
   ensureColumns,
 };

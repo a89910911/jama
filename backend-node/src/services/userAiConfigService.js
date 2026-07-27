@@ -2,6 +2,7 @@
 
 const { forceVideoAudioSettings } = require('./videoAudioPolicy');
 const { normalizeMaterialHubToken } = require('./jimengMaterialHubService');
+const { insertIgnoreSql, upsertSql } = require('../db/portableSql');
 
 const SERVICE_TYPES = new Set([
   'text',
@@ -323,7 +324,7 @@ function normalizeApiKey(serviceType, value) {
   return value == null ? '' : String(value);
 }
 
-function insertRevision(db, config, revisionNo, payload, previous = null) {
+function revisionInsertValues(config, revisionNo, payload, previous = null, createdAt = null) {
   const serviceType = config.service_type;
   const extracted = extractCredentials(
     payload.settings !== undefined ? payload.settings : previous?.public_settings,
@@ -364,14 +365,8 @@ function insertRevision(db, config, revisionNo, payload, previous = null) {
     ? requestedDefault
     : models[0] || null;
   const settings = normalizeSettings(serviceType, extracted.settings);
-  const now = new Date().toISOString();
-  const info = db.prepare(`
-    INSERT INTO user_ai_config_revisions
-      (config_id, user_id, revision_no, provider, api_protocol, base_url, api_key,
-       credentials_json, model_json, default_model, endpoint, query_endpoint,
-       settings_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  const now = createdAt || new Date().toISOString();
+  return [
     config.id,
     config.user_id,
     revisionNo,
@@ -387,8 +382,19 @@ function insertRevision(db, config, revisionNo, payload, previous = null) {
     endpoints.endpoint,
     endpoints.queryEndpoint,
     settings,
-    now
-  );
+    now,
+  ];
+}
+
+function insertRevision(db, config, revisionNo, payload, previous = null) {
+  const values = revisionInsertValues(config, revisionNo, payload, previous);
+  const info = db.prepare(`
+    INSERT INTO user_ai_config_revisions
+      (config_id, user_id, revision_no, provider, api_protocol, base_url, api_key,
+       credentials_json, model_json, default_model, endpoint, query_endpoint,
+       settings_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(...values);
   return Number(info.lastInsertRowid);
 }
 
@@ -542,6 +548,35 @@ function bulkUpdateApiKey(db, log, userIdValue, newKey) {
   return configs.length;
 }
 
+function bulkValuesClause(rowCount, columnCount) {
+  const row = `(${Array.from({ length: columnCount }, () => '?').join(', ')})`;
+  return Array.from({ length: rowCount }, () => row).join(', ');
+}
+
+function flattenRows(rows) {
+  return rows.flatMap((row) => row);
+}
+
+function legacyConfigRequest(row) {
+  return {
+    service_type: row.service_type,
+    provider: row.provider,
+    api_protocol: row.api_protocol || '',
+    name: row.name || `${row.provider || 'AI'} ${row.service_type || 'text'}`,
+    base_url: row.base_url,
+    api_key: row.api_key || '',
+    model: parseModels(row.model),
+    default_model: row.default_model,
+    endpoint: row.endpoint,
+    query_endpoint: row.query_endpoint,
+    priority: row.priority,
+    is_default: !!row.is_default,
+    is_active: row.is_active == null ? true : !!row.is_active,
+    settings: row.settings,
+    template_key: `legacy_ai_service_config:${row.id}`,
+  };
+}
+
 function migrateLegacyConfigs(db, log, userIdValue) {
   const userId = requireUserId(userIdValue);
   let rows = [];
@@ -554,78 +589,209 @@ function migrateLegacyConfigs(db, log, userIdValue) {
   }
   if (!rows.length) return { migrated: 0, scene_maps: 0, skipped: true };
 
-  const idMap = new Map();
   const migrate = db.transaction(() => {
-    let migratedCount = 0;
-    for (const row of rows) {
-      const templateKey = `legacy_ai_service_config:${row.id}`;
-      const existing = db.prepare(
-        `SELECT id FROM user_ai_configs
-          WHERE user_id = ? AND template_key = ?
-          ORDER BY id ASC LIMIT 1`
-      ).get(userId, templateKey);
-      if (existing?.id) {
-        idMap.set(Number(row.id), Number(existing.id));
-        continue;
+    const now = new Date().toISOString();
+    const requests = rows.map((row) => ({
+      legacyId: Number(row.id),
+      request: legacyConfigRequest(row),
+    }));
+    const templateKeys = requests.map(({ request }) => request.template_key);
+    const existingConfigs = db.prepare(
+      `SELECT id, template_key, service_type
+         FROM user_ai_configs
+        WHERE user_id = ? AND template_key IN (${templateKeys.map(() => '?').join(', ')})
+        ORDER BY id ASC`
+    ).all(userId, ...templateKeys);
+    const configByTemplate = new Map();
+    for (const config of existingConfigs) {
+      if (!configByTemplate.has(config.template_key)) {
+        configByTemplate.set(config.template_key, config);
       }
-      const created = createConfig(db, log, userId, {
-        service_type: row.service_type,
-        provider: row.provider,
-        api_protocol: row.api_protocol || '',
-        name: row.name || `${row.provider || 'AI'} ${row.service_type || 'text'}`,
-        base_url: row.base_url,
-        api_key: row.api_key || '',
-        model: parseModels(row.model),
-        default_model: row.default_model,
-        endpoint: row.endpoint,
-        query_endpoint: row.query_endpoint,
-        priority: row.priority,
-        is_default: !!row.is_default,
-        is_active: row.is_active == null ? true : !!row.is_active,
-        settings: row.settings,
-        template_key: templateKey,
+    }
+
+    const missing = requests.filter(({ request }) => !configByTemplate.has(request.template_key));
+    if (missing.length) {
+      const configRows = missing.map(({ request }) => {
+        const serviceType = normalizeServiceType(request.service_type);
+        const name = String(request.name || '').trim();
+        const provider = String(request.provider || '').trim();
+        const baseUrl = String(request.base_url || '').trim();
+        if (!name || !provider || !baseUrl) {
+          const error = new Error('缂哄皯蹇呭～瀛楁: name, provider, base_url');
+          error.code = 'INVALID_AI_CONFIG';
+          throw error;
+        }
+        return [
+          userId,
+          serviceType,
+          name,
+          Number(request.priority || 0),
+          request.is_active === false ? 0 : 1,
+          request.template_key,
+          null,
+          now,
+          now,
+        ];
       });
-      idMap.set(Number(row.id), Number(created.id));
-      migratedCount += 1;
+      db.prepare(`
+        INSERT INTO user_ai_configs
+          (user_id, service_type, name, priority, is_active, template_key,
+           current_revision_id, created_at, updated_at)
+        VALUES ${bulkValuesClause(configRows.length, configRows[0].length)}
+      `).run(...flattenRows(configRows));
+
+      const createdConfigs = db.prepare(
+        `SELECT id, template_key, service_type
+           FROM user_ai_configs
+          WHERE user_id = ? AND template_key IN (${missing.map(() => '?').join(', ')})
+          ORDER BY id ASC`
+      ).all(userId, ...missing.map(({ request }) => request.template_key));
+      for (const config of createdConfigs) {
+        if (!configByTemplate.has(config.template_key)) {
+          configByTemplate.set(config.template_key, config);
+        }
+      }
+
+      const revisionRows = missing.map(({ request }) => {
+        const config = configByTemplate.get(request.template_key);
+        if (!config?.id) {
+          throw new Error(`Bulk AI config migration could not resolve ${request.template_key}`);
+        }
+        return revisionInsertValues(
+          {
+            id: Number(config.id),
+            user_id: userId,
+            service_type: normalizeServiceType(request.service_type),
+          },
+          1,
+          request,
+          null,
+          now
+        );
+      });
+      db.prepare(`
+        INSERT INTO user_ai_config_revisions
+          (config_id, user_id, revision_no, provider, api_protocol, base_url, api_key,
+           credentials_json, model_json, default_model, endpoint, query_endpoint,
+           settings_json, created_at)
+        VALUES ${bulkValuesClause(revisionRows.length, revisionRows[0].length)}
+      `).run(...flattenRows(revisionRows));
+
+      const configIds = missing.map(({ request }) =>
+        Number(configByTemplate.get(request.template_key).id)
+      );
+      const revisions = db.prepare(
+        `SELECT id, config_id
+           FROM user_ai_config_revisions
+          WHERE user_id = ? AND revision_no = 1
+            AND config_id IN (${configIds.map(() => '?').join(', ')})`
+      ).all(userId, ...configIds);
+      const revisionByConfig = new Map(
+        revisions.map((revision) => [Number(revision.config_id), Number(revision.id)])
+      );
+      const cases = [];
+      const caseValues = [];
+      for (const configId of configIds) {
+        const revisionId = revisionByConfig.get(configId);
+        if (!revisionId) {
+          throw new Error(`Bulk AI config migration could not resolve revision for ${configId}`);
+        }
+        cases.push('WHEN ? THEN ?');
+        caseValues.push(configId, revisionId);
+      }
+      db.prepare(`
+        UPDATE user_ai_configs
+           SET current_revision_id = CASE id ${cases.join(' ')} ELSE current_revision_id END,
+               updated_at = ?
+         WHERE user_id = ? AND id IN (${configIds.map(() => '?').join(', ')})
+      `).run(...caseValues, now, userId, ...configIds);
+    }
+
+    const idMap = new Map();
+    for (const { legacyId, request } of requests) {
+      const config = configByTemplate.get(request.template_key);
+      if (!config?.id) {
+        throw new Error(`Bulk AI config migration missing ${request.template_key}`);
+      }
+      idMap.set(legacyId, Number(config.id));
+    }
+
+    const desiredDefaults = new Map();
+    for (const row of rows) {
+      const serviceType = normalizeServiceType(row.service_type);
+      const configId = idMap.get(Number(row.id));
+      if (row.is_default || (!desiredDefaults.has(serviceType) && row.is_active !== 0)) {
+        desiredDefaults.set(serviceType, configId);
+      }
+    }
+    if (desiredDefaults.size) {
+      const defaultRows = [...desiredDefaults.entries()].map(([serviceType, configId]) => [
+        userId,
+        serviceType,
+        configId,
+        now,
+        now,
+      ]);
+      const defaultInsert = `
+        INSERT INTO user_ai_config_defaults
+          (user_id, service_type, config_id, created_at, updated_at)
+        VALUES ${bulkValuesClause(defaultRows.length, defaultRows[0].length)}
+      `;
+      db.prepare(upsertSql(
+        db,
+        defaultInsert,
+        ['user_id', 'service_type'],
+        ['config_id', 'updated_at']
+      )).run(...flattenRows(defaultRows));
     }
 
     let sceneMaps = [];
     try {
       sceneMaps = db.prepare('SELECT * FROM ai_model_map ORDER BY id ASC').all();
     } catch (_) {}
-    const now = new Date().toISOString();
     let sceneMapCount = 0;
-    for (const map of sceneMaps) {
-      const existingMap = db.prepare(
-        `SELECT id FROM user_ai_scene_model_maps
-          WHERE user_id = ? AND scene_key = ?`
-      ).get(userId, map.key);
-      if (existingMap) continue;
-      db.prepare(`
-        INSERT INTO user_ai_scene_model_maps
-          (user_id, scene_key, service_type, config_id, model_override,
-           description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        userId,
-        map.key,
-        map.service_type || 'text',
-        map.config_id ? idMap.get(Number(map.config_id)) || null : null,
-        map.model_override || null,
-        map.description || '',
-        now,
-        now
-      );
-      sceneMapCount += 1;
+    if (sceneMaps.length) {
+      const sceneKeys = sceneMaps.map((map) => map.key);
+      const existingMaps = db.prepare(
+        `SELECT scene_key
+           FROM user_ai_scene_model_maps
+          WHERE user_id = ? AND scene_key IN (${sceneKeys.map(() => '?').join(', ')})`
+      ).all(userId, ...sceneKeys);
+      const existingKeys = new Set(existingMaps.map((map) => map.scene_key));
+      const missingMaps = sceneMaps.filter((map) => !existingKeys.has(map.key));
+      if (missingMaps.length) {
+        const mapRows = missingMaps.map((map) => [
+          userId,
+          map.key,
+          map.service_type || 'text',
+          map.config_id ? idMap.get(Number(map.config_id)) || null : null,
+          map.model_override || null,
+          map.description || '',
+          now,
+          now,
+        ]);
+        const insertMaps = `
+          INSERT INTO user_ai_scene_model_maps
+            (user_id, scene_key, service_type, config_id, model_override,
+             description, created_at, updated_at)
+          VALUES ${bulkValuesClause(mapRows.length, mapRows[0].length)}
+        `;
+        db.prepare(insertIgnoreSql(db, insertMaps)).run(...flattenRows(mapRows));
+        sceneMapCount = missingMaps.length;
+      }
     }
-    // 旧表只承担一次性迁移来源。迁移成功后立即停用全部公共配置，
-    // 避免任何旧代码或回滚中的误调用继续把它当作共享运行时配置。
+
     db.prepare(
       'UPDATE ai_service_configs SET deleted_at = ?, updated_at = ? WHERE deleted_at IS NULL'
     ).run(now, now);
-    return { migrated: migratedCount, scene_maps: sceneMapCount };
+    return { migrated: missing.length, scene_maps: sceneMapCount };
   });
   const result = migrate();
+  log?.info?.('Legacy AI configs migrated in bulk', {
+    user_id: userId,
+    migrated: result.migrated,
+    scene_maps: result.scene_maps,
+  });
   return { ...result, skipped: false };
 }
 

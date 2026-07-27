@@ -702,10 +702,20 @@ function backfillAllCharacters(db, log = console) {
     return { characters: 0, default_looks: 0, stage_looks: 0, bindings: 0, warnings: 0 };
   }
   const characters = db.prepare(
-    `SELECT id, drama_id, default_look_id, stages
-       FROM characters
-      WHERE deleted_at IS NULL
-      ORDER BY id ASC`
+    `SELECT
+       c.id,
+       c.drama_id,
+       c.default_look_id,
+       c.stages,
+       CASE WHEN default_look.id IS NULL THEN 0 ELSE 1 END AS default_look_valid
+     FROM characters AS c
+     LEFT JOIN character_looks AS default_look
+       ON default_look.id = c.default_look_id
+      AND default_look.character_id = c.id
+      AND default_look.deleted_at IS NULL
+      AND default_look.status = 'active'
+     WHERE c.deleted_at IS NULL
+     ORDER BY c.id ASC`
   ).all();
   const stats = {
     characters: characters.length,
@@ -717,14 +727,7 @@ function backfillAllCharacters(db, log = console) {
   const tx = db.transaction(() => {
     for (const character of characters) {
       const defaultLookId = positiveId(character.default_look_id);
-      const hasValidDefault = defaultLookId
-        ? !!db.prepare(
-          `SELECT 1 FROM character_looks
-            WHERE id = ? AND character_id = ?
-              AND deleted_at IS NULL AND status = 'active'
-            LIMIT 1`
-        ).get(defaultLookId, character.id)
-        : false;
+      const hasValidDefault = !!defaultLookId && Number(character.default_look_valid) === 1;
       const requiresFullCharacter = !hasValidDefault || !!character.stages;
       const sourceCharacter = requiresFullCharacter
         ? getCharacter(db, character.id)

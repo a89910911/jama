@@ -21,6 +21,59 @@ function createConfigDb() {
   return db;
 }
 
+function createLegacyConfigDb() {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE ai_service_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_type TEXT,
+      provider TEXT,
+      api_protocol TEXT,
+      name TEXT,
+      base_url TEXT,
+      api_key TEXT,
+      model TEXT,
+      default_model TEXT,
+      endpoint TEXT,
+      query_endpoint TEXT,
+      priority INTEGER,
+      is_default INTEGER,
+      is_active INTEGER,
+      settings TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      deleted_at TEXT
+    );
+    CREATE TABLE ai_model_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT,
+      service_type TEXT,
+      config_id INTEGER,
+      model_override TEXT,
+      description TEXT
+    );
+  `);
+  db.exec(migration39);
+  return db;
+}
+
+function countPreparedStatements(db) {
+  const stats = { count: 0 };
+  return {
+    stats,
+    database: {
+      dialect: 'sqlite',
+      prepare(sql) {
+        stats.count += 1;
+        return db.prepare(sql);
+      },
+      transaction(callback) {
+        return db.transaction(callback);
+      },
+    },
+  };
+}
+
 function createTextConfig(db, userId, name, apiKey, secretKey) {
   return userAiConfigService.createConfig(db, log, userId, {
     service_type: 'text',
@@ -187,6 +240,65 @@ test('legacy shared configs migrate once to the super admin owner and are then d
     true
   );
   assert.equal(userAiConfigService.migrateLegacyConfigs(db, log, 1).skipped, true);
+  db.close();
+});
+
+test('legacy shared configs are migrated with a constant number of database statements', () => {
+  const db = createLegacyConfigDb();
+  const insertConfig = db.prepare(`
+    INSERT INTO ai_service_configs
+      (service_type, provider, name, base_url, api_key, model, default_model,
+       priority, is_default, is_active, created_at, updated_at)
+    VALUES (?, 'openai', ?, 'https://legacy.example.test/v1', ?,
+            '["legacy-model"]', 'legacy-model', ?, ?, 1, '2026-01-01', '2026-01-01')
+  `);
+  const serviceTypes = ['text', 'image', 'storyboard_image', 'video'];
+  const legacyIds = [];
+  for (let index = 0; index < 12; index += 1) {
+    legacyIds.push(Number(insertConfig.run(
+      serviceTypes[index % serviceTypes.length],
+      `legacy-${index}`,
+      `key-${index}`,
+      index,
+      index < serviceTypes.length ? 1 : 0
+    ).lastInsertRowid));
+  }
+  const insertMap = db.prepare(`
+    INSERT INTO ai_model_map
+      (key, service_type, config_id, model_override, description)
+    VALUES (?, 'text', ?, 'legacy-model', 'legacy scene')
+  `);
+  for (let index = 0; index < 4; index += 1) {
+    insertMap.run(`story.generate.${index}`, legacyIds[index]);
+  }
+
+  const counted = countPreparedStatements(db);
+  const result = userAiConfigService.migrateLegacyConfigs(
+    counted.database,
+    log,
+    1
+  );
+  assert.deepEqual(result, { migrated: 12, scene_maps: 4, skipped: false });
+  assert.ok(
+    counted.stats.count <= 12,
+    `expected at most 12 prepared statements, got ${counted.stats.count}`
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM user_ai_configs').get().count,
+    12
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM user_ai_config_revisions').get().count,
+    12
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM user_ai_scene_model_maps').get().count,
+    4
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM user_ai_config_defaults').get().count,
+    4
+  );
   db.close();
 });
 

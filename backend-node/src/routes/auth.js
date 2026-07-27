@@ -13,11 +13,6 @@ function cookieOptions(req) {
 }
 
 function authRoutes(db, log) {
-  // setupRouter 也会被部分“仅检查路由注册”的测试用伪数据库调用。
-  if (typeof db?.exec === 'function' && typeof db?.prepare === 'function') {
-    authService.ensureAuthSystem(db);
-  }
-
   return {
     login(req, res) {
       const username = String(req.body?.username || '').trim();

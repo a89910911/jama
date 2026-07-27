@@ -5,33 +5,67 @@ const fs = require('fs');
 const { getDb } = require('./db/index.js');
 const { loadConfig } = require('./config/index.js');
 const logger = require('./logger.js');
-const { setupRouter } = require('./routes/index.js');
 
-function createApp() {
-  const config = loadConfig();
-  const db = getDb(config.database);
-  const { runMigrationsAndEnsure } = require('./db/migrate.js');
-  runMigrationsAndEnsure(db);
-  const authService = require('./services/authService');
-  authService.ensureAuthSystem(db);
+function startupPhase(log, phase, callback) {
+  const startedAt = process.hrtime.bigint();
   try {
-    const admin = db.prepare(
-      'SELECT id FROM user_accounts WHERE LOWER(username) = LOWER(?)'
-    ).get(authService.SUPER_ADMIN_USERNAME);
-    if (admin?.id) {
-      const migrated = require('./services/userAiConfigService')
-        .migrateLegacyConfigs(db, logger, admin.id);
-      if (migrated.migrated) {
-        logger.info('Migrated legacy AI configs to super admin', migrated);
-      }
-    }
+    const result = callback();
+    log.info('Startup phase complete', {
+      phase,
+      duration_ms: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
+    });
+    return result;
   } catch (error) {
-    logger.error('Legacy AI config migration failed', { error: error.message });
+    log.error('Startup phase failed', {
+      phase,
+      duration_ms: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
+      error: error.message,
+    });
     throw error;
   }
+}
+
+function createApp() {
+  const startupStartedAt = process.hrtime.bigint();
+  const config = startupPhase(logger, 'config.load', () => loadConfig());
+  const db = startupPhase(logger, 'database.connect', () => getDb(config.database));
+  const {
+    runMigrationsAndEnsure,
+    runStartupMaintenanceJob,
+    STARTUP_MAINTENANCE_JOBS,
+  } = require('./db/migrate.js');
+  const databaseSetup = startupPhase(logger, 'database.migrations_and_maintenance', () =>
+    runMigrationsAndEnsure(db, { log: logger })
+  );
+  const authService = require('./services/authService');
+  startupPhase(logger, 'auth.initialize', () => authService.ensureAuthSystem(db));
+  startupPhase(logger, 'ai_config.legacy_migration', () =>
+    runStartupMaintenanceJob(
+      db,
+      databaseSetup.versions,
+      STARTUP_MAINTENANCE_JOBS.legacyAiConfigs,
+      logger,
+      () => {
+        const admin = db.prepare(
+          'SELECT id FROM user_accounts WHERE LOWER(username) = LOWER(?)'
+        ).get(authService.SUPER_ADMIN_USERNAME);
+        if (!admin?.id) {
+          throw new Error('Super admin account is unavailable for legacy AI config migration');
+        }
+        const migrated = require('./services/userAiConfigService')
+          .migrateLegacyConfigs(db, logger, admin.id);
+        if (migrated.migrated) {
+          logger.info('Migrated legacy AI configs to super admin', migrated);
+        }
+        return migrated;
+      }
+    )
+  );
   // Schema availability is stable after migrations; resolve it during startup so
   // the first wardrobe request does not pay for information_schema round trips.
-  require('./services/characterLookService').hasWardrobeTables(db);
+  startupPhase(logger, 'wardrobe.schema_cache', () =>
+    require('./services/characterLookService').hasWardrobeTables(db)
+  );
 
   // vendor_lock 仅保留为前端模板策略，不再创建或覆盖任何公共运行时配置。
   const log = logger;
@@ -43,13 +77,19 @@ function createApp() {
     config,
     log
   );
-  taskService.clearCompletedTaskErrors(db, log);
-  recoverCharacterTasks();
-  taskService.failOrphanedAsyncTasksOnStartup(db, log);
+  startupPhase(logger, 'tasks.clear_completed_errors', () =>
+    taskService.clearCompletedTaskErrors(db, log)
+  );
+  startupPhase(logger, 'tasks.resume_character_generations', recoverCharacterTasks);
+  startupPhase(logger, 'tasks.fail_orphans', () =>
+    taskService.failOrphanedAsyncTasksOnStartup(db, log)
+  );
   taskService.startOrphanedAsyncTaskReaper(db, log, { beforeSweep: recoverCharacterTasks });
 
   const { resumeProcessingVideoGenerations } = require('./services/videoService');
-  resumeProcessingVideoGenerations(db, log);
+  startupPhase(logger, 'tasks.resume_video_generations', () =>
+    resumeProcessingVideoGenerations(db, log)
+  );
 
   const app = express();
   // A 16 MB binary upload expands to roughly 21.4 MB when represented as Base64.
@@ -90,7 +130,10 @@ function createApp() {
     });
   });
 
-  app.use('/api/v1', setupRouter(config, db, log));
+  const apiRouter = startupPhase(logger, 'routes.setup', () =>
+    require('./routes/index.js').setupRouter(config, db, log)
+  );
+  app.use('/api/v1', apiRouter);
 
   // 前端静态资源（sxy：web/dist）；Electron 打包时可设 WEB_DIST_PATH
   const webDist = process.env.WEB_DIST_PATH || path.join(process.cwd(), '..', 'frontweb', 'dist');
@@ -138,7 +181,10 @@ function createApp() {
     }
   });
 
+  logger.info('Startup initialization complete', {
+    duration_ms: Math.round(Number(process.hrtime.bigint() - startupStartedAt) / 1e6),
+  });
   return { app, config, db };
 }
 
-module.exports = { createApp };
+module.exports = { createApp, startupPhase };

@@ -36,6 +36,7 @@ const REQUIRED_TABLES = [
   'storyboard_characters',
   'storyboard_props',
   'storyboards',
+  'startup_maintenance',
   'user_ai_config_defaults',
   'user_ai_config_revisions',
   'user_ai_configs',
