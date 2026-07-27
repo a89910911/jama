@@ -1,4 +1,4 @@
-const aiConfigService = require('./aiConfigService');
+const userAiConfigService = require('./userAiConfigService');
 const {
   getBusinessScene,
   listBusinessScenes,
@@ -16,12 +16,16 @@ function configSupportsService(config, serviceType) {
   return serviceType === 'storyboard_image' && config.service_type === 'image';
 }
 
-function listCandidateConfigs(db, serviceType) {
+function listCandidateConfigs(db, userId, serviceType) {
   let configs = [];
   try {
-    configs = aiConfigService.listConfigs(db, serviceType).filter((item) => item.is_active);
+    configs = userAiConfigService
+      .listRuntimeConfigs(db, userId, serviceType)
+      .filter((item) => item.is_active);
     if (!configs.length && serviceType === 'storyboard_image') {
-      configs = aiConfigService.listConfigs(db, 'image').filter((item) => item.is_active);
+      configs = userAiConfigService
+        .listRuntimeConfigs(db, userId, 'image')
+        .filter((item) => item.is_active);
     }
   } catch (_) {
     return [];
@@ -55,23 +59,29 @@ function effectiveModel(config, preferredModel, modelOverride) {
   return models[0] || null;
 }
 
-function getSceneMapRow(db, sceneKey) {
+function getSceneMapRow(db, userId, sceneKey) {
   try {
-    return db.prepare('SELECT * FROM ai_model_map WHERE key = ?').get(sceneKey) || null;
+    return db.prepare(
+      `SELECT id, user_id, scene_key AS key, service_type, config_id,
+              model_override, description, created_at, updated_at
+         FROM user_ai_scene_model_maps
+        WHERE user_id = ? AND scene_key = ?`
+    ).get(userAiConfigService.requireUserId(userId), sceneKey) || null;
   } catch (_) {
     return null;
   }
 }
 
 function resolveSceneModelSelection(db, sceneKey, options = {}) {
+  const userId = userAiConfigService.requireUserId(options.userId);
   const scene = getBusinessScene(sceneKey);
   const serviceType = scene?.service_type || options.serviceType || 'text';
-  const row = scene ? getSceneMapRow(db, scene.key) : null;
-  const candidates = listCandidateConfigs(db, serviceType);
+  const row = scene ? getSceneMapRow(db, userId, scene.key) : null;
+  const candidates = listCandidateConfigs(db, userId, serviceType);
   let config = null;
 
   if (row?.config_id) {
-    const selected = aiConfigService.getConfig(db, row.config_id);
+    const selected = userAiConfigService.getRuntimeConfig(db, userId, row.config_id);
     if (configSupportsService(selected, serviceType)) config = selected;
   }
   if (!config) config = chooseDefaultConfig(candidates, row ? null : options.preferredModel);
@@ -93,15 +103,25 @@ function promptPresentationByKey() {
   return new Map(buildCatalog().map((item) => [item.prompt_key, item]));
 }
 
-function buildBusinessSceneOverview(db) {
+function buildBusinessSceneOverview(db, userIdValue) {
+  const userId = Number(userIdValue) > 0 ? Number(userIdValue) : 0;
   const presentation = promptPresentationByKey();
   let mapRows = [];
   let configs = [];
   try {
-    mapRows = db.prepare('SELECT * FROM ai_model_map').all();
+    mapRows = db.prepare(
+      `SELECT id, user_id, scene_key AS key, service_type, config_id,
+              model_override, description, created_at, updated_at
+         FROM user_ai_scene_model_maps
+        WHERE user_id = ?`
+    ).all(userId);
   } catch (_) {}
   try {
-    configs = aiConfigService.listConfigs(db).filter((config) => config.is_active);
+    configs = userId
+      ? userAiConfigService
+          .listRuntimeConfigs(db, userId)
+          .filter((config) => config.is_active)
+      : [];
   } catch (_) {}
   const mapByKey = new Map(mapRows.map((row) => [row.key, row]));
   const configById = new Map(configs.map((config) => [Number(config.id), config]));

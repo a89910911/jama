@@ -6,6 +6,10 @@ const storageLayout = require('./storageLayout');
 function list(db, query) {
   let sql = 'FROM video_merges WHERE deleted_at IS NULL';
   const params = [];
+  if (query.user_id) {
+    sql += ' AND requested_by_user_id = ?';
+    params.push(Number(query.user_id));
+  }
   if (query.episode_id) {
     sql += ' AND episode_id = ?';
     params.push(query.episode_id);
@@ -35,23 +39,46 @@ function rowToItem(r) {
   };
 }
 
-function getById(db, id) {
-  const r = db.prepare('SELECT * FROM video_merges WHERE id = ? AND deleted_at IS NULL').get(Number(id));
+function getById(db, id, userId) {
+  const r = userId
+    ? db.prepare(
+        `SELECT * FROM video_merges
+          WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+      ).get(Number(id), Number(userId))
+    : db.prepare(
+        'SELECT * FROM video_merges WHERE id = ? AND deleted_at IS NULL'
+      ).get(Number(id));
   return r ? rowToItem(r) : null;
 }
 
 function create(db, log, req) {
   const now = new Date().toISOString();
   const taskService = require('./taskService');
-  const task = taskService.createTask(db, log, 'video_merge', String(req.episode_id || ''));
+  const aiRequestLogService = require('./aiRequestLogService');
+  const userId = aiRequestLogService.currentUserId(req.user_id);
+  if (!userId) throw new Error('缺少有效的用户身份');
   const mergeOptionsJson = (() => {
     const o = req.merge_options;
     if (o && typeof o === 'object') return JSON.stringify(o);
     return '{}';
   })();
+  const mergeOptions = JSON.parse(mergeOptionsJson);
+  let ttsConfig = null;
+  if (mergeOptions.burn_narration_subtitles) {
+    ttsConfig = require('./ttsService').resolveTtsConfig(db, { user_id: userId });
+  }
+  const task = taskService.createTask(
+    db,
+    log,
+    'video_merge',
+    String(req.episode_id || ''),
+    userId
+  );
   const info = db.prepare(
-    `INSERT INTO video_merges (episode_id, drama_id, title, provider, model, status, scenes, merge_options, task_id, created_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`
+    `INSERT INTO video_merges
+      (episode_id, drama_id, title, provider, model, status, scenes, merge_options,
+       task_id, requested_by_user_id, tts_config_id, tts_config_revision_id, created_at)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     Number(req.episode_id) || 0,
     Number(req.drama_id) || 0,
@@ -61,14 +88,24 @@ function create(db, log, req) {
     req.scenes ? JSON.stringify(req.scenes) : '[]',
     mergeOptionsJson,
     task.id,
+    userId,
+    ttsConfig?.id || null,
+    ttsConfig?.revision_id || null,
     now
   );
-  return { merge_id: info.lastInsertRowid, task_id: task.id, ...getById(db, info.lastInsertRowid) };
+  return {
+    merge_id: info.lastInsertRowid,
+    task_id: task.id,
+    ...getById(db, info.lastInsertRowid, userId),
+  };
 }
 
-function deleteById(db, log, id) {
+function deleteById(db, log, id, userId) {
   const now = new Date().toISOString();
-  const result = db.prepare('UPDATE video_merges SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, Number(id));
+  const result = db.prepare(
+    `UPDATE video_merges SET deleted_at = ?
+      WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+  ).run(now, Number(id), Number(userId));
   return result.changes > 0;
 }
 
@@ -260,6 +297,9 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
         scenes,
         episodeId,
         mergeOpts,
+        user_id: r.requested_by_user_id,
+        ai_config_id: r.tts_config_id,
+        ai_config_revision_id: r.tts_config_revision_id,
       });
       if (post.ok && post.relativePath) {
         mergedRelativePath = post.relativePath;

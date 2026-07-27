@@ -660,7 +660,13 @@ input_reference = (图片文件，可选)</pre>
           <el-input
             v-model="form.api_key"
             type="password"
-            :placeholder="form.service_type === 'jimeng2_character_auth' ? 'Bearer Token' : (form.provider === 'jimeng_ai_api' ? '即梦 Session，多个用英文逗号分隔' : 'API 密钥')"
+            :placeholder="editingId
+              ? '已配置时留空表示不修改'
+              : (form.service_type === 'jimeng2_character_auth'
+                ? 'Bearer Token'
+                : (form.provider === 'jimeng_ai_api'
+                  ? '即梦 Session，多个用英文逗号分隔'
+                  : 'API 密钥'))"
             show-password
           />
         </el-form-item>
@@ -1642,8 +1648,12 @@ const rules = computed(() => ({
     {
       validator: (_rule, v, cb) => {
         const st = form.value.service_type
+        const existing = editingId.value
+          ? list.value.find((item) => item.id === editingId.value)
+          : null
         if (st === 'jimeng2_character_auth') {
           if (v != null && String(v).trim()) return cb()
+          if (existing?.credentials?.api_key?.configured) return cb()
           return cb(new Error('请填写 Token'))
         }
         const proto = form.value.api_protocol
@@ -1651,6 +1661,13 @@ const rules = computed(() => ({
         const sk = (form.value.kling_secret_key || '').trim()
         if (st === 'video' && proto === 'kling_omni' && ak && sk) return cb()
         if (v != null && String(v).trim()) return cb()
+        if (existing?.credentials?.api_key?.configured) return cb()
+        if (
+          st === 'video'
+          && proto === 'kling_omni'
+          && existing?.credentials?.kling_access_key?.configured
+          && existing?.credentials?.kling_secret_key?.configured
+        ) return cb()
         cb(new Error('请输入 API Key，或使用官方 AccessKey + SecretKey（可不填 API Key）'))
       },
       trigger: 'blur',
@@ -2402,7 +2419,7 @@ function openEdit(row) {
     provider: row.provider,
     api_protocol: row.api_protocol || '',
     base_url: row.base_url,
-    api_key: row.api_key,
+    api_key: '',
     endpoint: row.endpoint || '',
     query_endpoint: row.query_endpoint || '',
     modelText: modelList.join('\n'),
@@ -2476,7 +2493,6 @@ async function submit() {
       provider: form.value.provider,
       api_protocol: form.value.api_protocol || '',
       base_url: form.value.base_url,
-      api_key: form.value.api_key,
       endpoint: form.value.endpoint || '',
       query_endpoint: form.value.query_endpoint || '',
       model: modelList,
@@ -2484,6 +2500,9 @@ async function submit() {
       priority: form.value.priority,
       is_default: form.value.is_default,
       ...(settings !== undefined ? { settings } : {}),
+    }
+    if (!editingId.value || form.value.api_key.trim()) {
+      payload.api_key = form.value.api_key
     }
     if (editingId.value) {
       await aiAPI.update(editingId.value, payload)
@@ -2528,7 +2547,10 @@ function onJimeng2AssetsDialogClosed() {
 }
 
 async function fetchJimeng2MaterialAssets(firstPage) {
-  if (!form.value.base_url?.trim() || !form.value.api_key?.trim()) {
+  const savedCredential = editingId.value
+    ? list.value.find((item) => item.id === editingId.value)?.credentials?.api_key?.configured
+    : false
+  if (!form.value.base_url?.trim() || (!form.value.api_key?.trim() && !savedCredential)) {
     ElMessage.warning('请先填写网关 URL 与 Token')
     return
   }
@@ -2541,8 +2563,9 @@ async function fetchJimeng2MaterialAssets(firstPage) {
   jimeng2AssetsLoading.value = true
   try {
     const data = await aiAPI.listJimeng2MaterialAssets({
+      config_id: editingId.value || undefined,
       base_url: form.value.base_url.trim(),
-      api_key: form.value.api_key,
+      api_key: form.value.api_key || undefined,
       limit: 20,
       cursor: firstPage ? undefined : jimeng2AssetsNextCursor.value || undefined,
     })
@@ -2585,8 +2608,8 @@ async function openTest(row) {
   testServiceType.value = row.service_type || 'text'
   try {
     await aiAPI.testConnection({
+      config_id: row.id,
       base_url: row.base_url,
-      api_key: row.api_key,
       model: Array.isArray(row.model) ? row.model[0] : row.model,
       provider: row.provider,
       api_protocol: row.api_protocol,

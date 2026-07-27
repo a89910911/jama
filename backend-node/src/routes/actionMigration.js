@@ -33,6 +33,13 @@ function cleanupFiles(files) {
   }
 }
 
+function ownsJob(db, jobId, userId) {
+  return !!db.prepare(
+    `SELECT id FROM action_migration_jobs
+      WHERE id = ? AND user_id = ? AND deleted_at IS NULL`
+  ).get(String(jobId), Number(userId));
+}
+
 function uploadMiddleware(req, res, next) {
   upload.fields([
     { name: 'driving_video', maxCount: 1 },
@@ -65,7 +72,13 @@ function routes(db, cfg, log) {
 
     listJobs: (req, res) => {
       try {
-        response.success(res, actionMigrationService.listJobs(db, cfg, req.query || {}));
+        response.success(
+          res,
+          actionMigrationService.listJobs(db, cfg, {
+            ...(req.query || {}),
+            user_id: req.user.id,
+          })
+        );
       } catch (err) {
         log.error('action migration listJobs', { error: err.message });
         response.internalError(res, err.message);
@@ -76,7 +89,13 @@ function routes(db, cfg, log) {
       uploadMiddleware,
       (req, res) => {
         try {
-          const job = actionMigrationService.createJob(db, cfg, log, req.body || {}, req.files || {});
+          const job = actionMigrationService.createJob(
+            db,
+            cfg,
+            log,
+            { ...(req.body || {}), user_id: req.user.id },
+            req.files || {}
+          );
           response.created(res, job);
         } catch (err) {
           cleanupFiles(req.files);
@@ -88,6 +107,9 @@ function routes(db, cfg, log) {
 
     getJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const job = actionMigrationService.getJob(db, cfg, req.params.job_id);
         if (!job) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, job);
@@ -99,6 +121,9 @@ function routes(db, cfg, log) {
 
     preflightJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const report = actionMigrationService.updatePreflight(db, cfg, req.params.job_id);
         if (!report) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, report);
@@ -110,6 +135,9 @@ function routes(db, cfg, log) {
 
     submitJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const job = actionMigrationService.submitJob(db, cfg, log, req.params.job_id, req.body || {});
         if (!job) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, job);
@@ -121,6 +149,9 @@ function routes(db, cfg, log) {
 
     retryJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const job = actionMigrationService.retryJob(db, cfg, log, req.params.job_id, req.body || {});
         if (!job) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, job);
@@ -132,6 +163,9 @@ function routes(db, cfg, log) {
 
     cancelJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const job = actionMigrationService.cancelJob(db, log, req.params.job_id);
         if (!job) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, job);
@@ -143,6 +177,9 @@ function routes(db, cfg, log) {
 
     deleteJob: (req, res) => {
       try {
+        if (!ownsJob(db, req.params.job_id, req.user.id)) {
+          return response.notFound(res, '动作迁移任务不存在');
+        }
         const ok = actionMigrationService.deleteJob(db, req.params.job_id);
         if (!ok) return response.notFound(res, '动作迁移任务不存在');
         response.success(res, { ok: true });

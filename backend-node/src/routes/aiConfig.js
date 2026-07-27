@@ -1,10 +1,11 @@
 const aiConfigService = require('../services/aiConfigService');
+const userAiConfigService = require('../services/userAiConfigService');
 const aiRequestLogService = require('../services/aiRequestLogService');
 const response = require('../response');
 
 function list(db) {
   return (req, res) => {
-    const list = aiConfigService.listConfigs(db, req.query.service_type);
+    const list = userAiConfigService.listConfigs(db, req.user.id, req.query.service_type);
     response.success(res, list);
   };
 }
@@ -13,7 +14,7 @@ function get(db) {
   return (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return response.badRequest(res, '无效的配置ID');
-    const config = aiConfigService.getConfig(db, id);
+    const config = userAiConfigService.getConfig(db, req.user.id, id);
     if (!config) return response.notFound(res, '配置不存在');
     response.success(res, config);
   };
@@ -22,15 +23,16 @@ function get(db) {
 function vendorLock(cfg) {
   return (req, res) => {
     const status = aiConfigService.getVendorLockStatus(cfg);
-    response.success(res, status);
+    response.success(res, {
+      enabled: false,
+      template_policy_enabled: status.enabled,
+      config_file: status.config_file,
+    });
   };
 }
 
 function create(db, log, cfg) {
   return (req, res) => {
-    if (aiConfigService.getVendorLockStatus(cfg).enabled) {
-      return response.badRequest(res, '当前为厂商锁定模式，不允许添加配置');
-    }
     const body = req.body || {};
     if (!body.service_type || !body.name || !body.provider || !body.base_url) {
       return response.badRequest(res, '缺少必填字段: service_type, name, provider, base_url');
@@ -39,7 +41,7 @@ function create(db, log, cfg) {
       return response.badRequest(res, '缺少必填字段: api_key');
     }
     try {
-      const config = aiConfigService.createConfig(db, log, {
+      const config = userAiConfigService.createConfig(db, log, req.user.id, {
         ...body,
         model: body.model ?? [],
       });
@@ -56,17 +58,9 @@ function update(db, log, cfg) {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return response.badRequest(res, '无效的配置ID');
 
-    let body = req.body || {};
-    // 锁定模式下只允许修改 api_key、default_model、is_default
-    if (aiConfigService.getVendorLockStatus(cfg).enabled) {
-      const allowed = {};
-      if (body.api_key !== undefined) allowed.api_key = body.api_key;
-      if (body.default_model !== undefined) allowed.default_model = body.default_model;
-      if (body.is_default !== undefined) allowed.is_default = body.is_default;
-      body = allowed;
-    }
+    const body = req.body || {};
 
-    const config = aiConfigService.updateConfig(db, log, id, body);
+    const config = userAiConfigService.updateConfig(db, log, req.user.id, id, body);
     if (!config) return response.notFound(res, '配置不存在');
     response.success(res, config);
   };
@@ -78,7 +72,7 @@ function setDefault(db, log) {
     if (isNaN(id)) return response.badRequest(res, '无效的配置 ID');
 
     try {
-      const config = aiConfigService.setDefaultConfig(db, log, id);
+      const config = userAiConfigService.setDefaultConfig(db, log, req.user.id, id);
       if (!config) return response.notFound(res, '配置不存在');
       response.success(res, config);
     } catch (err) {
@@ -92,7 +86,7 @@ function listModels(db, log) {
   return async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return response.badRequest(res, '无效的配置 ID');
-    const config = aiConfigService.getConfig(db, id);
+    const config = userAiConfigService.getRuntimeConfig(db, req.user.id, id);
     if (!config) return response.notFound(res, '配置不存在');
 
     try {
@@ -114,12 +108,9 @@ function listModels(db, log) {
 
 function remove(db, log, cfg) {
   return (req, res) => {
-    if (aiConfigService.getVendorLockStatus(cfg).enabled) {
-      return response.badRequest(res, '当前为厂商锁定模式，不允许删除配置');
-    }
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return response.badRequest(res, '无效的配置ID');
-    const ok = aiConfigService.deleteConfig(db, log, id);
+    const ok = userAiConfigService.deleteConfig(db, log, req.user.id, id);
     if (!ok) return response.notFound(res, '配置不存在');
     response.success(res, { message: '删除成功' });
   };
@@ -127,15 +118,12 @@ function remove(db, log, cfg) {
 
 function bulkUpdateKey(db, log, cfg) {
   return (req, res) => {
-    if (!aiConfigService.getVendorLockStatus(cfg).enabled) {
-      return response.badRequest(res, '批量换Key仅在厂商锁定模式下可用');
-    }
     const { api_key } = req.body || {};
     if (!api_key || !api_key.trim()) {
       return response.badRequest(res, '请提供新的 API Key');
     }
     try {
-      const count = aiConfigService.bulkUpdateApiKey(db, log, api_key.trim());
+      const count = userAiConfigService.bulkUpdateApiKey(db, log, req.user.id, api_key.trim());
       response.success(res, { updated: count, message: `已更新 ${count} 条配置的 API Key` });
     } catch (err) {
       log.error('Bulk update api_key failed', { error: err.message });
@@ -146,9 +134,28 @@ function bulkUpdateKey(db, log, cfg) {
 
 function testConnection(db, log) {
   return async (req, res) => {
-    const body = req.body || {};
+    const requested = req.body || {};
+    const savedConfig = requested.config_id
+      ? userAiConfigService.getRuntimeConfig(
+          db,
+          req.user.id,
+          Number(requested.config_id)
+        )
+      : null;
+    if (requested.config_id && !savedConfig) {
+      return response.notFound(res, '配置不存在');
+    }
+    const body = savedConfig
+      ? {
+          ...savedConfig,
+          ...requested,
+          api_key: savedConfig.api_key,
+          settings: savedConfig.settings,
+        }
+      : requested;
     const model = Array.isArray(body.model) ? body.model[0] : body.model;
     const record = aiRequestLogService.start(db, {
+      user_id: req.user.id,
       service_type: 'connection_test',
       operation: 'test_connection',
       provider: body.provider || null,
@@ -188,28 +195,57 @@ function testConnection(db, log) {
 }
 
 /** ModelArk / 方舟私有资产库：代理调用 CreateAssetGroup、ListAssets 等（与官方 Action 名一致） */
-function modelArkAsset(log) {
+function parseSettings(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function modelArkAsset(db, log) {
   return async (req, res) => {
     const body = req.body || {};
     const action = (body.action || '').toString().trim();
+    const configId = Number.parseInt(body.config_id, 10);
+    const savedConfig = Number.isInteger(configId) && configId > 0
+      ? userAiConfigService.getRuntimeConfig(db, req.user.id, configId)
+      : null;
+    if (Number.isInteger(configId) && configId > 0 && !savedConfig) {
+      return response.notFound(res, '配置不存在');
+    }
+    if (savedConfig && savedConfig.service_type !== 'model_ark_asset') {
+      return response.badRequest(res, '所选配置不是 SD2 资产库配置');
+    }
+    if (savedConfig && !savedConfig.is_active) {
+      return response.badRequest(res, '所选配置未启用');
+    }
+    const savedSettings = parseSettings(savedConfig?.settings);
+    const valueOrSaved = (value, key) => {
+      const clean = value == null ? '' : String(value).trim();
+      return clean || savedSettings[key];
+    };
     try {
       const modelArkAssetProxyService = require('../services/modelArkAssetProxyService');
       const data = await modelArkAssetProxyService.callModelArkAsset(
         {
-          base_url: body.base_url,
-          api_key: body.api_key,
+          base_url: body.base_url || savedConfig?.base_url,
+          api_key: body.api_key || savedConfig?.api_key,
           action,
           body: body.payload,
-          path_mode: body.path_mode,
+          path_mode: body.path_mode || savedSettings.path_mode,
           http_method: body.http_method,
-          api_version: body.api_version,
-          auth_mode: body.auth_mode,
-          access_key_id: body.access_key_id,
-          secret_access_key: body.secret_access_key,
-          sign_region: body.sign_region,
-          sign_service: body.sign_service,
-          session_token: body.session_token,
-          project_name: body.project_name,
+          api_version: body.api_version || savedSettings.api_version,
+          auth_mode: body.auth_mode || savedSettings.auth_mode,
+          access_key_id: valueOrSaved(body.access_key_id, 'access_key_id'),
+          secret_access_key: valueOrSaved(body.secret_access_key, 'secret_access_key'),
+          sign_region: body.sign_region || savedSettings.sign_region,
+          sign_service: body.sign_service || savedSettings.sign_service,
+          session_token: valueOrSaved(body.session_token, 'session_token'),
+          project_name: body.project_name || savedSettings.project_name,
         },
         log
       );
@@ -223,12 +259,28 @@ function modelArkAsset(log) {
 }
 
 /** 即梦2角色认证：代理 GET 素材列表（表单未保存也可用当前填写的网关与 Token） */
-function listJimeng2MaterialAssets(log) {
+function listJimeng2MaterialAssets(db, log) {
   return async (req, res) => {
     const body = req.body || {};
-    const base_url = (body.base_url || '').toString().trim().replace(/\/$/, '');
+    const configId = Number.parseInt(body.config_id, 10);
+    const savedConfig = Number.isInteger(configId) && configId > 0
+      ? userAiConfigService.getRuntimeConfig(db, req.user.id, configId)
+      : null;
+    if (Number.isInteger(configId) && configId > 0 && !savedConfig) {
+      return response.notFound(res, '配置不存在');
+    }
+    if (savedConfig && savedConfig.service_type !== 'jimeng2_character_auth') {
+      return response.badRequest(res, '所选配置不是即梦2角色认证配置');
+    }
+    if (savedConfig && !savedConfig.is_active) {
+      return response.badRequest(res, '所选配置未启用');
+    }
+    const base_url = (body.base_url || savedConfig?.base_url || '')
+      .toString()
+      .trim()
+      .replace(/\/$/, '');
     const { normalizeMaterialHubToken } = require('../services/jimengMaterialHubService');
-    let api_key = normalizeMaterialHubToken(body.api_key || '');
+    const api_key = normalizeMaterialHubToken(body.api_key || savedConfig?.api_key || '');
     if (!base_url || !api_key) {
       return response.badRequest(res, '请先填写网关 URL 与 Token');
     }
@@ -250,7 +302,7 @@ function holyCrabAssets(db, log) {
     if (!Number.isFinite(configId) || configId <= 0) {
       return response.badRequest(res, '请选择 HolyCrab 配置');
     }
-    const config = aiConfigService.getConfig(db, configId);
+    const config = userAiConfigService.getRuntimeConfig(db, req.user.id, configId);
     if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
     if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
 
@@ -290,7 +342,7 @@ function holyCrabAssetContent(db, log) {
     if (!Number.isFinite(configId) || configId <= 0) {
       return response.badRequest(res, 'HolyCrab 配置 ID 无效');
     }
-    const config = aiConfigService.getConfig(db, configId);
+    const config = userAiConfigService.getRuntimeConfig(db, req.user.id, configId);
     if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
     if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
 
@@ -325,8 +377,8 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     listModels: listModels(db, log),
     delete: remove(db, log, cfg),
     testConnection: testConnection(db, log),
-    listJimeng2MaterialAssets: listJimeng2MaterialAssets(log),
-    modelArkAsset: modelArkAsset(log),
+    listJimeng2MaterialAssets: listJimeng2MaterialAssets(db, log),
+    modelArkAsset: modelArkAsset(db, log),
     holyCrabAssets: holyCrabAssets(db, log),
     holyCrabAssetContent: holyCrabAssetContent(db, log),
     bulkUpdateKey: bulkUpdateKey(db, log, cfg),

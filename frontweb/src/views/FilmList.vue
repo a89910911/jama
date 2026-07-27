@@ -37,8 +37,8 @@
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
           </el-button>
-          <el-button v-if="authState.user?.is_super_admin" class="btn-settings" @click="openAiConfig">
-            <el-icon><Setting /></el-icon>系统配置
+          <el-button class="btn-settings" @click="openAiConfig">
+            <el-icon><Setting /></el-icon>我的 AI 配置
           </el-button>
           <el-button class="btn-import" :loading="importing" @click="triggerImport">
             <el-icon><Upload /></el-icon>导入项目

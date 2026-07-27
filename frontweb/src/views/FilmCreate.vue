@@ -56,7 +56,7 @@
           <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
             {{ isDark ? '浅色' : '暗色' }}
-          </el-button><el-button v-if="authState.user?.is_super_admin" class="btn-ai-config" @click="openAiConfig">
+          </el-button><el-button class="btn-ai-config" @click="openAiConfig">
             <el-icon><Setting /></el-icon>
             AI配置
           </el-button>
@@ -2175,7 +2175,7 @@
             </div>
           </el-form-item>
         </div>
-        <p v-if="authState.user?.is_super_admin" class="config-tip">文本/图片/视频使用的模型以「<el-link type="primary" underline="never" @click="openAiConfig">AI 配置</el-link>」中设为默认的为准。</p>
+        <p class="config-tip">文本/图片/视频使用当前账号「<el-link type="primary" underline="never" @click="openAiConfig">AI 配置</el-link>」中设为默认的模型。</p>
       </section>
 
       <!-- 8. 合成视频 -->

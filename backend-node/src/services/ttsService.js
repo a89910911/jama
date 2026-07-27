@@ -8,6 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const aiRequestLogService = require('./aiRequestLogService');
+const userAiConfigService = require('./userAiConfigService');
+const { resolveForExecution } = require('./userAiConfigResolver');
 const {
   isFalConfig,
   falDirectBase,
@@ -214,14 +216,47 @@ async function synthesizeWithFal(text, voiceId, config, model, settings) {
  * 合成 TTS 并保存到本地文件
  * @returns {{ local_path: string, audio_url: string }}
  */
-async function synthesizeInternal(db, log, { text, storyboard_id, config, storage_base, voice_id, speed }) {
+function resolveTtsConfig(db, options = {}) {
+  const userId = userAiConfigService.requireUserId(
+    aiRequestLogService.currentUserId(options.user_id)
+  );
+  if (options.config) {
+    if (Number(options.config.user_id) !== userId) {
+      const error = new Error('不能使用其他用户的 TTS 配置');
+      error.code = 'AI_CONFIG_FORBIDDEN';
+      throw error;
+    }
+    return options.config;
+  }
+  if (options.ai_config_id && options.ai_config_revision_id) {
+    const pinned = userAiConfigService.getRuntimeConfigByRevision(
+      db,
+      userId,
+      options.ai_config_id,
+      options.ai_config_revision_id,
+      { includeDeleted: true }
+    );
+    if (!pinned || pinned.service_type !== 'tts') {
+      const error = new Error('提交任务时使用的个人 TTS 配置已不存在');
+      error.code = 'AI_CONFIG_NOT_FOUND';
+      throw error;
+    }
+    return pinned;
+  }
+  return resolveForExecution(db, {
+    userId,
+    serviceType: 'tts',
+    explicitConfigId: options.ai_config_id,
+  }).config;
+}
+
+async function synthesizeInternal(
+  db,
+  log,
+  { text, storyboard_id, storage_base, voice_id, speed, ...configOptions }
+) {
   if (!text || !text.trim()) throw new Error('text 不能为空');
-  const aiConfigService = require('./aiConfigService');
-  const ttsConfig = config || (() => {
-    const configs = aiConfigService.listConfigs(db, 'tts');
-    const active = configs.filter((c) => c.is_active);
-    return active.find((c) => c.is_default) || active[0];
-  })();
+  const ttsConfig = resolveTtsConfig(db, configOptions);
   if (!ttsConfig) throw new Error('未配置 TTS 模型，请在「AI 配置」中添加 service_type=tts 的配置');
 
   const provider = (ttsConfig.provider || '').toLowerCase();
@@ -251,7 +286,6 @@ async function synthesizeInternal(db, log, { text, storyboard_id, config, storag
       ttsModel || 'speech-02-hd'
     );
   } else if (provider === 'openai' || ttsConfig.base_url) {
-    console.log('==c sxy synthesizeWithOpenai', text, voiceId, ttsConfig.api_key, ttsConfig.base_url, ttsModel, finalSpeed);
     audioBuffer = await synthesizeWithOpenai(
       text,
       voiceId || 'alloy',
@@ -278,13 +312,10 @@ async function synthesizeInternal(db, log, { text, storyboard_id, config, storag
 
 function resolveTtsLogMeta(db, options = {}) {
   try {
-    const aiConfigService = require('./aiConfigService');
-    const config = options.config || (() => {
-      const active = aiConfigService.listConfigs(db, 'tts').filter((item) => item.is_active);
-      return active.find((item) => item.is_default) || active[0];
-    })();
+    const config = resolveTtsConfig(db, options);
     return {
       config_id: config?.id || null,
+      config_revision_id: config?.revision_id || null,
       provider: config?.provider || null,
       model: config?.default_model
         || (Array.isArray(config?.model) ? config.model[0] : config?.model)
@@ -298,6 +329,7 @@ function resolveTtsLogMeta(db, options = {}) {
 async function synthesize(db, log, options) {
   const meta = resolveTtsLogMeta(db, options);
   const record = aiRequestLogService.start(db, {
+    user_id: options.user_id,
     service_type: 'tts',
     operation: 'speech_synthesis',
     ...meta,
@@ -323,6 +355,7 @@ async function synthesize(db, log, options) {
 
 module.exports = {
   synthesize,
+  resolveTtsConfig,
   resolveFalTtsEndpoint,
   buildFalTtsInput,
   synthesizeWithFal,

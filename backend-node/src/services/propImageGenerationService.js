@@ -66,9 +66,8 @@ async function processPropImageGeneration(db, log, taskId, propId, opts) {
     : '';
   const assetPrompt = appendPrompt(String(prop.prompt).trim(), layoutPrompt);
   const fullPrompt = appendPrompt(assetPrompt, style);
-  // 与角色/场景一致：使用前端「图片生成模型」选择的 model；未传时用 YAML default_image_provider 兜底
+  // 使用当前用户的个人图片配置；不再从 YAML 读取共享供应商回退。
   const model = (opts && opts.model) ? String(opts.model).trim() || null : null;
-  const preferredProvider = !model && cfg?.ai?.default_image_provider ? cfg.ai.default_image_provider : null;
   const userNeg = imageClient.resolveAssetUserNegativeForApi(model, prop.negative_prompt);
 
   let result;
@@ -79,8 +78,8 @@ async function processPropImageGeneration(db, log, taskId, propId, opts) {
       size: imageSize,
       drama_id: prop.drama_id,
       model: model || undefined,
-      preferred_provider: preferredProvider || undefined,
       user_negative_prompt: userNeg || undefined,
+      user_id: opts?.user_id,
     });
   } catch (err) {
     const errMsg = '图片生成请求失败: ' + (err.message || '未知错误');
@@ -162,7 +161,13 @@ function generatePropImage(db, log, propId, opts) {
     throw new Error('道具没有图片提示词');
   }
 
-  const task = taskService.createTask(db, log, 'prop_image_generation', String(propId));
+  const task = taskService.createTask(
+    db,
+    log,
+    'prop_image_generation',
+    String(propId),
+    opts?.user_id
+  );
   setImmediate(() => {
     processPropImageGeneration(db, log, task.id, propId, opts || {}).catch((err) => {
       log.error('processPropImageGeneration fatal', { error: err.message, task_id: task.id });

@@ -122,7 +122,7 @@ function createSession(db, details) {
   const episode = verifyEpisode(db, dramaId, details.episode_id);
   const now = new Date().toISOString();
   const id = randomUUID();
-  const engine = assistantSettings.getAssistantEngine(db);
+  const engine = assistantSettings.getAssistantEngine(db, details.user_id);
   const title = String(
     details.title
       || (episode ? `第${episode.episode_number || ''}集 AI 对话` : `${drama.title || '项目'} AI 对话`)
@@ -728,7 +728,7 @@ function validateImageTarget(db, session, body) {
 
 function runtimeForSession(db, log, session) {
   if (session.engine === assistantSettings.ENGINE_CONFIGURED_API) {
-    return getConfiguredApiRuntime({ db, log });
+    return getConfiguredApiRuntime({ db, log, userId: session.user_id });
   }
   return getCodexRuntime({ log });
 }
@@ -2398,7 +2398,13 @@ function startMessage(db, cfg, log, details) {
     throw error;
   }
 
-  const task = taskService.createTask(db, log, 'codex_chat', `codex_chat:${session.id}`);
+  const task = taskService.createTask(
+    db,
+    log,
+    'codex_chat',
+    `codex_chat:${session.id}`,
+    session.user_id
+  );
   const explicitHint = codexIntents.SUPPORTED_INTENTS.includes(details.intent_hint)
     ? details.intent_hint
     : '';

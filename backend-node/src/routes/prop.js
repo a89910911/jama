@@ -56,7 +56,7 @@ function generateImage(db, log) {
         db,
         log,
         id,
-        { model, style, useQuadGrid }
+        { model, style, useQuadGrid, user_id: req.user.id }
       );
       response.success(res, { task_id: taskId });
     } catch (err) {

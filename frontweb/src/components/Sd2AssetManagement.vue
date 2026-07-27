@@ -334,6 +334,15 @@ const savedModelArkConfigs = computed(() => {
   return (props.configs || []).filter((c) => c.service_type === 'model_ark_asset')
 })
 
+const selectedSavedConfig = computed(() => {
+  if (!savedConfigId.value) return null
+  return savedModelArkConfigs.value.find((item) => item.id === savedConfigId.value) || null
+})
+
+function hasSavedCredential(key) {
+  return !!selectedSavedConfig.value?.credentials?.[key]?.configured
+}
+
 function parseSettingsJson(raw) {
   if (!raw) return {}
   if (typeof raw === 'object') return raw
@@ -349,7 +358,7 @@ function loadFromSavedRow(row) {
   if (!row) return
   savedConfigId.value = row.id
   baseUrl.value = (row.base_url || '').replace(/\/$/, '')
-  apiKey.value = row.api_key || ''
+  apiKey.value = ''
   const s = parseSettingsJson(row.settings)
   authMode.value = s.auth_mode || 'volc_sign'
   pathMode.value = s.path_mode || 'open_api_query'
@@ -357,8 +366,8 @@ function loadFromSavedRow(row) {
   projectName.value = s.project_name || ''
   billingModel.value = s.billing_model || ''
   assetGroupIdForCert.value = s.asset_group_id || ''
-  accessKeyId.value = s.access_key_id || ''
-  secretAccessKey.value = s.secret_access_key || ''
+  accessKeyId.value = ''
+  secretAccessKey.value = ''
   signRegion.value = s.sign_region || ''
   if (assetGroupIdForCert.value) assetGroupIdInput.value = assetGroupIdForCert.value
 }
@@ -414,12 +423,14 @@ async function saveToAiConfig() {
     name: 'SD2 资产库',
     provider: 'model_ark',
     base_url: baseUrl.value.trim(),
-    api_key: authMode.value === 'bearer' ? apiKey.value : '',
     model: ['-'],
     default_model: '-',
     priority: 10,
     is_default: true,
     settings: JSON.stringify(settings),
+  }
+  if (!savedConfigId.value || apiKey.value.trim()) {
+    payload.api_key = authMode.value === 'bearer' ? apiKey.value : ''
   }
   savingConfig.value = true
   try {
@@ -478,8 +489,8 @@ function onFillFromSaved(id) {
   const c = (props.configs || []).find((x) => x.id === id)
   if (!c) return
   baseUrl.value = (c.base_url || '').replace(/\/$/, '')
-  apiKey.value = c.api_key || ''
-  ElMessage.success('已填入所选配置的 Base URL 与 API Key')
+  apiKey.value = ''
+  ElMessage.success('已填入所选配置的 Base URL；凭据不会返回浏览器')
 }
 
 function onGroupRowChange(row) {
@@ -500,19 +511,25 @@ function mergeBillingModel(payload, withModel) {
 function connReady() {
   if (!baseUrl.value.trim()) return false
   if (authMode.value === 'volc_sign') {
-    return !!(accessKeyId.value.trim() && secretAccessKey.value.trim())
+    return !!(
+      (accessKeyId.value.trim() || hasSavedCredential('access_key_id')) &&
+      (secretAccessKey.value.trim() || hasSavedCredential('secret_access_key'))
+    )
   }
-  return !!apiKey.value.trim()
+  return !!(apiKey.value.trim() || hasSavedCredential('api_key'))
 }
 
 function connWarn() {
   if (!baseUrl.value.trim()) return '请先填写 Base URL'
   if (authMode.value === 'volc_sign') {
-    if (!accessKeyId.value.trim() || !secretAccessKey.value.trim()) {
+    if (
+      (!accessKeyId.value.trim() && !hasSavedCredential('access_key_id')) ||
+      (!secretAccessKey.value.trim() && !hasSavedCredential('secret_access_key'))
+    ) {
       return '官方 OpenAPI 请填写 Access Key ID 与 Secret Access Key（控制台 IAM，非推理 API Key）'
     }
   } else if (!apiKey.value.trim()) {
-    return '请先填写 API Key'
+    if (!hasSavedCredential('api_key')) return '请先填写 API Key'
   }
   if (authMode.value === 'volc_sign' && pathMode.value !== 'open_api_query') {
     return 'AK/SK 签名请配合「官方 OpenAPI」路径模式'
@@ -523,6 +540,7 @@ function connWarn() {
 async function call(action, payload, opts = {}) {
   const { withBillingModel = false } = opts
   const body = {
+    config_id: savedConfigId.value || undefined,
     base_url: baseUrl.value.trim(),
     action,
     path_mode: pathMode.value,

@@ -12,13 +12,28 @@ function createApp() {
   const db = getDb(config.database);
   const { runMigrationsAndEnsure } = require('./db/migrate.js');
   runMigrationsAndEnsure(db);
+  const authService = require('./services/authService');
+  authService.ensureAuthSystem(db);
+  try {
+    const admin = db.prepare(
+      'SELECT id FROM user_accounts WHERE LOWER(username) = LOWER(?)'
+    ).get(authService.SUPER_ADMIN_USERNAME);
+    if (admin?.id) {
+      const migrated = require('./services/userAiConfigService')
+        .migrateLegacyConfigs(db, logger, admin.id);
+      if (migrated.migrated) {
+        logger.info('Migrated legacy AI configs to super admin', migrated);
+      }
+    }
+  } catch (error) {
+    logger.error('Legacy AI config migration failed', { error: error.message });
+    throw error;
+  }
   // Schema availability is stable after migrations; resolve it during startup so
   // the first wardrobe request does not pay for information_schema round trips.
   require('./services/characterLookService').hasWardrobeTables(db);
 
-  // 厂商锁定模式：在迁移完成后同步 vendor_lock 配置
-  const { applyVendorLock } = require('./services/aiConfigService');
-  applyVendorLock(db, logger, config);
+  // vendor_lock 仅保留为前端模板策略，不再创建或覆盖任何公共运行时配置。
   const log = logger;
 
   const taskService = require('./services/taskService');

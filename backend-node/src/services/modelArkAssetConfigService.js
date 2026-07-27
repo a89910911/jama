@@ -2,16 +2,18 @@
 
 const { callModelArkAsset } = require('./modelArkAssetProxyService');
 
-function loadModelArkAssetRow(db) {
+function loadModelArkAssetRow(db, userIdValue) {
   if (!db) return null;
   try {
-    return db
-      .prepare(
-        `SELECT id, name, base_url, api_key, settings FROM ai_service_configs
-         WHERE deleted_at IS NULL AND service_type = ? AND is_active = 1
-         ORDER BY is_default DESC, priority DESC, id ASC LIMIT 1`
-      )
-      .get('model_ark_asset');
+    const userAiConfigService = require('./userAiConfigService');
+    const aiRequestLogService = require('./aiRequestLogService');
+    const userId = userAiConfigService.requireUserId(
+      aiRequestLogService.currentUserId(userIdValue)
+    );
+    const configs = userAiConfigService
+      .listRuntimeConfigs(db, userId, 'model_ark_asset')
+      .filter((item) => item.is_active);
+    return configs.find((item) => item.is_default) || configs[0] || null;
   } catch (_) {
     return null;
   }
@@ -31,8 +33,8 @@ function parseSettingsJson(raw) {
 /**
  * @returns {{ ready: boolean, row?: object, settings?: object, callOpts?: object, assetGroupId?: string, diag?: object }}
  */
-function buildModelArkContext(db, log) {
-  const row = loadModelArkAssetRow(db);
+function buildModelArkContext(db, log, userId) {
+  const row = loadModelArkAssetRow(db, userId);
   if (!row) {
     return { ready: false, diag: { db_model_ark_row_found: false } };
   }

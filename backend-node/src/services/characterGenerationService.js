@@ -12,7 +12,7 @@ const characterLookService = require('./characterLookService');
  * 从角色外貌描述中提炼 6层视觉锚点，写入 characters.identity_anchors
  * 异步后台执行，不阻塞角色生成主流程
  */
-async function enrichIdentityAnchors(db, log, characterId, appearance) {
+async function enrichIdentityAnchors(db, log, characterId, appearance, userId) {
   if (!appearance || !String(appearance).trim()) return;
   try {
     const resolvedPrompts = promptTemplates.resolvePrompts(db, [
@@ -30,6 +30,7 @@ async function enrichIdentityAnchors(db, log, characterId, appearance) {
       scene_key: 'identity_anchors',
       max_tokens: 800,
       temperature: 0.1,
+      user_id: userId,
     });
     const anchors = safeParseAIJSON(raw, log);
     if (!anchors || typeof anchors !== 'object') return;
@@ -106,6 +107,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
       model: req.model || undefined,
       temperature,
       max_tokens: maxTokensForChars,
+      user_id: req.user_id,
     });
   } catch (err) {
     log.error('Character generation AI failed', { error: err.message, task_id: taskID });
@@ -176,7 +178,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
     // 异步后台提炼视觉锚点 + 预生成图片提示词，不阻塞主流程
     if (char.appearance) {
       setImmediate(() => {
-        enrichIdentityAnchors(db, log, newCharId, char.appearance).catch(() => {});
+        enrichIdentityAnchors(db, log, newCharId, char.appearance, req.user_id).catch(() => {});
         characterLibraryService.generateCharacterPromptOnly(db, log, effectiveCfg, newCharId, undefined, undefined).catch((err) => {
           log.warn('[提取角色] 预生成polished_prompt失败', { character_id: newCharId, error: err.message });
         });
@@ -217,6 +219,7 @@ function resumableRequest(req) {
     outline: req.outline,
     temperature: req.temperature,
     model: req.model,
+    user_id: req.user_id,
   };
 }
 
@@ -234,7 +237,13 @@ function scheduleCharacterGeneration(db, cfg, log, taskId, req, options = {}) {
 function generateCharacters(db, cfg, log, req) {
   const dramaId = String(req.drama_id || '');
   if (!dramaId) throw new Error('drama_id 必填');
-  const task = taskService.createTask(db, log, 'character_generation', dramaId);
+  const task = taskService.createTask(
+    db,
+    log,
+    'character_generation',
+    dramaId,
+    req.user_id
+  );
   const taskRequest = resumableRequest(req);
   taskService.setTaskRequestPayload(db, task.id, taskRequest);
   scheduleCharacterGeneration(db, cfg, log, task.id, taskRequest);

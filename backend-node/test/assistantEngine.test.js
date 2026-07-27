@@ -2,6 +2,8 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const Database = require('better-sqlite3');
 const aiClient = require('../src/services/aiClient');
 const imageClient = require('../src/services/imageClient');
@@ -15,6 +17,17 @@ const {
   createSession,
   getSession,
 } = require('../src/services/codexChatService');
+const userAiConfigService = require('../src/services/userAiConfigService');
+
+const TEST_USER_ID = 1;
+const userConfigSchema = fs.readFileSync(
+  path.join(__dirname, '..', 'migrations', '39_user_ai_configs.sql'),
+  'utf8'
+);
+const userPreferenceSchema = fs.readFileSync(
+  path.join(__dirname, '..', 'migrations', '41_user_ai_preferences.sql'),
+  'utf8'
+);
 
 function createTestDb() {
   const db = new Database(':memory:');
@@ -83,24 +96,25 @@ function createTestDb() {
       deleted_at TEXT
     );
   `);
+  db.exec(userConfigSchema);
+  db.exec(userPreferenceSchema);
   db.prepare("INSERT INTO dramas (id, title) VALUES (1, '双引擎测试')").run();
   return db;
 }
 
 function insertConfig(db, serviceType, options = {}) {
-  return Number(db.prepare(`
-    INSERT INTO ai_service_configs
-      (service_type, provider, name, base_url, model, default_model,
-       priority, is_default, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, 'https://example.com', ?, ?, 10, 1, ?, '2026-07-24', '2026-07-24')
-  `).run(
-    serviceType,
-    options.provider || `${serviceType}-provider`,
-    options.name || serviceType,
-    JSON.stringify([options.model || `${serviceType}-model`]),
-    options.model || `${serviceType}-model`,
-    options.active === false ? 0 : 1
-  ).lastInsertRowid);
+  return userAiConfigService.createConfig(db, log, TEST_USER_ID, {
+    service_type: serviceType,
+    provider: options.provider || `${serviceType}-provider`,
+    name: options.name || serviceType,
+    base_url: 'https://example.com',
+    api_key: 'test-key',
+    model: [options.model || `${serviceType}-model`],
+    default_model: options.model || `${serviceType}-model`,
+    priority: 10,
+    is_default: true,
+    is_active: options.active !== false,
+  }).id;
 }
 
 const log = {
@@ -113,13 +127,13 @@ describe('AI assistant engine settings and session snapshots', () => {
   it('defaults to configured APIs and reports each configured capability independently', () => {
     const db = createTestDb();
     assert.equal(
-      assistantSettings.getAssistantEngine(db),
+      assistantSettings.getAssistantEngine(db, TEST_USER_ID),
       assistantSettings.ENGINE_CONFIGURED_API
     );
     insertConfig(db, 'text');
     insertConfig(db, 'image', { active: false });
 
-    const status = assistantSettings.getConfiguredApiStatus(db);
+    const status = assistantSettings.getConfiguredApiStatus(db, TEST_USER_ID);
     assert.equal(status.available, true);
     assert.equal(status.text.available, true);
     assert.equal(status.image.available, false);
@@ -128,15 +142,22 @@ describe('AI assistant engine settings and session snapshots', () => {
 
   it('captures the selected engine when a conversation is created', () => {
     const db = createTestDb();
-    assistantSettings.setAssistantEngine(db, assistantSettings.ENGINE_CONFIGURED_API);
-    const apiSession = createSession(db, { drama_id: 1 });
+    assistantSettings.setAssistantEngine(
+      db,
+      assistantSettings.ENGINE_CONFIGURED_API,
+      TEST_USER_ID
+    );
+    const apiSession = createSession(db, { drama_id: 1, user_id: TEST_USER_ID });
 
-    assistantSettings.setAssistantEngine(db, assistantSettings.ENGINE_CODEX);
-    const codexSession = createSession(db, { drama_id: 1 });
+    assistantSettings.setAssistantEngine(db, assistantSettings.ENGINE_CODEX, TEST_USER_ID);
+    const codexSession = createSession(db, { drama_id: 1, user_id: TEST_USER_ID });
 
     assert.equal(apiSession.engine, assistantSettings.ENGINE_CONFIGURED_API);
     assert.equal(codexSession.engine, assistantSettings.ENGINE_CODEX);
-    assert.equal(getSession(db, apiSession.id).engine, assistantSettings.ENGINE_CONFIGURED_API);
+    assert.equal(
+      getSession(db, apiSession.id, TEST_USER_ID).engine,
+      assistantSettings.ENGINE_CONFIGURED_API
+    );
   });
 
   it('keeps legacy conversations on Codex when their engine is null', () => {
@@ -163,7 +184,7 @@ describe('Configured API assistant runtime', () => {
         : '{"answer":"已修正"}';
     };
     try {
-      const runtime = new ConfiguredApiRuntime({ db, log });
+      const runtime = new ConfiguredApiRuntime({ db, log, userId: TEST_USER_ID });
       const result = await runtime.runTurn({
         taskId: 'structured-1',
         text: '返回答案',
@@ -191,7 +212,7 @@ describe('Configured API assistant runtime', () => {
       return '{"answer":"兼容成功"}';
     };
     try {
-      const runtime = new ConfiguredApiRuntime({ db, log });
+      const runtime = new ConfiguredApiRuntime({ db, log, userId: TEST_USER_ID });
       const result = await runtime.runTurn({
         taskId: 'structured-2',
         text: '返回答案',
@@ -222,7 +243,7 @@ describe('Configured API assistant runtime', () => {
       return { image_url: 'data:image/png;base64,aGVsbG8=' };
     };
     try {
-      const runtime = new ConfiguredApiRuntime({ db, log });
+      const runtime = new ConfiguredApiRuntime({ db, log, userId: TEST_USER_ID });
       const result = await runtime.runTurn({
         taskId: 'image-1',
         text: 'ignored',

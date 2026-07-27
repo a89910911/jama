@@ -1,5 +1,5 @@
-// 与 Go pkg/ai + application/services/ai_service 对齐：读取 ai_service_configs，调用 OpenAI 兼容的 chat completions
-const aiConfigService = require('./aiConfigService');
+// 从当前用户的私有 AI 配置及不可变版本中解析凭据，调用兼容的 chat completions。
+const userAiConfigService = require('./userAiConfigService');
 const { resolveSceneModelSelection } = require('./sceneModelMapService');
 const { applyDeepSeekChatOptions } = require('./deepseekConfig');
 const { isFalConfig, falAuthorizationValue } = require('./falClient');
@@ -210,22 +210,61 @@ function postJSONStream(url, headers, body, silenceTimeoutMs = 60000, onProgress
 }
 
 // 使用前端设置的「默认」与「优先级」：listConfigs 已按 is_default DESC, priority DESC 排序
-function getDefaultConfig(db, serviceType) {
-  const configs = aiConfigService.listConfigs(db, serviceType);
+function resolveActorUserId(explicitUserId) {
+  return userAiConfigService.requireUserId(
+    aiRequestLogService.currentUserId(explicitUserId)
+  );
+}
+
+function getDefaultConfig(db, serviceType, userId) {
+  const configs = userAiConfigService.listRuntimeConfigs(
+    db,
+    resolveActorUserId(userId),
+    serviceType
+  );
   const active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
   const defaultOne = active.find((c) => c.is_default);
   return defaultOne != null ? defaultOne : active[0];
 }
 
-function getConfigForModel(db, serviceType, modelName) {
-  const configs = aiConfigService.listConfigs(db, serviceType);
+function getConfigForModel(db, serviceType, modelName, userId) {
+  const configs = userAiConfigService.listRuntimeConfigs(
+    db,
+    resolveActorUserId(userId),
+    serviceType
+  );
   for (const config of configs) {
     if (!config.is_active) continue;
     const models = Array.isArray(config.model) ? config.model : [config.model];
     if (models.includes(modelName)) return config;
   }
   return null;
+}
+
+function getPinnedTextConfig(db, serviceType, options = {}) {
+  if (!options.ai_config_id) return null;
+  const userId = resolveActorUserId(options.user_id);
+  const config = options.ai_config_revision_id
+    ? userAiConfigService.getRuntimeConfigByRevision(
+        db,
+        userId,
+        options.ai_config_id,
+        options.ai_config_revision_id,
+        { includeDeleted: true }
+      )
+    : userAiConfigService.getRuntimeConfig(db, userId, options.ai_config_id);
+  if (!config) {
+    const error = new Error('提交任务时使用的个人文本 AI 配置已不存在');
+    error.code = 'AI_CONFIG_NOT_FOUND';
+    throw error;
+  }
+  if (config.service_type !== serviceType && config.service_type !== 'text') {
+    const error = new Error('任务绑定的 AI 配置不是文本配置');
+    error.code = 'AI_CONFIG_TYPE_MISMATCH';
+    throw error;
+  }
+  return config;
 }
 
 function buildChatUrl(config) {
@@ -256,9 +295,12 @@ function getModelFromConfig(config, preferredModel) {
  * 从 ai_model_map 表查找业务场景对应的模型配置
  * 返回 { config, modelOverride } 或 null（未配置时）
  */
-function getConfigFromModelMap(db, sceneKey) {
+function getConfigFromModelMap(db, sceneKey, userId) {
   try {
-    const selection = resolveSceneModelSelection(db, sceneKey, { serviceType: 'text' });
+    const selection = resolveSceneModelSelection(db, sceneKey, {
+      serviceType: 'text',
+      userId: resolveActorUserId(userId),
+    });
     if (!selection.row || !selection.config) return null;
     return {
       config: selection.config,
@@ -273,10 +315,10 @@ async function generateTextInternal(db, log, serviceType, userPrompt, systemProm
   const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, streamCallback = null, scene_key = null } = options;
 
   // F2: 若传入 scene_key，优先从 ai_model_map 查找对应的模型路由配置
-  let config = null;
+  let config = getPinnedTextConfig(db, serviceType, options);
   let routedModelOverride = null;
-  if (scene_key) {
-    const mapped = getConfigFromModelMap(db, scene_key);
+  if (!config && scene_key) {
+    const mapped = getConfigFromModelMap(db, scene_key, options.user_id);
     if (mapped) {
       config = mapped.config;
       routedModelOverride = mapped.modelOverride;
@@ -286,12 +328,12 @@ async function generateTextInternal(db, log, serviceType, userPrompt, systemProm
 
   if (!config) {
     config = preferredModel
-      ? getConfigForModel(db, serviceType, preferredModel)
-      : getDefaultConfig(db, serviceType);
+      ? getConfigForModel(db, serviceType, preferredModel, options.user_id)
+      : getDefaultConfig(db, serviceType, options.user_id);
   }
   if (!config && preferredModel === undefined) {
     // 兜底：如果前端传了 undefined，且没找到默认，尝试重新找一下（可能 serviceType 传值问题，或者数据库问题）
-    config = getDefaultConfig(db, 'text');
+    config = getDefaultConfig(db, 'text', options.user_id);
   }
   if (!config) {
     throw new Error(`未配置文本模型，请在「AI 配置」中添加 ${serviceType} 类型 且已启用的配置`);
@@ -378,10 +420,10 @@ async function generateTextInternal(db, log, serviceType, userPrompt, systemProm
  */
 async function streamGenerateTextInternal(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
   const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, scene_key = null } = options;
-  let config = null;
+  let config = getPinnedTextConfig(db, serviceType, options);
   let routedModelOverride = null;
-  if (scene_key) {
-    const mapped = getConfigFromModelMap(db, scene_key);
+  if (!config && scene_key) {
+    const mapped = getConfigFromModelMap(db, scene_key, options.user_id);
     if (mapped) {
       config = mapped.config;
       routedModelOverride = mapped.modelOverride;
@@ -390,11 +432,11 @@ async function streamGenerateTextInternal(db, log, serviceType, userPrompt, syst
   }
   if (!config) {
     config = preferredModel
-      ? getConfigForModel(db, serviceType, preferredModel)
-      : getDefaultConfig(db, serviceType);
+      ? getConfigForModel(db, serviceType, preferredModel, options.user_id)
+      : getDefaultConfig(db, serviceType, options.user_id);
   }
   if (!config && preferredModel === undefined) {
-    config = getDefaultConfig(db, 'text');
+    config = getDefaultConfig(db, 'text', options.user_id);
   }
   if (!config) {
     throw new Error(`未配置文本模型，请在「AI 配置」中添加 ${serviceType} 类型 且已启用的配置`);
@@ -559,10 +601,10 @@ async function generateTextWithVisionInternal(db, log, serviceType, userPrompt, 
     max_tokens = 500,
     scene_key = null,
   } = options;
-  let config = null;
+  let config = getPinnedTextConfig(db, serviceType, options);
   let routedModelOverride = null;
-  if (scene_key) {
-    const mapped = getConfigFromModelMap(db, scene_key);
+  if (!config && scene_key) {
+    const mapped = getConfigFromModelMap(db, scene_key, options.user_id);
     if (mapped) {
       config = mapped.config;
       routedModelOverride = mapped.modelOverride;
@@ -575,10 +617,10 @@ async function generateTextWithVisionInternal(db, log, serviceType, userPrompt, 
   }
   if (!config) {
     config = preferredModel
-      ? getConfigForModel(db, serviceType, preferredModel)
-      : getDefaultConfig(db, serviceType);
+      ? getConfigForModel(db, serviceType, preferredModel, options.user_id)
+      : getDefaultConfig(db, serviceType, options.user_id);
   }
-  if (!config) config = getDefaultConfig(db, 'text');
+  if (!config) config = getDefaultConfig(db, 'text', options.user_id);
   if (!config) throw new Error(`未配置文本模型，请在「AI 配置」中添加 ${serviceType} 类型的配置`);
   const model = getModelFromConfig(config, routedModelOverride || preferredModel);
   const url = buildChatUrl(config);
@@ -648,10 +690,10 @@ async function generateTextWithVisionInternal(db, log, serviceType, userPrompt, 
 
 function resolveTextLogMeta(db, serviceType, options = {}) {
   try {
-    let config = null;
+    let config = getPinnedTextConfig(db, serviceType, options);
     let modelOverride = null;
-    if (options.scene_key) {
-      const mapped = getConfigFromModelMap(db, options.scene_key);
+    if (!config && options.scene_key) {
+      const mapped = getConfigFromModelMap(db, options.scene_key, options.user_id);
       if (mapped) {
         config = mapped.config;
         modelOverride = mapped.modelOverride;
@@ -659,12 +701,13 @@ function resolveTextLogMeta(db, serviceType, options = {}) {
     }
     if (!config) {
       config = options.model
-        ? getConfigForModel(db, serviceType, options.model)
-        : getDefaultConfig(db, serviceType);
+        ? getConfigForModel(db, serviceType, options.model, options.user_id)
+        : getDefaultConfig(db, serviceType, options.user_id);
     }
-    if (!config) config = getDefaultConfig(db, 'text');
+    if (!config) config = getDefaultConfig(db, 'text', options.user_id);
     return {
       config_id: config?.id || null,
+      config_revision_id: config?.revision_id || null,
       provider: config?.provider || null,
       model: config ? getModelFromConfig(config, modelOverride || options.model) : (options.model || null),
     };
@@ -686,6 +729,7 @@ async function runLoggedTextCall({
 }) {
   const meta = resolveTextLogMeta(db, serviceType, options);
   const record = aiRequestLogService.start(db, {
+    user_id: options.user_id,
     service_type: imageSource ? 'vision' : 'text',
     operation,
     scene_key: options.scene_key || null,

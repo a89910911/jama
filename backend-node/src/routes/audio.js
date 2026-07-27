@@ -37,6 +37,7 @@ function routes(db, log, cfg) {
       try {
         const ttsService = require('../services/ttsService');
         const result = await ttsService.synthesize(db, log, {
+          user_id: req.user.id,
           text: ttsText,
           storyboard_id: storyboard_id || null,
           storage_base: getStoragePath(),
@@ -79,6 +80,7 @@ function routes(db, log, cfg) {
         try {
           const ttsService = require('../services/ttsService');
           const result = await ttsService.synthesize(db, log, {
+            user_id: req.user.id,
             text: row.dialogue,
             storyboard_id: row.id,
             storage_base: storagePath,

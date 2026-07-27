@@ -438,6 +438,128 @@ function ensureAllColumns(database) {
     { name: 'updated_at',     type: 'TEXT' },
     { name: 'deleted_at',     type: 'TEXT' },
   ]);
+
+  // --- user-owned AI configs ---
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS user_ai_configs (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id             INTEGER NOT NULL,
+      service_type        VARCHAR(64) NOT NULL DEFAULT 'text',
+      name                VARCHAR(255) NOT NULL DEFAULT '',
+      priority            INTEGER NOT NULL DEFAULT 0,
+      is_active           INTEGER NOT NULL DEFAULT 1,
+      template_key        VARCHAR(191),
+      current_revision_id INTEGER,
+      created_at          VARCHAR(32) NOT NULL DEFAULT '',
+      updated_at          VARCHAR(32) NOT NULL DEFAULT '',
+      deleted_at          VARCHAR(32)
+    )`);
+    database.exec(`CREATE TABLE IF NOT EXISTS user_ai_config_revisions (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      config_id        INTEGER NOT NULL,
+      user_id          INTEGER NOT NULL,
+      revision_no      INTEGER NOT NULL DEFAULT 1,
+      provider         VARCHAR(128) NOT NULL DEFAULT '',
+      api_protocol     VARCHAR(128) NOT NULL DEFAULT '',
+      base_url         TEXT,
+      api_key          TEXT,
+      credentials_json TEXT,
+      model_json       TEXT,
+      default_model    TEXT,
+      endpoint         TEXT,
+      query_endpoint   TEXT,
+      settings_json    TEXT,
+      created_at       VARCHAR(32) NOT NULL DEFAULT ''
+    )`);
+    database.exec(`CREATE TABLE IF NOT EXISTS user_ai_config_defaults (
+      user_id      INTEGER NOT NULL,
+      service_type VARCHAR(64) NOT NULL,
+      config_id    INTEGER NOT NULL,
+      created_at   VARCHAR(32) NOT NULL DEFAULT '',
+      updated_at   VARCHAR(32) NOT NULL DEFAULT '',
+      PRIMARY KEY (user_id, service_type)
+    )`);
+    database.exec(`CREATE TABLE IF NOT EXISTS user_ai_scene_model_maps (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id        INTEGER NOT NULL,
+      scene_key      VARCHAR(191) NOT NULL,
+      service_type   VARCHAR(64) NOT NULL DEFAULT 'text',
+      config_id      INTEGER,
+      model_override TEXT,
+      description    TEXT,
+      created_at     VARCHAR(32) NOT NULL DEFAULT '',
+      updated_at     VARCHAR(32) NOT NULL DEFAULT ''
+    )`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_user_ai_configs_owner_type
+      ON user_ai_configs(user_id, service_type, is_active, priority)`);
+    database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_ai_config_revisions_number
+      ON user_ai_config_revisions(config_id, revision_no)`);
+    database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_ai_scene_maps_owner_key
+      ON user_ai_scene_model_maps(user_id, scene_key)`);
+  } catch (_) {}
+  ensureColumns(database, 'user_ai_configs', [
+    { name: 'user_id',             type: 'INTEGER' },
+    { name: 'service_type',        type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
+    { name: 'name',                type: 'VARCHAR(255) NOT NULL DEFAULT \'\'' },
+    { name: 'priority',            type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'is_active',           type: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'template_key',        type: 'VARCHAR(191)' },
+    { name: 'current_revision_id', type: 'INTEGER' },
+    { name: 'created_at',          type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',          type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+    { name: 'deleted_at',          type: 'VARCHAR(32)' },
+  ]);
+  ensureColumns(database, 'user_ai_config_revisions', [
+    { name: 'config_id',        type: 'INTEGER' },
+    { name: 'user_id',          type: 'INTEGER' },
+    { name: 'revision_no',      type: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'provider',         type: 'VARCHAR(128) NOT NULL DEFAULT \'\'' },
+    { name: 'api_protocol',     type: 'VARCHAR(128) NOT NULL DEFAULT \'\'' },
+    { name: 'base_url',         type: 'TEXT' },
+    { name: 'api_key',          type: 'TEXT' },
+    { name: 'credentials_json', type: 'TEXT' },
+    { name: 'model_json',       type: 'TEXT' },
+    { name: 'default_model',    type: 'TEXT' },
+    { name: 'endpoint',         type: 'TEXT' },
+    { name: 'query_endpoint',   type: 'TEXT' },
+    { name: 'settings_json',    type: 'TEXT' },
+    { name: 'created_at',       type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+  ]);
+  ensureColumns(database, 'user_ai_config_defaults', [
+    { name: 'user_id',      type: 'INTEGER' },
+    { name: 'service_type', type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
+    { name: 'config_id',    type: 'INTEGER' },
+    { name: 'created_at',   type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',   type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+  ]);
+  ensureColumns(database, 'user_ai_scene_model_maps', [
+    { name: 'user_id',        type: 'INTEGER' },
+    { name: 'scene_key',      type: 'VARCHAR(191) NOT NULL DEFAULT \'\'' },
+    { name: 'service_type',   type: 'VARCHAR(64) NOT NULL DEFAULT \'text\'' },
+    { name: 'config_id',      type: 'INTEGER' },
+    { name: 'model_override', type: 'TEXT' },
+    { name: 'description',    type: 'TEXT' },
+    { name: 'created_at',     type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',     type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+  ]);
+
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS user_ai_preferences (
+      user_id           INTEGER PRIMARY KEY,
+      assistant_engine  VARCHAR(64) NOT NULL DEFAULT 'configured_api',
+      image_concurrency INTEGER NOT NULL DEFAULT 3,
+      video_concurrency INTEGER NOT NULL DEFAULT 3,
+      created_at        VARCHAR(32) NOT NULL DEFAULT '',
+      updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+    )`);
+  } catch (_) {}
+  ensureColumns(database, 'user_ai_preferences', [
+    { name: 'assistant_engine',  type: 'VARCHAR(64) NOT NULL DEFAULT \'configured_api\'' },
+    { name: 'image_concurrency', type: 'INTEGER NOT NULL DEFAULT 3' },
+    { name: 'video_concurrency', type: 'INTEGER NOT NULL DEFAULT 3' },
+    { name: 'created_at',        type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+    { name: 'updated_at',        type: 'VARCHAR(32) NOT NULL DEFAULT \'\'' },
+  ]);
   // 视频音频为强制策略：启动时自动修正历史配置中的 false 或空值。
   try {
     const rows = database.prepare(
@@ -471,6 +593,7 @@ function ensureAllColumns(database) {
     { name: 'prompt_snapshot', type: 'TEXT' },
     { name: 'request_payload', type: 'TEXT' },
     { name: 'recovery_attempts', type: 'INTEGER DEFAULT 0' },
+    { name: 'user_id',      type: 'INTEGER' },
     { name: 'created_at',   type: 'TEXT' },
     { name: 'updated_at',   type: 'TEXT' },
     { name: 'deleted_at',   type: 'TEXT' },
@@ -507,6 +630,9 @@ function ensureAllColumns(database) {
     { name: 'appearance_context_hash', type: 'TEXT' },
     { name: 'generation_context_hash', type: 'TEXT' },
     { name: 'superseded',       type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'requested_by_user_id', type: 'INTEGER' },
+    { name: 'ai_config_id',      type: 'INTEGER' },
+    { name: 'ai_config_revision_id', type: 'INTEGER' },
     { name: 'created_at',       type: 'TEXT' },
     { name: 'updated_at',       type: 'TEXT' },
     { name: 'deleted_at',       type: 'TEXT' },
@@ -544,6 +670,9 @@ function ensureAllColumns(database) {
     { name: 'generation_context_hash', type: 'TEXT' },
     { name: 'superseded',           type: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'voice_character_id',   type: 'INTEGER' },
+    { name: 'requested_by_user_id', type: 'INTEGER' },
+    { name: 'ai_config_id',         type: 'INTEGER' },
+    { name: 'ai_config_revision_id', type: 'INTEGER' },
     { name: 'created_at',           type: 'TEXT' },
     { name: 'updated_at',           type: 'TEXT' },
     { name: 'deleted_at',           type: 'TEXT' },
@@ -564,6 +693,9 @@ function ensureAllColumns(database) {
     { name: 'duration',     type: 'INTEGER' },
     { name: 'completed_at', type: 'TEXT' },
     { name: 'error_msg',    type: 'TEXT' },
+    { name: 'requested_by_user_id', type: 'INTEGER' },
+    { name: 'tts_config_id', type: 'INTEGER' },
+    { name: 'tts_config_revision_id', type: 'INTEGER' },
     { name: 'created_at',   type: 'TEXT' },
     { name: 'deleted_at',   type: 'TEXT' },
   ]);
@@ -687,6 +819,9 @@ function ensureAllColumns(database) {
     { name: 'provider',         type: 'TEXT' },
     { name: 'model',            type: 'TEXT' },
     { name: 'config_id',        type: 'INTEGER' },
+    { name: 'user_ai_config_id', type: 'INTEGER' },
+    { name: 'user_ai_config_revision_id', type: 'INTEGER' },
+    { name: 'username_snapshot', type: 'VARCHAR(255)' },
     { name: 'status',           type: 'TEXT NOT NULL DEFAULT \'processing\'' },
     { name: 'request_payload',  type: 'TEXT' },
     { name: 'response_payload', type: 'TEXT' },
@@ -697,6 +832,13 @@ function ensureAllColumns(database) {
     { name: 'created_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
     { name: 'completed_at',     type: 'TEXT' },
     { name: 'updated_at',       type: 'TEXT NOT NULL DEFAULT \'\'' },
+  ]);
+
+  ensureColumns(database, 'redraw_jobs', [
+    { name: 'user_id', type: 'INTEGER' },
+  ]);
+  ensureColumns(database, 'action_migration_jobs', [
+    { name: 'user_id', type: 'INTEGER' },
   ]);
 
   // --- codex_chat_sessions / codex_chat_messages ---

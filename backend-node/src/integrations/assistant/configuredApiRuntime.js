@@ -2,7 +2,7 @@ const { randomUUID } = require('crypto');
 const path = require('path');
 const aiClient = require('../../services/aiClient');
 const imageClient = require('../../services/imageClient');
-const aiConfigService = require('../../services/aiConfigService');
+const userAiConfigService = require('../../services/userAiConfigService');
 const { safeParseAIJSON } = require('../../utils/safeJson');
 const { configModel } = require('../../services/assistantSettingsService');
 const {
@@ -102,10 +102,11 @@ function parseStructuredText(text, schema) {
   return parsed;
 }
 
-function activeDefaultConfig(db, serviceType) {
-  const configs = aiConfigService.listConfigs(db, serviceType)
+function activeDefaultConfig(db, serviceType, userId) {
+  const configs = userAiConfigService.listRuntimeConfigs(db, userId, serviceType);
+  const active = configs
     .filter((item) => item.is_active);
-  return configs.find((item) => item.is_default) || configs[0] || null;
+  return active.find((item) => item.is_default) || active[0] || null;
 }
 
 function schemaInstruction(schema) {
@@ -120,13 +121,14 @@ class ConfiguredApiRuntime {
   constructor(options = {}) {
     this.db = options.db;
     this.log = options.log || console;
+    this.userId = userAiConfigService.requireUserId(options.userId);
     this.activeTasks = new Set();
     this.cancelledTasks = new Set();
     this.lastError = null;
   }
 
   async ensureReady() {
-    const config = activeDefaultConfig(this.db, 'text');
+    const config = activeDefaultConfig(this.db, 'text', this.userId);
     if (!config) {
       const error = new Error('未配置已启用的文本/对话 API');
       error.code = 'ASSISTANT_TEXT_CONFIG_MISSING';
@@ -174,7 +176,7 @@ class ConfiguredApiRuntime {
           'text',
           requestText,
           systemPrompt,
-          { ...requestOptions, scene_key: sceneKey }
+          { ...requestOptions, scene_key: sceneKey, user_id: this.userId }
         );
       } catch (error) {
         const unsupportedJsonMode = /response.?format|json.?mode|json_object/i.test(
@@ -194,6 +196,7 @@ class ConfiguredApiRuntime {
             ...requestOptions,
             scene_key: sceneKey,
             json_mode: false,
+            user_id: this.userId,
           }
         );
       }
@@ -203,8 +206,8 @@ class ConfiguredApiRuntime {
           turnId,
           text: JSON.stringify(parsed),
           images: [],
-          provider: activeDefaultConfig(this.db, 'text')?.provider || null,
-          model: configModel(activeDefaultConfig(this.db, 'text')),
+          provider: activeDefaultConfig(this.db, 'text', this.userId)?.provider || null,
+          model: configModel(activeDefaultConfig(this.db, 'text', this.userId)),
         };
       } catch (error) {
         lastError = error;
@@ -221,7 +224,7 @@ class ConfiguredApiRuntime {
   async runImageTurn(options, turnId) {
     const request = options.imageRequest || {};
     const serviceType = request.imageServiceType || 'image';
-    const config = activeDefaultConfig(this.db, serviceType);
+    const config = activeDefaultConfig(this.db, serviceType, this.userId);
     if (!config) {
       const labels = {
         image: '文本生成图片',
@@ -250,6 +253,9 @@ class ConfiguredApiRuntime {
       files_base_url: appConfig?.storage?.base_url || undefined,
       storage_local_path: storageLocalPath,
       task_id: options.taskId,
+      user_id: this.userId,
+      ai_config_id: config.id,
+      ai_config_revision_id: config.revision_id,
     });
     this.assertActive(options.taskId);
     if (result?.error) throw new Error(result.error);
@@ -301,6 +307,7 @@ class ConfiguredApiRuntime {
         systemPrompt,
         {
           scene_key: sceneKey,
+          user_id: this.userId,
           temperature: 0.7,
           silence_timeout_ms: Math.min(
             Number(options.timeoutMs) || DEFAULT_TEXT_TIMEOUT_MS,
@@ -310,7 +317,7 @@ class ConfiguredApiRuntime {
         (delta) => options.onDelta?.(delta)
       );
       this.assertActive(taskId);
-      const config = activeDefaultConfig(this.db, 'text');
+      const config = activeDefaultConfig(this.db, 'text', this.userId);
       return {
         turnId,
         text: String(text || '').trim(),
@@ -335,7 +342,7 @@ class ConfiguredApiRuntime {
   }
 
   status() {
-    const textConfig = activeDefaultConfig(this.db, 'text');
+    const textConfig = activeDefaultConfig(this.db, 'text', this.userId);
     return {
       available: !!textConfig,
       starting: false,
@@ -354,10 +361,22 @@ const runtimes = new WeakMap();
 
 function getConfiguredApiRuntime(options = {}) {
   if (!options.db) throw new Error('Configured API runtime requires db');
-  let runtime = runtimes.get(options.db);
+  const userId = options.userId
+    ? userAiConfigService.requireUserId(options.userId)
+    : null;
+  if (!userId && tableExists(options.db, 'user_ai_configs')) {
+    userAiConfigService.requireUserId(userId);
+  }
+  let databaseRuntimes = runtimes.get(options.db);
+  if (!databaseRuntimes) {
+    databaseRuntimes = new Map();
+    runtimes.set(options.db, databaseRuntimes);
+  }
+  const runtimeKey = userId || '__legacy__';
+  let runtime = databaseRuntimes.get(runtimeKey);
   if (!runtime) {
-    runtime = new ConfiguredApiRuntime(options);
-    runtimes.set(options.db, runtime);
+    runtime = new ConfiguredApiRuntime({ ...options, userId });
+    databaseRuntimes.set(runtimeKey, runtime);
   }
   return runtime;
 }

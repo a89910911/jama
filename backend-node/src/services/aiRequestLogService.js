@@ -1,5 +1,6 @@
 const { AsyncLocalStorage } = require('async_hooks');
 const { randomUUID } = require('crypto');
+const { tableColumns } = require('../db/portableSql');
 
 const requestStorage = new AsyncLocalStorage();
 const MAX_STRING_LENGTH = 200000;
@@ -33,6 +34,15 @@ function firstPositive(sources, keys) {
 
 function currentRequest() {
   return requestStorage.getStore()?.req || null;
+}
+
+function currentUserId(explicitValue) {
+  return positiveInteger(explicitValue) || positiveInteger(currentRequest()?.user?.id);
+}
+
+function currentUsername(explicitValue) {
+  const value = explicitValue || currentRequest()?.user?.username;
+  return value ? String(value).slice(0, 255) : null;
 }
 
 function collectSources(details = {}) {
@@ -201,7 +211,34 @@ function start(db, details = {}) {
     const related = resolveRelated(details);
     const now = new Date().toISOString();
     const requestUuid = randomUUID();
-    const info = db.prepare(
+    const hasOwnershipColumns = tableColumns(db, 'ai_request_logs')
+      .some((column) => column.name === 'user_ai_config_id');
+    const info = hasOwnershipColumns ? db.prepare(
+      `INSERT INTO ai_request_logs
+        (request_uuid, drama_id, user_id, username_snapshot, service_type,
+         operation, scene_key, provider, model, config_id, user_ai_config_id,
+         user_ai_config_revision_id, status, request_payload, related_type,
+         related_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?)`
+    ).run(
+      requestUuid,
+      resolveDramaId(db, details),
+      currentUserId(details.user_id),
+      currentUsername(details.username),
+      String(details.service_type || 'text'),
+      String(details.operation || 'generate'),
+      details.scene_key ? String(details.scene_key) : null,
+      details.provider ? String(details.provider) : null,
+      details.model ? String(details.model) : null,
+      positiveInteger(details.config_id),
+      positiveInteger(details.user_ai_config_id || details.config_id),
+      positiveInteger(details.user_ai_config_revision_id || details.config_revision_id),
+      toJson(details.request),
+      related.related_type,
+      related.related_id,
+      now,
+      now
+    ) : db.prepare(
       `INSERT INTO ai_request_logs
         (request_uuid, drama_id, user_id, service_type, operation, scene_key,
          provider, model, config_id, status, request_payload, related_type,
@@ -210,7 +247,7 @@ function start(db, details = {}) {
     ).run(
       requestUuid,
       resolveDramaId(db, details),
-      positiveInteger(req?.user?.id),
+      currentUserId(details.user_id),
       String(details.service_type || 'text'),
       String(details.operation || 'generate'),
       details.scene_key ? String(details.scene_key) : null,
@@ -241,7 +278,23 @@ function finish(db, record, status, response, errorMessage, meta = {}) {
     const duration = isFinal
       ? Math.max(0, Date.now() - Number(record.started_at_ms || Date.now()))
       : null;
-    db.prepare(
+    const hasOwnershipColumns = tableColumns(db, 'ai_request_logs')
+      .some((column) => column.name === 'user_ai_config_id');
+    const statement = hasOwnershipColumns ? db.prepare(
+      `UPDATE ai_request_logs
+          SET status = ?,
+              response_payload = COALESCE(?, response_payload),
+              error_message = ?,
+              provider = COALESCE(?, provider),
+              model = COALESCE(?, model),
+              config_id = COALESCE(?, config_id),
+              user_ai_config_id = COALESCE(?, user_ai_config_id),
+              user_ai_config_revision_id = COALESCE(?, user_ai_config_revision_id),
+              duration_ms = COALESCE(?, duration_ms),
+              completed_at = CASE WHEN ? THEN ? ELSE completed_at END,
+              updated_at = ?
+        WHERE id = ?`
+    ) : db.prepare(
       `UPDATE ai_request_logs
           SET status = ?,
               response_payload = COALESCE(?, response_payload),
@@ -253,13 +306,21 @@ function finish(db, record, status, response, errorMessage, meta = {}) {
               completed_at = CASE WHEN ? THEN ? ELSE completed_at END,
               updated_at = ?
         WHERE id = ?`
-    ).run(
+    );
+    const commonValues = [
       status,
       toJson(response),
       errorMessage ? String(errorMessage).slice(0, 10000) : null,
       meta.provider ? String(meta.provider) : null,
       meta.model ? String(meta.model) : null,
       positiveInteger(meta.config_id),
+    ];
+    statement.run(
+      ...commonValues,
+      ...(hasOwnershipColumns ? [
+      positiveInteger(meta.user_ai_config_id || meta.config_id),
+      positiveInteger(meta.user_ai_config_revision_id || meta.config_revision_id),
+      ] : []),
       duration,
       isFinal ? 1 : 0,
       now,
@@ -316,12 +377,16 @@ function normalizeFilters(query = {}) {
   };
 }
 
-function buildWhere(dramaId, filters) {
+function buildWhere(dramaId, filters, userId) {
   const clauses = [];
   const params = [];
   if (dramaId !== null) {
     clauses.push('l.drama_id = ?');
     params.push(Number(dramaId));
+  }
+  if (positiveInteger(userId)) {
+    clauses.push('l.user_id = ?');
+    params.push(positiveInteger(userId));
   }
   if (filters.service_type) {
     clauses.push('l.service_type = ?');
@@ -399,11 +464,11 @@ function rowToListItem(row) {
   };
 }
 
-function list(db, dramaId, query = {}) {
+function list(db, dramaId, query = {}, userId) {
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(query.page_size, 10) || 20));
   const filters = normalizeFilters(query);
-  const where = buildWhere(dramaId, filters);
+  const where = buildWhere(dramaId, filters, userId);
   const total = db.prepare(
     `SELECT COUNT(*) AS count FROM ai_request_logs l WHERE ${where.sql}`
   ).get(...where.params).count;
@@ -427,15 +492,17 @@ function list(db, dramaId, query = {}) {
   };
 }
 
-function getOne(db, dramaId, id) {
+function getOne(db, dramaId, id, userId) {
   const scopeClause = dramaId === null ? '' : ' AND l.drama_id = ?';
+  const ownerClause = positiveInteger(userId) ? ' AND l.user_id = ?' : '';
   const params = dramaId === null ? [Number(id)] : [Number(id), Number(dramaId)];
+  if (positiveInteger(userId)) params.push(positiveInteger(userId));
   const row = db.prepare(
     `SELECT l.*, u.username, d.title AS drama_title
        FROM ai_request_logs l
        LEFT JOIN user_accounts u ON u.id = l.user_id
        LEFT JOIN dramas d ON d.id = l.drama_id
-      WHERE l.id = ?${scopeClause}`
+      WHERE l.id = ?${scopeClause}${ownerClause}`
   ).get(...params);
   if (!row) return null;
   return {
@@ -445,10 +512,14 @@ function getOne(db, dramaId, id) {
   };
 }
 
-function stats(db, dramaId) {
+function stats(db, dramaId, userId) {
   const scope = dramaId === null
     ? { sql: '1 = 1', params: [] }
     : { sql: 'drama_id = ?', params: [Number(dramaId)] };
+  if (positiveInteger(userId)) {
+    scope.sql += ' AND user_id = ?';
+    scope.params.push(positiveInteger(userId));
+  }
   const summary = db.prepare(
     `SELECT
        COUNT(*) AS total,
@@ -479,7 +550,15 @@ function stats(db, dramaId) {
   };
 }
 
-function remove(db, dramaId, id) {
+function remove(db, dramaId, id, userId) {
+  if (positiveInteger(userId)) {
+    const dramaClause = dramaId === null ? '' : ' AND drama_id = ?';
+    const params = [Number(id), positiveInteger(userId)];
+    if (dramaId !== null) params.push(Number(dramaId));
+    return db.prepare(
+      `DELETE FROM ai_request_logs WHERE id = ? AND user_id = ?${dramaClause}`
+    ).run(...params).changes > 0;
+  }
   if (dramaId === null) {
     return db.prepare('DELETE FROM ai_request_logs WHERE id = ?').run(Number(id)).changes > 0;
   }
@@ -487,10 +566,25 @@ function remove(db, dramaId, id) {
     .run(Number(id), Number(dramaId)).changes > 0;
 }
 
-function clear(db, dramaId, query = {}) {
+function clear(db, dramaId, query = {}, userId) {
   const status = ['processing', 'succeeded', 'failed'].includes(String(query.status))
     ? String(query.status)
     : '';
+  if (positiveInteger(userId)) {
+    const clauses = ['user_id = ?'];
+    const params = [positiveInteger(userId)];
+    if (dramaId !== null) {
+      clauses.push('drama_id = ?');
+      params.push(Number(dramaId));
+    }
+    if (status) {
+      clauses.push('status = ?');
+      params.push(status);
+    }
+    return db.prepare(
+      `DELETE FROM ai_request_logs WHERE ${clauses.join(' AND ')}`
+    ).run(...params).changes;
+  }
   if (dramaId === null) {
     if (status) {
       return db.prepare('DELETE FROM ai_request_logs WHERE status = ?').run(status).changes;
@@ -509,6 +603,9 @@ function clear(db, dramaId, query = {}) {
 
 module.exports = {
   requestContextMiddleware,
+  currentRequest,
+  currentUserId,
+  currentUsername,
   resolveDramaId,
   sanitizeValue,
   start,

@@ -298,7 +298,36 @@ function changeOwnPassword(db, id, currentPassword, newPassword) {
 function deleteAccount(db, id) {
   const row = getAccount(db, id);
   assertMutableAccount(row);
-  db.prepare('DELETE FROM user_accounts WHERE id = ?').run(row.id);
+  const now = nowIso();
+  const remove = db.transaction(() => {
+    // 账号删除时清除其明文凭据；保留无凭据的版本骨架，供历史任务/日志审计。
+    const cleanupStatements = [
+      [
+        `UPDATE user_ai_config_revisions
+            SET api_key = '', credentials_json = '{}'
+          WHERE user_id = ?`,
+        [row.id],
+      ],
+      [
+        `UPDATE user_ai_configs
+            SET deleted_at = COALESCE(deleted_at, ?), updated_at = ?
+          WHERE user_id = ?`,
+        [now, now, row.id],
+      ],
+      ['DELETE FROM user_ai_config_defaults WHERE user_id = ?', [row.id]],
+      ['DELETE FROM user_ai_scene_model_maps WHERE user_id = ?', [row.id]],
+      ['DELETE FROM user_ai_preferences WHERE user_id = ?', [row.id]],
+    ];
+    for (const [sql, params] of cleanupStatements) {
+      try {
+        db.prepare(sql).run(...params);
+      } catch (_) {
+        // 兼容尚未执行个人 AI 配置迁移的旧数据库和精简单元测试库。
+      }
+    }
+    db.prepare('DELETE FROM user_accounts WHERE id = ?').run(row.id);
+  });
+  remove();
   invalidateAccountCache(db, row.id);
 }
 

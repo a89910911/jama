@@ -7,7 +7,7 @@ function routes(db, cfg, log) {
   return {
     list: (req, res) => {
       try {
-        const query = { ...req.query };
+        const query = { ...req.query, user_id: req.user.id };
         const { items, total, page, pageSize } = imageService.list(db, query);
         response.successWithPagination(res, items, total, page, pageSize);
       } catch (err) {
@@ -17,7 +17,7 @@ function routes(db, cfg, log) {
     },
     create: (req, res) => {
       try {
-        const body = req.body || {};
+        const body = { ...(req.body || {}), user_id: req.user.id };
         const rec = imageService.create(db, log, body);
         response.created(res, rec);
       } catch (err) {
@@ -36,7 +36,7 @@ function routes(db, cfg, log) {
     },
     get: (req, res) => {
       try {
-        const item = imageService.getById(db, req.params.id);
+        const item = imageService.getById(db, req.params.id, req.user.id);
         if (!item) return response.notFound(res, '记录不存在');
         response.success(res, item);
       } catch (err) {
@@ -46,7 +46,7 @@ function routes(db, cfg, log) {
     },
     delete: (req, res) => {
       try {
-        const ok = imageService.deleteById(db, log, req.params.id);
+        const ok = imageService.deleteById(db, log, req.params.id, req.user.id);
         if (!ok) return response.notFound(res, '记录不存在');
         response.success(res, { message: '删除成功' });
       } catch (err) {
@@ -103,7 +103,7 @@ function routes(db, cfg, log) {
     },
     upload: (req, res) => {
       try {
-        const body = req.body || {};
+        const body = { ...(req.body || {}), user_id: req.user.id };
         const item = imageService.upload(db, log, body);
         response.created(res, item);
       } catch (err) {

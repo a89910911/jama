@@ -1,6 +1,10 @@
 function list(db, query) {
   let sql = 'FROM image_generations WHERE deleted_at IS NULL';
   const params = [];
+  if (query.user_id) {
+    sql += ' AND requested_by_user_id = ?';
+    params.push(Number(query.user_id));
+  }
   if (query.drama_id) {
     sql += ' AND drama_id = ?';
     params.push(query.drama_id);
@@ -66,8 +70,15 @@ function rowToItem(r) {
   };
 }
 
-function getById(db, id) {
-  const r = db.prepare('SELECT * FROM image_generations WHERE id = ? AND deleted_at IS NULL').get(Number(id));
+function getById(db, id, userId) {
+  const r = userId
+    ? db.prepare(
+        `SELECT * FROM image_generations
+          WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+      ).get(Number(id), Number(userId))
+    : db.prepare(
+        'SELECT * FROM image_generations WHERE id = ? AND deleted_at IS NULL'
+      ).get(Number(id));
   return r ? rowToItem(r) : null;
 }
 
@@ -175,8 +186,9 @@ async function splitQuadGridToImages(db, log, originalRow, absLocalPath, storage
              character_look_revision, parent_generation_id, provider, prompt, model,
              frame_type, image_url, local_path, appearance_context_json,
              appearance_context_hash, generation_context_hash, superseded,
+             requested_by_user_id, ai_config_id, ai_config_revision_id,
              status, created_at, updated_at, completed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                    'completed', ?, ?, ?)`
         ).run(
           originalRow.storyboard_id ?? null,
@@ -196,6 +208,9 @@ async function splitQuadGridToImages(db, log, originalRow, absLocalPath, storage
           originalRow.appearance_context_hash ?? null,
           originalRow.generation_context_hash ?? null,
           originalRow.superseded ? 1 : 0,
+          originalRow.requested_by_user_id ?? null,
+          originalRow.ai_config_id ?? null,
+          originalRow.ai_config_revision_id ?? null,
           now, now, now
         );
         log.info(`[四宫格拆分] 面板 ${q.idx}(${labels[q.idx]}) 已保存`, { rel_path: relPanelPath });
@@ -361,8 +376,9 @@ async function splitNineGridToImages(db, log, originalRow, absLocalPath, storage
              character_look_revision, parent_generation_id, provider, prompt, model,
              frame_type, image_url, local_path, appearance_context_json,
              appearance_context_hash, generation_context_hash, superseded,
+             requested_by_user_id, ai_config_id, ai_config_revision_id,
              status, created_at, updated_at, completed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                    'completed', ?, ?, ?)`
         ).run(
           originalRow.storyboard_id ?? null,
@@ -382,6 +398,9 @@ async function splitNineGridToImages(db, log, originalRow, absLocalPath, storage
           originalRow.appearance_context_hash ?? null,
           originalRow.generation_context_hash ?? null,
           originalRow.superseded ? 1 : 0,
+          originalRow.requested_by_user_id ?? null,
+          originalRow.ai_config_id ?? null,
+          originalRow.ai_config_revision_id ?? null,
           now, now, now
         );
         log.info(`[九宫格拆分] 面板 ${c.idx}(${labels[c.idx]}) 已保存`, { rel_path: relPanelPath });
@@ -599,7 +618,27 @@ function create(db, log, req) {
     referenceImages = visualContext.reference_slots.map((slot) => slot.url).filter(Boolean);
   }
 
-  const task = taskService.createTask(db, log, 'image_generation', String(effectiveDramaId || ''));
+  const aiRequestLogService = require('./aiRequestLogService');
+  const userId = aiRequestLogService.currentUserId(req.user_id);
+  if (!userId) throw new Error('缺少有效的用户身份');
+  const imageServiceType = req.storyboard_id ? 'storyboard_image' : 'image';
+  const selectedConfig = imageClient.getDefaultImageConfig(
+    db,
+    req.model,
+    req.provider,
+    imageServiceType,
+    userId
+  );
+  if (!selectedConfig) {
+    throw new Error(`当前账号尚未配置可用的 ${imageServiceType} AI 服务`);
+  }
+  const task = taskService.createTask(
+    db,
+    log,
+    'image_generation',
+    String(effectiveDramaId || ''),
+    userId
+  );
   const taskId = task.id;
   const refImagesJson = referenceImages.length ? JSON.stringify(referenceImages) : null;
   if (referenceImages.length) {
@@ -629,9 +668,10 @@ function create(db, log, req) {
        storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model,
        frame_type, reference_images, use_first_frame_layout_lock, size, status, task_id,
        appearance_context_json, appearance_context_hash, generation_context_hash,
+       requested_by_user_id, ai_config_id, ai_config_revision_id,
        created_at, updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.storyboard_id ?? null,
     effectiveDramaId,
@@ -648,6 +688,9 @@ function create(db, log, req) {
     appearanceContextJson,
     appearanceContextHash,
     generationContextHash,
+    userId,
+    selectedConfig.id,
+    selectedConfig.revision_id,
     now,
     now
   );
@@ -656,7 +699,12 @@ function create(db, log, req) {
   setImmediate(() => {
     processImageGeneration(db, log, imageGenId);
   });
-  return { id: imageGenId, task_id: taskId, status: 'pending', ...getById(db, imageGenId) };
+  return {
+    id: imageGenId,
+    task_id: taskId,
+    status: 'pending',
+    ...getById(db, imageGenId, userId),
+  };
 }
 
 function frameGenerationSlot(frameType) {
@@ -1320,9 +1368,12 @@ async function processImageGeneration(db, log, imageGenId) {
         const skipAIPolishForFrame = isFrameSpecial;
 
         // 只要系统中有任意可用的文本模型配置，均执行优化（image_polish 专用映射为可选增强）
-        const anyTextConfig = !alreadyPolished && !skipAIPolishForFrame && db.prepare(
-          "SELECT id FROM ai_service_configs WHERE service_type = 'text' AND deleted_at IS NULL LIMIT 1"
-        ).get();
+        const anyTextConfig = !alreadyPolished
+          && !skipAIPolishForFrame
+          && require('./userAiConfigResolver').tryResolveForExecution(db, {
+            userId: row.requested_by_user_id,
+            serviceType: 'text',
+          });
         if (anyTextConfig) {
           log.info('[图生] Step3.5 文本AI优化 prompt 开始', { id: imageGenId, elapsed: elapsed() });
           const rawSt = (cfg?.style?.default_style_en || cfg?.style?.default_style || '').toString().trim();
@@ -1406,6 +1457,7 @@ async function processImageGeneration(db, log, imageGenId) {
             scene_key: 'image_polish',
             max_tokens: 300,
             temperature: 0.3,
+            user_id: row.requested_by_user_id,
           });
           if (polishedPrompt && polishedPrompt.trim().length > 10) {
             finalPrompt = polishedPrompt.trim();
@@ -1451,6 +1503,7 @@ async function processImageGeneration(db, log, imageGenId) {
                 scene_key: 'continuity_snapshot',
                 max_tokens: 200,
                 temperature: 0.1,
+                user_id: row.requested_by_user_id,
               }).then((snapshotJson) => {
                 if (!snapshotJson?.trim()) return;
                 // 清理可能的 markdown 代码块包裹
@@ -1584,6 +1637,9 @@ async function processImageGeneration(db, log, imageGenId) {
       negative_prompt: row.negative_prompt || undefined,
       task_id: row.task_id || undefined,
       frame_identity_lock: isFrameIdentityLock,
+      user_id: row.requested_by_user_id,
+      ai_config_id: row.ai_config_id,
+      ai_config_revision_id: row.ai_config_revision_id,
     });
     log.info('[图生] Step4 图生 API 返回', { id: imageGenId, api_ms: Date.now() - tApi, has_error: !!result.error, elapsed: elapsed() });
 
@@ -1802,12 +1858,20 @@ async function processImageGeneration(db, log, imageGenId) {
   }
 }
 
-function deleteById(db, log, id) {
+function deleteById(db, log, id, userId) {
   const numId = Number(id);
   const now = new Date().toISOString();
   // 若该图当前绑定为某分镜的首/尾帧，解除绑定（避免悬空引用）
   try {
-    const row = db.prepare('SELECT storyboard_id FROM image_generations WHERE id = ? AND deleted_at IS NULL').get(numId);
+    const row = userId
+      ? db.prepare(
+          `SELECT storyboard_id FROM image_generations
+            WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+        ).get(numId, Number(userId))
+      : db.prepare(
+          `SELECT storyboard_id FROM image_generations
+            WHERE id = ? AND deleted_at IS NULL`
+        ).get(numId);
     if (row && row.storyboard_id != null) {
       const sid = Number(row.storyboard_id);
       db.prepare(`UPDATE storyboards SET first_frame_image_id = NULL, image_url = NULL, local_path = NULL, updated_at = ? WHERE id = ? AND first_frame_image_id = ?`).run(now, sid, numId);
@@ -1816,7 +1880,15 @@ function deleteById(db, log, id) {
   } catch (e) {
     try { log?.warn?.('[image delete] 清除分镜绑定失败', { id: numId, err: e.message }); } catch (_) {}
   }
-  const result = db.prepare('UPDATE image_generations SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, numId);
+  const result = userId
+    ? db.prepare(
+        `UPDATE image_generations SET deleted_at = ?
+          WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+      ).run(now, numId, Number(userId))
+    : db.prepare(
+        `UPDATE image_generations SET deleted_at = ?
+          WHERE id = ? AND deleted_at IS NULL`
+      ).run(now, numId);
   return result.changes > 0;
 }
 
@@ -1833,6 +1905,8 @@ function getBackgroundsForEpisode(db, episodeId) {
 
 function upload(db, log, req) {
   const now = new Date().toISOString();
+  const userId = require('./aiRequestLogService').currentUserId(req.user_id);
+  if (!userId) throw new Error('缺少有效的用户身份');
   const frameType = req.frame_type ?? null;
   let dramaId = Number(req.drama_id) || 0;
   let visualContext = null;
@@ -1860,8 +1934,8 @@ function upload(db, log, req) {
     `INSERT INTO image_generations
       (storyboard_id, drama_id, provider, prompt, image_url, local_path, frame_type,
        appearance_context_json, appearance_context_hash, generation_context_hash,
-       status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
+       requested_by_user_id, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
   ).run(
     req.storyboard_id ?? null,
     dramaId,
@@ -1873,6 +1947,7 @@ function upload(db, log, req) {
     appearanceContextJson,
     appearanceContextHash,
     generationContextHash,
+    userId,
     now,
     now
   );

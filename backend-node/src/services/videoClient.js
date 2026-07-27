@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const aiConfigService = require('./aiConfigService');
+const userAiConfigService = require('./userAiConfigService');
 const aiRequestLogService = require('./aiRequestLogService');
 const { resolveSceneModelSelection } = require('./sceneModelMapService');
 let sharp; try { sharp = require('sharp'); } catch (_) { sharp = null; }
@@ -92,33 +92,9 @@ function resolveVideoProtocol(config, modelHint) {
   return protocol;
 }
 
-/** 可灵 Omni / 多图生视频（飞儿 ffir.cn 等中转）：可用环境变量临时覆盖配置 */
+/** 运行时只使用用户配置；不再从进程环境变量注入共享凭据。 */
 function applyKlingOmniEnvOverrides(config) {
-  const c = { ...config };
-  if (process.env.KLING_FFIR_BASE_URL) {
-    c.base_url = String(process.env.KLING_FFIR_BASE_URL).replace(/\/$/, '');
-  }
-  if (process.env.KLING_FFIR_API_KEY) {
-    c.api_key = process.env.KLING_FFIR_API_KEY;
-  }
-  if (process.env.KLING_FFIR_CREATE_PATH) {
-    c.endpoint = process.env.KLING_FFIR_CREATE_PATH.startsWith('/')
-      ? process.env.KLING_FFIR_CREATE_PATH
-      : '/' + process.env.KLING_FFIR_CREATE_PATH;
-  }
-  if (process.env.KLING_FFIR_QUERY_PATH) {
-    c.query_endpoint = process.env.KLING_FFIR_QUERY_PATH;
-  }
-  if (process.env.KLING_OFFICIAL_ACCESS_KEY) {
-    c._kling_official_access_key = process.env.KLING_OFFICIAL_ACCESS_KEY;
-  }
-  if (process.env.KLING_OFFICIAL_SECRET_KEY) {
-    c._kling_official_secret_key = process.env.KLING_OFFICIAL_SECRET_KEY;
-  }
-  if (process.env.KLING_OFFICIAL_BASE_URL) {
-    c.base_url = String(process.env.KLING_OFFICIAL_BASE_URL).replace(/\/$/, '');
-  }
-  return c;
+  return { ...config };
 }
 
 function parseConfigSettingsJson(config) {
@@ -138,8 +114,6 @@ function resolveKlingSecretKeyBase64Flag(cfg) {
   const s = parseConfigSettingsJson(cfg);
   if (s.kling_secret_key_base64 === true || s.kling_secret_key_base64 === 1) return true;
   if (String(s.kling_secret_key_base64 || '').toLowerCase() === 'true') return true;
-  const env = String(process.env.KLING_SECRET_KEY_BASE64 || '').toLowerCase();
-  if (env === '1' || env === 'true' || env === 'yes') return true;
   return false;
 }
 
@@ -149,10 +123,10 @@ function resolveKlingSecretKeyBase64Flag(cfg) {
 function resolveKlingOmniBearerToken(cfg, log) {
   const s = parseConfigSettingsJson(cfg);
   const ak = normalizeKlingCredential(
-    s.kling_access_key || s.access_key || cfg._kling_official_access_key || ''
+    s.kling_access_key || s.access_key || ''
   );
   const sk = normalizeKlingCredential(
-    s.kling_secret_key || s.secret_key || cfg._kling_official_secret_key || ''
+    s.kling_secret_key || s.secret_key || ''
   );
   if (ak && sk) {
     try {
@@ -180,10 +154,10 @@ function logKlingOmniAuthDebug(cfg, bearerToken, log) {
   if (!bearerToken || !log?.info) return;
   const s = parseConfigSettingsJson(cfg);
   const ak = normalizeKlingCredential(
-    s.kling_access_key || s.access_key || cfg._kling_official_access_key || ''
+    s.kling_access_key || s.access_key || ''
   );
   const sk = normalizeKlingCredential(
-    s.kling_secret_key || s.secret_key || cfg._kling_official_secret_key || ''
+    s.kling_secret_key || s.secret_key || ''
   );
   const now = Math.floor(Date.now() / 1000);
   if (ak && sk) {
@@ -218,8 +192,7 @@ function resolveKlingOmniBaseUrl(cfg) {
   if (b) return b;
   const s = parseConfigSettingsJson(cfg);
   const hasOfficial =
-    ((s.kling_access_key || s.access_key) && (s.kling_secret_key || s.secret_key)) ||
-    (cfg._kling_official_access_key && cfg._kling_official_secret_key);
+    (s.kling_access_key || s.access_key) && (s.kling_secret_key || s.secret_key);
   return hasOfficial ? 'https://api-beijing.klingai.com' : 'https://ffir.cn';
 }
 
@@ -1199,15 +1172,23 @@ function parseKlingOmniPollVideoUrl(data) {
 }
 
 // ??????????????????listConfigs ?? is_default DESC, priority DESC ??
-function getDefaultVideoConfig(db, preferredModel, sceneKey) {
+function resolveActorUserId(explicitUserId) {
+  return userAiConfigService.requireUserId(
+    aiRequestLogService.currentUserId(explicitUserId)
+  );
+}
+
+function getDefaultVideoConfig(db, preferredModel, sceneKey, userId) {
+  const actorUserId = resolveActorUserId(userId);
   if (sceneKey) {
     const routed = resolveSceneModelSelection(db, sceneKey, {
       serviceType: 'video',
       preferredModel,
+      userId: actorUserId,
     });
     if (routed.row && routed.config) return routed.config;
   }
-  const configs = aiConfigService.listConfigs(db, 'video');
+  const configs = userAiConfigService.listRuntimeConfigs(db, actorUserId, 'video');
   const active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
   if (preferredModel) {
@@ -1218,6 +1199,31 @@ function getDefaultVideoConfig(db, preferredModel, sceneKey) {
   }
   const defaultOne = active.find((c) => c.is_default);
   return defaultOne != null ? defaultOne : active[0];
+}
+
+function getPinnedVideoConfig(db, opts = {}) {
+  if (!opts.ai_config_id) return null;
+  const userId = resolveActorUserId(opts.user_id);
+  const config = opts.ai_config_revision_id
+    ? userAiConfigService.getRuntimeConfigByRevision(
+        db,
+        userId,
+        opts.ai_config_id,
+        opts.ai_config_revision_id,
+        { includeDeleted: true }
+      )
+    : userAiConfigService.getRuntimeConfig(db, userId, opts.ai_config_id);
+  if (!config) {
+    const error = new Error('提交任务时使用的个人视频 AI 配置已不存在');
+    error.code = 'AI_CONFIG_NOT_FOUND';
+    throw error;
+  }
+  if (config.service_type !== 'video') {
+    const error = new Error('任务绑定的 AI 配置不是视频配置');
+    error.code = 'AI_CONFIG_TYPE_MISMATCH';
+    throw error;
+  }
+  return config;
 }
 
 // ?????? API ????? /contents/generations/tasks?base ???????????????
@@ -4524,12 +4530,13 @@ async function callVideoApiInternal(db, log, opts) {
     ? resolveSceneModelSelection(db, scene_key, {
         serviceType: 'video',
         preferredModel,
+        userId: resolveActorUserId(opts.user_id),
       })
     : null;
   const hasSceneOverride = !!(routedSelection?.row && routedSelection?.config);
-  const config = hasSceneOverride
+  const config = getPinnedVideoConfig(db, opts) || (hasSceneOverride
     ? routedSelection.config
-    : getDefaultVideoConfig(db, preferredModel);
+    : getDefaultVideoConfig(db, preferredModel, null, opts.user_id));
   if (!config) {
     throw new Error('???????????AI ?????? video ?????????');
   }
@@ -4976,13 +4983,17 @@ function resolveVideoLogMeta(db, opts = {}) {
       ? resolveSceneModelSelection(db, opts.scene_key, {
           serviceType: 'video',
           preferredModel: opts.model,
+          userId: resolveActorUserId(opts.user_id),
         })
       : null;
-    const config = routedSelection?.row && routedSelection?.config
-      ? routedSelection.config
-      : getDefaultVideoConfig(db, opts.model);
+    const config = getPinnedVideoConfig(db, opts) || (
+      routedSelection?.row && routedSelection?.config
+        ? routedSelection.config
+        : getDefaultVideoConfig(db, opts.model, null, opts.user_id)
+    );
     return {
       config_id: config?.id || null,
+      config_revision_id: config?.revision_id || null,
       provider: config?.provider || opts.provider || null,
       model: config
         ? getModelFromConfig(config, routedSelection?.model_override || opts.model)
@@ -5000,6 +5011,7 @@ function resolveVideoLogMeta(db, opts = {}) {
 async function callVideoApi(db, log, opts) {
   const meta = resolveVideoLogMeta(db, opts);
   const record = aiRequestLogService.start(db, {
+    user_id: opts.user_id,
     service_type: 'video',
     operation: opts.scene_key || 'video_generation',
     scene_key: opts.scene_key || null,
@@ -5693,6 +5705,7 @@ async function pollVideoTask(
 
 module.exports = {
   getDefaultVideoConfig,
+  getPinnedVideoConfig,
   callVideoApi,
   pollVideoTask,
   normalizeAspectRatioForApi,

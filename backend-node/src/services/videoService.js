@@ -38,6 +38,10 @@ function setVideoGenFailed(db, videoGenId, errorMsg, now) {
 function list(db, query) {
   let sql = 'FROM video_generations WHERE deleted_at IS NULL';
   const params = [];
+  if (query.user_id) {
+    sql += ' AND requested_by_user_id = ?';
+    params.push(Number(query.user_id));
+  }
   if (query.drama_id) {
     sql += ' AND drama_id = ?';
     params.push(query.drama_id);
@@ -102,8 +106,15 @@ function rowToItem(r) {
   };
 }
 
-function getById(db, id) {
-  const r = db.prepare('SELECT * FROM video_generations WHERE id = ? AND deleted_at IS NULL').get(Number(id));
+function getById(db, id, userId) {
+  const r = userId
+    ? db.prepare(
+        `SELECT * FROM video_generations
+          WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+      ).get(Number(id), Number(userId))
+    : db.prepare(
+        'SELECT * FROM video_generations WHERE id = ? AND deleted_at IS NULL'
+      ).get(Number(id));
   return r ? rowToItem(r) : null;
 }
 
@@ -497,7 +508,16 @@ async function resumePollForVideoGeneration(db, log, videoGenId) {
   const providerTaskId = row.provider_task_id && String(row.provider_task_id).trim();
   if (!providerTaskId) return;
 
-  const config = videoClient.getDefaultVideoConfig(db, row.model, 'video_generation');
+  let config;
+  try {
+    config = videoClient.getPinnedVideoConfig(db, {
+      user_id: row.requested_by_user_id,
+      ai_config_id: row.ai_config_id,
+      ai_config_revision_id: row.ai_config_revision_id,
+    });
+  } catch (_) {
+    config = null;
+  }
   if (!config) {
     const now = new Date().toISOString();
     setVideoGenFailed(db, videoGenId, '未配置视频模型', now);
@@ -589,7 +609,11 @@ async function processVideoGeneration(db, log, videoGenId) {
     const storageLocalPath = path.isAbsolute(cfg.storage?.local_path)
       ? cfg.storage.local_path
       : path.join(process.cwd(), cfg.storage?.local_path || './data/storage');
-    const config = videoClient.getDefaultVideoConfig(db, row.model, 'video_generation');
+    const config = videoClient.getPinnedVideoConfig(db, {
+      user_id: row.requested_by_user_id,
+      ai_config_id: row.ai_config_id,
+      ai_config_revision_id: row.ai_config_revision_id,
+    });
     if (!config) {
       setVideoGenFailed(db, videoGenId, '未配置视频模型', now);
       if (row.task_id) taskService.updateTaskError(db, row.task_id, '未配置视频模型');
@@ -671,6 +695,9 @@ async function processVideoGeneration(db, log, videoGenId) {
       video_gen_id: videoGenId,
       task_id: row.task_id || undefined,
       scene_key: 'video_generation',
+      user_id: row.requested_by_user_id,
+      ai_config_id: row.ai_config_id,
+      ai_config_revision_id: row.ai_config_revision_id,
     });
     const now2 = new Date().toISOString();
     if (result.error) {
@@ -712,15 +739,21 @@ async function processVideoGeneration(db, log, videoGenId) {
   }
 }
 
-function deleteById(db, log, id) {
+function deleteById(db, log, id, userId) {
   const numId = Number(id);
   const now = new Date().toISOString();
   const remove = db.transaction(() => {
-    const row = db.prepare(
-      `SELECT id, storyboard_id, video_url, local_path
-         FROM video_generations
-        WHERE id = ? AND deleted_at IS NULL`
-    ).get(numId);
+    const row = userId
+      ? db.prepare(
+          `SELECT id, storyboard_id, video_url, local_path
+             FROM video_generations
+            WHERE id = ? AND requested_by_user_id = ? AND deleted_at IS NULL`
+        ).get(numId, Number(userId))
+      : db.prepare(
+          `SELECT id, storyboard_id, video_url, local_path
+             FROM video_generations
+            WHERE id = ? AND deleted_at IS NULL`
+        ).get(numId);
     if (!row) return false;
 
     db.prepare(

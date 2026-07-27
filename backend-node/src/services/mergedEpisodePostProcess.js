@@ -202,7 +202,16 @@ function getDrawtextFontOption() {
  * @param {object} mergeOpts — burn_dialogue_audio, burn_narration_subtitles, watermark_text
  */
 async function runMergedEpisodePostProcess(db, log, opts) {
-  const { mergedAbsPath, storageRoot, scenes, episodeId, mergeOpts = {} } = opts;
+  const {
+    mergedAbsPath,
+    storageRoot,
+    scenes,
+    episodeId,
+    mergeOpts = {},
+    user_id,
+    ai_config_id,
+    ai_config_revision_id,
+  } = opts;
   const wantDial = !!mergeOpts.burn_dialogue_audio;
   const wantNarr = !!mergeOpts.burn_narration_subtitles;
   const watermarkText = (mergeOpts.watermark_text && String(mergeOpts.watermark_text).trim())
@@ -278,6 +287,9 @@ async function runMergedEpisodePostProcess(db, log, opts) {
             let synth;
             try {
               synth = await ttsService.synthesize(db, log, {
+                user_id,
+                ai_config_id,
+                ai_config_revision_id,
                 text: narrText,
                 storyboard_id: null,
                 episode_id: episodeId,

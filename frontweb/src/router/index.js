@@ -50,7 +50,7 @@ const router = createRouter({
       path: '/ai-config',
       name: 'ai-config',
       component: () => import('@/views/AiConfig.vue'),
-      meta: { title: 'AI 配置', requiresSuperAdmin: true }
+      meta: { title: 'AI 配置' }
     },
     {
       path: '/accounts',

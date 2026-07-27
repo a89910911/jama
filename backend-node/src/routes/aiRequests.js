@@ -14,7 +14,15 @@ module.exports = function aiRequestRoutes(db, log) {
   return {
     systemList(req, res) {
       try {
-        response.success(res, aiRequestLogService.list(db, null, req.query));
+        response.success(
+          res,
+          aiRequestLogService.list(
+            db,
+            null,
+            req.query,
+            req.user.is_super_admin ? null : req.user.id
+          )
+        );
       } catch (error) {
         log.error('List system AI request logs failed', { error: error.message });
         response.internalError(res, 'AI 任务记录加载失败');
@@ -23,7 +31,14 @@ module.exports = function aiRequestRoutes(db, log) {
 
     systemStats(req, res) {
       try {
-        response.success(res, aiRequestLogService.stats(db, null));
+        response.success(
+          res,
+          aiRequestLogService.stats(
+            db,
+            null,
+            req.user.is_super_admin ? null : req.user.id
+          )
+        );
       } catch (error) {
         log.error('System AI request stats failed', { error: error.message });
         response.internalError(res, 'AI 任务记录统计失败');
@@ -31,20 +46,35 @@ module.exports = function aiRequestRoutes(db, log) {
     },
 
     systemGet(req, res) {
-      const item = aiRequestLogService.getOne(db, null, req.params.request_id);
+      const item = aiRequestLogService.getOne(
+        db,
+        null,
+        req.params.request_id,
+        req.user.is_super_admin ? null : req.user.id
+      );
       if (!item) return response.notFound(res, 'AI 任务记录不存在');
       response.success(res, item);
     },
 
     systemRemove(req, res) {
-      const removed = aiRequestLogService.remove(db, null, req.params.request_id);
+      const removed = aiRequestLogService.remove(
+        db,
+        null,
+        req.params.request_id,
+        req.user.is_super_admin ? null : req.user.id
+      );
       if (!removed) return response.notFound(res, 'AI 任务记录不存在');
       response.success(res, { deleted: 1 });
     },
 
     systemClear(req, res) {
       try {
-        const deleted = aiRequestLogService.clear(db, null, req.query);
+        const deleted = aiRequestLogService.clear(
+          db,
+          null,
+          req.query,
+          req.user.is_super_admin ? null : req.user.id
+        );
         response.success(res, { deleted });
       } catch (error) {
         log.error('Clear system AI request logs failed', { error: error.message });
@@ -56,7 +86,10 @@ module.exports = function aiRequestRoutes(db, log) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;
       try {
-        response.success(res, aiRequestLogService.list(db, dramaId, req.query));
+        response.success(
+          res,
+          aiRequestLogService.list(db, dramaId, req.query, req.user.id)
+        );
       } catch (error) {
         log.error('List AI request logs failed', { drama_id: dramaId, error: error.message });
         response.internalError(res, 'AI 记录加载失败');
@@ -67,7 +100,7 @@ module.exports = function aiRequestRoutes(db, log) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;
       try {
-        response.success(res, aiRequestLogService.stats(db, dramaId));
+        response.success(res, aiRequestLogService.stats(db, dramaId, req.user.id));
       } catch (error) {
         log.error('AI request stats failed', { drama_id: dramaId, error: error.message });
         response.internalError(res, 'AI 记录统计失败');
@@ -77,7 +110,12 @@ module.exports = function aiRequestRoutes(db, log) {
     get(req, res) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;
-      const item = aiRequestLogService.getOne(db, dramaId, req.params.request_id);
+      const item = aiRequestLogService.getOne(
+        db,
+        dramaId,
+        req.params.request_id,
+        req.user.id
+      );
       if (!item) return response.notFound(res, 'AI 记录不存在');
       response.success(res, item);
     },
@@ -85,7 +123,12 @@ module.exports = function aiRequestRoutes(db, log) {
     remove(req, res) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;
-      const removed = aiRequestLogService.remove(db, dramaId, req.params.request_id);
+      const removed = aiRequestLogService.remove(
+        db,
+        dramaId,
+        req.params.request_id,
+        req.user.id
+      );
       if (!removed) return response.notFound(res, 'AI 记录不存在');
       response.success(res, { deleted: 1 });
     },
@@ -94,7 +137,12 @@ module.exports = function aiRequestRoutes(db, log) {
       const dramaId = parseDramaId(req, res);
       if (!dramaId) return;
       try {
-        const deleted = aiRequestLogService.clear(db, dramaId, req.query);
+        const deleted = aiRequestLogService.clear(
+          db,
+          dramaId,
+          req.query,
+          req.user.id
+        );
         response.success(res, { deleted });
       } catch (error) {
         log.error('Clear AI request logs failed', { drama_id: dramaId, error: error.message });

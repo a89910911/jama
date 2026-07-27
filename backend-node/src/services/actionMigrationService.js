@@ -228,11 +228,11 @@ function getVideoModel(config) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean)[0] || raw;
 }
 
-function getActionVideoConfig(db) {
-  return videoClient.getDefaultVideoConfig(db, null, 'action_migration')
-    || videoClient.getDefaultVideoConfig(db, null, 'redraw_generation')
-    || videoClient.getDefaultVideoConfig(db, null, 'video_generation')
-    || videoClient.getDefaultVideoConfig(db, null);
+function getActionVideoConfig(db, userId) {
+  return videoClient.getDefaultVideoConfig(db, null, 'action_migration', userId)
+    || videoClient.getDefaultVideoConfig(db, null, 'redraw_generation', userId)
+    || videoClient.getDefaultVideoConfig(db, null, 'video_generation', userId)
+    || videoClient.getDefaultVideoConfig(db, null, null, userId);
 }
 
 function configCapability(config) {
@@ -411,7 +411,7 @@ function calculatePreflight(db, cfg, row) {
   const driving = fileInfo(cfg, row.structure_video_path || row.driving_video_path);
   const reference = fileInfo(cfg, row.reference_image_path || row.reference_image_url);
   const meta = parseJson(row.settings, {}).video_metadata || {};
-  const capability = configCapability(getActionVideoConfig(db));
+  const capability = configCapability(getActionVideoConfig(db, row.user_id));
   if (row.character_look_id && row.context_stale) {
     issues.push({
       level: 'error',
@@ -475,6 +475,8 @@ function updatePreflight(db, cfg, jobId) {
 }
 
 function createJob(db, cfg, log, body, files) {
+  const userId = require('./aiRequestLogService').currentUserId(body.user_id);
+  if (!userId) throw new Error('缺少有效的用户身份');
   const drivingFile = files?.driving_video?.[0] || files?.drivingVideo?.[0];
   const referenceFile = files?.reference_image?.[0] || files?.referenceImage?.[0];
   if (!drivingFile) throw new Error('请上传驱动视频');
@@ -533,8 +535,8 @@ function createJob(db, cfg, log, body, files) {
        reference_image_path, reference_image_url, prompt, negative_prompt, duration, aspect_ratio,
        resolution, status, settings, character_id, character_look_id,
        appearance_context_json, appearance_context_hash, context_stale,
-       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+       user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
   ).run(
     jobId,
     dramaId,
@@ -555,6 +557,7 @@ function createJob(db, cfg, log, body, files) {
     lookId,
     resolvedLook ? JSON.stringify(resolvedLook.context) : null,
     resolvedLook?.context.appearance_context_hash || null,
+    userId,
     now,
     now
   );
@@ -673,6 +676,10 @@ function getJob(db, cfg, jobId) {
 function listJobs(db, cfg, query = {}) {
   let sql = 'FROM action_migration_jobs WHERE deleted_at IS NULL';
   const params = [];
+  if (query.user_id) {
+    sql += ' AND user_id = ?';
+    params.push(Number(query.user_id));
+  }
   if (query.drama_id) {
     sql += ' AND drama_id = ?';
     params.push(Number(query.drama_id));
@@ -694,13 +701,19 @@ function submitJob(db, cfg, log, jobId, options = {}) {
     throw new Error(first?.message || '预检未通过');
   }
   row = getJobRow(db, jobId);
-  const config = getActionVideoConfig(db);
+  const config = getActionVideoConfig(db, row.user_id);
   const capability = configCapability(config);
   if (!capability.ok) throw new Error(capability.message);
   const source = row.structure_video_path || row.driving_video_path || row.driving_video_url;
   const reference = row.reference_image_url || publicUrlFromLocalPath(row.reference_image_path);
   const refs = [reference].filter(Boolean);
-  const task = taskService.createTask(db, log || console, 'action_migration_video_generation', row.id);
+  const task = taskService.createTask(
+    db,
+    log || console,
+    'action_migration_video_generation',
+    row.id,
+    row.user_id
+  );
   const now = nowIso();
   const model = getVideoModel(config);
   const provider = config.provider || '';
@@ -720,8 +733,9 @@ function submitJob(db, cfg, log, jobId, options = {}) {
       (drama_id, provider, prompt, model, duration, aspect_ratio, resolution, watermark,
        image_url, reference_image_urls, source_video_url, status, task_id,
        action_migration_job_id, appearance_context_json, appearance_context_hash,
-       generation_context_hash, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?)`
+       generation_context_hash, requested_by_user_id, ai_config_id,
+       ai_config_revision_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     row.drama_id || null,
     provider,
@@ -738,6 +752,9 @@ function submitJob(db, cfg, log, jobId, options = {}) {
     row.appearance_context_json || null,
     row.appearance_context_hash || null,
     generationContextHash,
+    row.user_id,
+    config.id,
+    config.revision_id,
     now,
     now
   );

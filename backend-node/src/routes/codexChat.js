@@ -7,9 +7,9 @@ const assistantSettings = require('../services/assistantSettingsService');
 module.exports = function codexChatRoutes(db, cfg, log) {
   return {
     status: async (req, res) => {
-      const engine = assistantSettings.getAssistantEngine(db);
+      const engine = assistantSettings.getAssistantEngine(db, req.user.id);
       if (engine === assistantSettings.ENGINE_CONFIGURED_API) {
-        const configured = assistantSettings.getConfiguredApiStatus(db);
+        const configured = assistantSettings.getConfiguredApiStatus(db, req.user.id);
         return response.success(res, {
           engine,
           available: configured.text.available,

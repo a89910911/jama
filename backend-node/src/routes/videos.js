@@ -10,7 +10,7 @@ function routes(db, log) {
   return {
     list: (req, res) => {
       try {
-        const query = { ...req.query };
+        const query = { ...req.query, user_id: req.user.id };
         const { items, total, page, pageSize } = videoService.list(db, query);
         response.successWithPagination(res, items, total, page, pageSize);
       } catch (err) {
@@ -160,22 +160,40 @@ function routes(db, log) {
           && !visualContext.characters.some((item) => item.character_id === voiceCharacterId)) {
           return response.badRequest(res, '配音角色必须属于当前分镜角色名单');
         }
-        const task = taskService.createTask(db, log, 'video_generation', String(dramaId || ''));
+        const selectedConfig = require('../services/videoClient').getDefaultVideoConfig(
+          db,
+          model,
+          'video_generation',
+          req.user.id
+        );
+        if (!selectedConfig) {
+          return response.badRequest(res, '当前账号尚未配置可用的视频 AI 服务');
+        }
+        const task = taskService.createTask(
+          db,
+          log,
+          'video_generation',
+          String(dramaId || ''),
+          req.user.id
+        );
         const insertInfo = db.prepare(
           `INSERT INTO video_generations (
              drama_id, storyboard_id, provider, prompt, model, duration, aspect_ratio,
              resolution, seed, camera_fixed, watermark, image_url, source_video_url,
              first_frame_url, last_frame_url, reference_image_urls, status, task_id,
              appearance_context_json, appearance_context_hash, generation_context_hash,
-             voice_character_id, created_at, updated_at
+             voice_character_id, requested_by_user_id, ai_config_id,
+             ai_config_revision_id, created_at, updated_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing',
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
           dramaId, storyboardId, provider, prompt, model, duration, aspectRatio,
           resolution, seed, cameraFixed, watermark, imageUrl, sourceVideoUrl,
           firstFrameUrl, lastFrameUrl, refImagesJson, task.id,
           appearanceContextJson, appearanceContextHash, generationContextHash,
-          voiceCharacterId, now, now
+          voiceCharacterId, req.user.id, selectedConfig.id,
+          selectedConfig.revision_id, now, now
         );
         const videoGenId = insertInfo.lastInsertRowid;
         if (storyboardId) {
@@ -188,7 +206,7 @@ function routes(db, log) {
         setImmediate(() => {
           videoService.processVideoGeneration(db, log, videoGenId);
         });
-        const item = videoService.getById(db, videoGenId);
+        const item = videoService.getById(db, videoGenId, req.user.id);
         response.created(res, item || { id: videoGenId, task_id: task.id, status: 'processing' });
       } catch (err) {
         log.error('videos create', { error: err.message });
@@ -197,7 +215,7 @@ function routes(db, log) {
     },
     get: (req, res) => {
       try {
-        const item = videoService.getById(db, req.params.id);
+        const item = videoService.getById(db, req.params.id, req.user.id);
         if (!item) return response.notFound(res, '记录不存在');
         response.success(res, item);
       } catch (err) {
@@ -207,7 +225,7 @@ function routes(db, log) {
     },
     delete: (req, res) => {
       try {
-        const ok = videoService.deleteById(db, log, req.params.id);
+        const ok = videoService.deleteById(db, log, req.params.id, req.user.id);
         if (!ok) return response.notFound(res, '记录不存在');
         response.success(res, { message: '删除成功' });
       } catch (err) {

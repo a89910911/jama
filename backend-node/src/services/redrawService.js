@@ -160,7 +160,8 @@ function getJobRow(db, jobId) {
 function getCardRow(db, cardId) {
   return db.prepare(
     `SELECT c.*, j.drama_id AS job_drama_id, j.episode_id AS job_episode_id, j.aspect_ratio AS job_aspect_ratio,
-            j.resolution AS job_resolution, j.overall_goal AS job_overall_goal
+            j.resolution AS job_resolution, j.overall_goal AS job_overall_goal,
+            j.user_id AS job_user_id
        FROM redraw_cards c
        JOIN redraw_jobs j ON j.id = c.job_id AND j.deleted_at IS NULL
       WHERE c.id = ? AND c.deleted_at IS NULL`
@@ -206,6 +207,10 @@ function updateJobStatus(db, jobId) {
 function listJobs(db, query = {}) {
   let sql = 'FROM redraw_jobs WHERE deleted_at IS NULL';
   const params = [];
+  if (query.user_id) {
+    sql += ' AND user_id = ?';
+    params.push(Number(query.user_id));
+  }
   if (query.drama_id) {
     sql += ' AND drama_id = ?';
     params.push(Number(query.drama_id));
@@ -262,13 +267,17 @@ function getJob(db, cfg, jobId) {
 
 function createJob(db, body = {}) {
   const now = nowIso();
+  const userId = require('./aiRequestLogService').currentUserId(body.user_id);
+  if (!userId) throw new Error('缺少有效的用户身份');
   const info = db.prepare(
     `INSERT INTO redraw_jobs
-      (drama_id, episode_id, title, overall_goal, aspect_ratio, resolution, status, settings, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+      (drama_id, episode_id, user_id, title, overall_goal, aspect_ratio,
+       resolution, status, settings, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
   ).run(
     body.drama_id ? Number(body.drama_id) : null,
     body.episode_id ? Number(body.episode_id) : null,
+    userId,
     String(body.title || '转绘任务').trim() || '转绘任务',
     body.overall_goal || '',
     body.aspect_ratio || '9:16',
@@ -468,7 +477,13 @@ function generateStructure(db, cfg, log, cardId, strength) {
 }
 
 function insertVideoGeneration(db, card, config, prompt, negativePrompt, refs) {
-  const task = taskService.createTask(db, console, 'redraw_video_generation', String(card.id));
+  const task = taskService.createTask(
+    db,
+    console,
+    'redraw_video_generation',
+    String(card.id),
+    card.job_user_id
+  );
   const model = videoModelFromConfig(config);
   const provider = config?.provider || '';
   const now = nowIso();
@@ -477,8 +492,8 @@ function insertVideoGeneration(db, card, config, prompt, negativePrompt, refs) {
       (drama_id, storyboard_id, provider, prompt, model, duration, aspect_ratio, resolution,
        watermark, reference_image_urls, source_video_url, status, task_id, redraw_card_id,
        appearance_context_json, appearance_context_hash, generation_context_hash,
-       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?)`
+       requested_by_user_id, ai_config_id, ai_config_revision_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     card.job_drama_id || null,
     card.storyboard_id || null,
@@ -504,6 +519,9 @@ function insertVideoGeneration(db, card, config, prompt, negativePrompt, refs) {
         reference_urls: refs,
       })
       : null,
+    card.job_user_id,
+    config.id,
+    config.revision_id,
     now,
     now
   );
@@ -518,7 +536,12 @@ function submitCard(db, cfg, log, cardId) {
     const first = report?.issues?.find((i) => i.level === 'error');
     throw new Error(first?.message || '预检未通过');
   }
-  const config = videoClient.getDefaultVideoConfig(db, null, 'redraw_generation') || videoClient.getDefaultVideoConfig(db, null);
+  const config = videoClient.getDefaultVideoConfig(
+    db,
+    null,
+    'redraw_generation',
+    card.job_user_id
+  ) || videoClient.getDefaultVideoConfig(db, null, null, card.job_user_id);
   if (!config) throw new Error('未配置视频 AI 模型');
   const job = getJobRow(db, card.job_id);
   const latestCard = getCardRow(db, cardId);

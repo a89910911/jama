@@ -176,13 +176,13 @@ function setupRouter(cfg, db, log) {
   r.put('/dramas/:id', drama.updateDrama);
   r.delete('/dramas/:id', drama.deleteDrama);
 
-  // ---------- ai-configs ----------
-  // 普通账号仅可读取运行时所需的非敏感模型能力，不能查看 AI 配置本身。
-  r.get('/ai-requests/stats', authService.requireSuperAdmin, aiRequests.systemStats);
-  r.get('/ai-requests', authService.requireSuperAdmin, aiRequests.systemList);
-  r.delete('/ai-requests', authService.requireSuperAdmin, aiRequests.systemClear);
-  r.get('/ai-requests/:request_id', authService.requireSuperAdmin, aiRequests.systemGet);
-  r.delete('/ai-requests/:request_id', authService.requireSuperAdmin, aiRequests.systemRemove);
+  // ---------- personal ai-configs ----------
+  // 所有接口均在认证后按 req.user.id 隔离；响应只返回凭据掩码。
+  r.get('/ai-requests/stats', aiRequests.systemStats);
+  r.get('/ai-requests', aiRequests.systemList);
+  r.delete('/ai-requests', aiRequests.systemClear);
+  r.get('/ai-requests/:request_id', aiRequests.systemGet);
+  r.delete('/ai-requests/:request_id', aiRequests.systemRemove);
   r.get('/ai-configs/vendor-lock', aiConfig.vendorLock);  // 必须在 /:id 之前
   r.get('/runtime/ai-configs', (req, res) => {
     const serviceType = String(req.query.service_type || '').trim();
@@ -190,8 +190,8 @@ function setupRouter(cfg, db, log) {
     if (!allowedTypes.has(serviceType)) {
       return response.badRequest(res, 'service_type 不支持');
     }
-    const aiConfigService = require('../services/aiConfigService');
-    const items = aiConfigService.listConfigs(db, serviceType).map((item) => ({
+    const userAiConfigService = require('../services/userAiConfigService');
+    const items = userAiConfigService.listConfigs(db, req.user.id, serviceType).map((item) => ({
       id: item.id,
       service_type: item.service_type,
       provider: item.provider,
@@ -205,14 +205,14 @@ function setupRouter(cfg, db, log) {
     }));
     return response.success(res, items);
   });
-  r.get('/ai-configs', authService.requireSuperAdmin, aiConfig.list);
-  r.post('/ai-configs', authService.requireSuperAdmin, aiConfig.create);
-  r.post('/ai-configs/test', authService.requireSuperAdmin, aiConfig.testConnection);
-  r.post('/ai-configs/jimeng2-list-assets', authService.requireSuperAdmin, aiConfig.listJimeng2MaterialAssets);
-  r.post('/ai-configs/model-ark-asset', authService.requireSuperAdmin, aiConfig.modelArkAsset);
-  r.post('/ai-configs/holycrab-assets', authService.requireSuperAdmin, aiConfig.holyCrabAssets);
-  r.get('/ai-configs/holycrab-assets/:configId/:uniqId/content', authService.requireSuperAdmin, aiConfig.holyCrabAssetContent);
-  r.post('/ai-configs/holycrab-assets/upload', authService.requireSuperAdmin, (req, res, next) => {
+  r.get('/ai-configs', aiConfig.list);
+  r.post('/ai-configs', aiConfig.create);
+  r.post('/ai-configs/test', aiConfig.testConnection);
+  r.post('/ai-configs/jimeng2-list-assets', aiConfig.listJimeng2MaterialAssets);
+  r.post('/ai-configs/model-ark-asset', aiConfig.modelArkAsset);
+  r.post('/ai-configs/holycrab-assets', aiConfig.holyCrabAssets);
+  r.get('/ai-configs/holycrab-assets/:configId/:uniqId/content', aiConfig.holyCrabAssetContent);
+  r.post('/ai-configs/holycrab-assets/upload', (req, res, next) => {
     holyCrabAssetSingle(req, res, (err) => {
       if (err?.code === 'LIMIT_FILE_SIZE') {
         return response.error(res, 413, 'FILE_TOO_LARGE', 'HolyCrab 单个素材不能超过 200MB');
@@ -221,18 +221,18 @@ function setupRouter(cfg, db, log) {
       return aiConfig.holyCrabAssets(req, res);
     });
   });
-  r.put('/ai-configs/bulk-update-key', authService.requireSuperAdmin, aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
-  r.put('/ai-configs/:id/default', authService.requireSuperAdmin, aiConfig.setDefault);
-  r.get('/ai-configs/:id/models', authService.requireSuperAdmin, aiConfig.listModels);
-  r.get('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.get);
-  r.put('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.update);
-  r.delete('/ai-configs/:id', authService.requireSuperAdmin, aiConfig.delete);
+  r.put('/ai-configs/bulk-update-key', aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
+  r.put('/ai-configs/:id/default', aiConfig.setDefault);
+  r.get('/ai-configs/:id/models', aiConfig.listModels);
+  r.get('/ai-configs/:id', aiConfig.get);
+  r.put('/ai-configs/:id', aiConfig.update);
+  r.delete('/ai-configs/:id', aiConfig.delete);
 
   // ---------- generation (角色生成：AI + 入库 + 任务结果) ----------
   r.post('/generation/characters', (req, res) => {
     const characterGenerationService = require('../services/characterGenerationService');
     try {
-      const body = req.body || {};
+      const body = { ...(req.body || {}), user_id: req.user.id };
       if (!body.drama_id) {
         return response.badRequest(res, 'drama_id 必填');
       }
@@ -484,9 +484,9 @@ function setupRouter(cfg, db, log) {
 
   // ---------- settings ----------
   r.get('/settings/generation', settings.getGenerationSettings);
-  r.put('/settings/generation', authService.requireSuperAdmin, settings.updateGenerationSettings);
+  r.put('/settings/generation', settings.updateGenerationSettings);
   r.get('/settings/assistant', settings.getAssistantSettings);
-  r.put('/settings/assistant', authService.requireSuperAdmin, settings.updateAssistantSettings);
+  r.put('/settings/assistant', settings.updateAssistantSettings);
 
   // ---------- prompt templates ----------
   r.get('/settings/prompts', authService.requireSuperAdmin, prompts.listSystem);
@@ -495,13 +495,13 @@ function setupRouter(cfg, db, log) {
   r.post('/settings/prompts/:key/preview', authService.requireSuperAdmin, prompts.previewSystem);
 
   // ---------- scene model map ----------
-  r.get('/scene-model-map', authService.requireSuperAdmin, sceneModelMap.list);
-  r.get('/scene-model-map-definitions', authService.requireSuperAdmin, sceneModelMap.definitions);
-  r.get('/business-scenes/overview', authService.requireSuperAdmin, sceneModelMap.overview);
-  r.post('/scene-model-map', authService.requireSuperAdmin, sceneModelMap.create);
-  r.get('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.get);
-  r.put('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.update);
-  r.delete('/scene-model-map/:key', authService.requireSuperAdmin, sceneModelMap.delete);
+  r.get('/scene-model-map', sceneModelMap.list);
+  r.get('/scene-model-map-definitions', sceneModelMap.definitions);
+  r.get('/business-scenes/overview', sceneModelMap.overview);
+  r.post('/scene-model-map', sceneModelMap.create);
+  r.get('/scene-model-map/:key', sceneModelMap.get);
+  r.put('/scene-model-map/:key', sceneModelMap.update);
+  r.delete('/scene-model-map/:key', sceneModelMap.delete);
 
   return r;
 }

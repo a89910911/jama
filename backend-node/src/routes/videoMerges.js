@@ -5,7 +5,7 @@ function routes(db, log) {
   return {
     list: (req, res) => {
       try {
-        const query = { ...req.query };
+        const query = { ...req.query, user_id: req.user.id };
         const items = videoMergeService.list(db, query);
         response.success(res, items);
       } catch (err) {
@@ -16,7 +16,10 @@ function routes(db, log) {
     create: (req, res) => {
       try {
         const body = req.body || {};
-        const rec = videoMergeService.create(db, log, body);
+        const rec = videoMergeService.create(db, log, {
+          ...body,
+          user_id: req.user.id,
+        });
         response.success(res, { merge_id: rec.merge_id, task_id: rec.task_id, ...rec });
       } catch (err) {
         log.error('video-merges create', { error: err.message });
@@ -25,7 +28,7 @@ function routes(db, log) {
     },
     get: (req, res) => {
       try {
-        const item = videoMergeService.getById(db, req.params.merge_id);
+        const item = videoMergeService.getById(db, req.params.merge_id, req.user.id);
         if (!item) return response.notFound(res, '记录不存在');
         response.success(res, item);
       } catch (err) {
@@ -35,7 +38,12 @@ function routes(db, log) {
     },
     delete: (req, res) => {
       try {
-        const ok = videoMergeService.deleteById(db, log, req.params.merge_id);
+        const ok = videoMergeService.deleteById(
+          db,
+          log,
+          req.params.merge_id,
+          req.user.id
+        );
         if (!ok) return response.notFound(res, '记录不存在');
         response.success(res, { message: '删除成功' });
       } catch (err) {

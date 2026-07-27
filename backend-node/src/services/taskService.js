@@ -1,7 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
-const { tableExists } = require('../db/portableSql');
+const { tableColumns, tableExists } = require('../db/portableSql');
 const { loadConfig } = require('../config');
 const { normalizeDataUrlsForPersistence } = require('./localMediaService');
+const aiRequestLogService = require('./aiRequestLogService');
 
 const ACTIVE_TASK_STATUSES = ['pending', 'processing', 'running'];
 const DEFAULT_ORPHAN_STALE_MS = 60 * 1000;
@@ -9,6 +10,14 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 10 * 1000;
 const DEFAULT_REAPER_INTERVAL_MS = 30 * 1000;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 2;
 const taskHeartbeats = new Map();
+
+function hasTaskUserColumn(db) {
+  try {
+    return tableColumns(db, 'async_tasks').some((column) => column.name === 'user_id');
+  } catch (_) {
+    return false;
+  }
+}
 
 function normalizeTaskPayloadForPersistence(payload, prefix) {
   const config = loadConfig();
@@ -29,14 +38,29 @@ function orphanStaleMs() {
   return positiveNumber(process.env.ASYNC_TASK_STALE_MS, DEFAULT_ORPHAN_STALE_MS);
 }
 
-function createTask(db, log, taskType, resourceId) {
+function createTask(db, log, taskType, resourceId, userIdValue) {
   const id = uuidv4();
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO async_tasks (id, type, status, progress, message, resource_id, created_at, updated_at)
-     VALUES (?, ?, 'pending', 0, '', ?, ?, ?)`
-  ).run(id, taskType, resourceId || '', now, now);
-  log.info('Task created', { task_id: id, type: taskType, resource_id: resourceId });
+  const userId = aiRequestLogService.currentUserId(userIdValue);
+  if (hasTaskUserColumn(db)) {
+    db.prepare(
+      `INSERT INTO async_tasks
+         (id, user_id, type, status, progress, message, resource_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'pending', 0, '', ?, ?, ?)`
+    ).run(id, userId, taskType, resourceId || '', now, now);
+  } else {
+    db.prepare(
+      `INSERT INTO async_tasks
+         (id, type, status, progress, message, resource_id, created_at, updated_at)
+       VALUES (?, ?, 'pending', 0, '', ?, ?, ?)`
+    ).run(id, taskType, resourceId || '', now, now);
+  }
+  log.info('Task created', {
+    task_id: id,
+    user_id: userId,
+    type: taskType,
+    resource_id: resourceId,
+  });
   startTaskHeartbeat(db, log, id);
   const task = getTask(db, id);
   return task || { id, type: taskType, status: 'pending', progress: 0, message: '', resource_id: resourceId || '', created_at: now, updated_at: now, completed_at: null };
@@ -75,8 +99,10 @@ function claimRecoverableTasks(db, log, taskType, options = {}) {
   const maxAttempts = positiveNumber(options.maxAttempts, DEFAULT_MAX_RECOVERY_ATTEMPTS);
   const limit = Math.min(100, positiveNumber(options.limit, 20));
   const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
+  const userColumn = hasTaskUserColumn(db) ? 'user_id' : 'NULL AS user_id';
   const rows = db.prepare(
-    `SELECT id, type, status, resource_id, request_payload, recovery_attempts, updated_at
+    `SELECT id, ${userColumn}, type, status, resource_id, request_payload,
+            recovery_attempts, updated_at
        FROM async_tasks
       WHERE type = ?
         AND status IN ('pending', 'processing', 'running')
@@ -106,7 +132,17 @@ function claimRecoverableTasks(db, log, taskType, options = {}) {
     ).run(now, row.id, staleBefore).changes;
     if (!changed) continue;
     startTaskHeartbeat(db, log, row.id);
-    claimed.push({ ...row, request_payload: payload, recovery_attempts: Number(row.recovery_attempts || 0) + 1 });
+    const requestPayload = {
+      ...payload,
+      ...(payload.user_id || row.user_id
+        ? { user_id: payload.user_id || row.user_id }
+        : {}),
+    };
+    claimed.push({
+      ...row,
+      request_payload: requestPayload,
+      recovery_attempts: Number(row.recovery_attempts || 0) + 1,
+    });
     log?.warn?.('Recoverable async task claimed', {
       task_id: row.id,
       type: row.type,
@@ -117,16 +153,32 @@ function claimRecoverableTasks(db, log, taskType, options = {}) {
   return claimed;
 }
 
-function getTask(db, taskId) {
-  const row = db.prepare('SELECT * FROM async_tasks WHERE id = ? AND deleted_at IS NULL').get(taskId);
+function getTask(db, taskId, userIdValue) {
+  const userId = aiRequestLogService.currentUserId(userIdValue);
+  const row = userId
+    ? db.prepare(
+        'SELECT * FROM async_tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL'
+      ).get(taskId, userId)
+    : db.prepare(
+        'SELECT * FROM async_tasks WHERE id = ? AND deleted_at IS NULL'
+      ).get(taskId);
   if (!row) return null;
   return rowToTask(row);
 }
 
-function getTasksByResource(db, resourceId) {
-  const rows = db.prepare(
-    'SELECT * FROM async_tasks WHERE resource_id = ? AND deleted_at IS NULL ORDER BY created_at DESC'
-  ).all(resourceId);
+function getTasksByResource(db, resourceId, userIdValue) {
+  const userId = aiRequestLogService.currentUserId(userIdValue);
+  const rows = userId
+    ? db.prepare(
+        `SELECT * FROM async_tasks
+          WHERE resource_id = ? AND user_id = ? AND deleted_at IS NULL
+          ORDER BY created_at DESC`
+      ).all(resourceId, userId)
+    : db.prepare(
+        `SELECT * FROM async_tasks
+          WHERE resource_id = ? AND deleted_at IS NULL
+          ORDER BY created_at DESC`
+      ).all(resourceId);
   return rows.map(rowToTask);
 }
 
@@ -142,13 +194,16 @@ function getTasksByResources(db, resourceIds, options = {}) {
   const activeClause = options.activeOnly
     ? " AND status IN ('pending', 'processing', 'running')"
     : '';
+  const userId = aiRequestLogService.currentUserId(options.userId);
+  const ownerClause = userId ? ' AND user_id = ?' : '';
   const rows = db.prepare(
     `SELECT * FROM async_tasks
      WHERE resource_id IN (${placeholders})
        AND deleted_at IS NULL
+       ${ownerClause}
        ${activeClause}
      ORDER BY created_at DESC`
-  ).all(...ids);
+  ).all(...ids, ...(userId ? [userId] : []));
   return rows.map(rowToTask);
 }
 
@@ -283,6 +338,7 @@ function rowToTask(r) {
   }
   return {
     id: r.id,
+    user_id: r.user_id == null ? null : Number(r.user_id),
     type: r.type,
     status: r.status,
     progress: r.progress ?? 0,

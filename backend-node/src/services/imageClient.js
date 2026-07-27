@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const aiConfigService = require('./aiConfigService');
+const userAiConfigService = require('./userAiConfigService');
 const aiRequestLogService = require('./aiRequestLogService');
 const { resolveSceneModelSelection } = require('./sceneModelMapService');
 const uploadService = require('./uploadService');
@@ -129,11 +129,24 @@ function inferProtocol(provider, model) {
  * @param {string} [preferredProvider] - 指定供应商（如 openai / dashscope），只在该 provider 的配置中选
  * @param {string} [imageServiceType] - 'image' 文本生成图片（角色/场景/道具），'storyboard_image' 分镜图片生成（支持参考图）；缺省为 'image'
  */
-function getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType) {
+function resolveActorUserId(explicitUserId) {
+  return userAiConfigService.requireUserId(
+    aiRequestLogService.currentUserId(explicitUserId)
+  );
+}
+
+function getDefaultImageConfig(
+  db,
+  preferredModel,
+  preferredProvider,
+  imageServiceType,
+  userId
+) {
   const serviceType = imageServiceType || 'image';
-  let configs = aiConfigService.listConfigs(db, serviceType);
+  const actorUserId = resolveActorUserId(userId);
+  let configs = userAiConfigService.listRuntimeConfigs(db, actorUserId, serviceType);
   if (configs.length === 0 && serviceType === 'storyboard_image') {
-    configs = aiConfigService.listConfigs(db, 'image');
+    configs = userAiConfigService.listRuntimeConfigs(db, actorUserId, 'image');
   }
   let active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
@@ -152,6 +165,31 @@ function getDefaultImageConfig(db, preferredModel, preferredProvider, imageServi
   const defaultOne = active.find((c) => c.is_default);
   if (defaultOne) return defaultOne;
   return active[0];
+}
+
+function getPinnedImageConfig(db, opts = {}) {
+  if (!opts.ai_config_id) return null;
+  const userId = resolveActorUserId(opts.user_id);
+  const config = opts.ai_config_revision_id
+    ? userAiConfigService.getRuntimeConfigByRevision(
+        db,
+        userId,
+        opts.ai_config_id,
+        opts.ai_config_revision_id,
+        { includeDeleted: true }
+      )
+    : userAiConfigService.getRuntimeConfig(db, userId, opts.ai_config_id);
+  if (!config) {
+    const error = new Error('提交任务时使用的个人图片 AI 配置已不存在');
+    error.code = 'AI_CONFIG_NOT_FOUND';
+    throw error;
+  }
+  if (!['image', 'storyboard_image'].includes(config.service_type)) {
+    const error = new Error('任务绑定的 AI 配置不是图片配置');
+    error.code = 'AI_CONFIG_TYPE_MISMATCH';
+    throw error;
+  }
+  return config;
 }
 
 // 与 Go image_generation_service 一致：openai/chatfire 使用 "/images/generations"，base_url 通常已含 /v1
@@ -1873,15 +1911,22 @@ async function callImageApiInternal(db, log, opts) {
     ? resolveSceneModelSelection(db, scene_key, {
         serviceType: imageServiceType || 'image',
         preferredModel,
+        userId: resolveActorUserId(opts.user_id),
       })
     : null;
   const hasSceneOverride = !!(
     routedSelection?.row &&
     routedSelection?.config
   );
-  const config = hasSceneOverride
+  const config = getPinnedImageConfig(db, opts) || (hasSceneOverride
     ? routedSelection.config
-    : getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType);
+    : getDefaultImageConfig(
+        db,
+        preferredModel,
+        preferredProvider,
+        imageServiceType,
+        opts.user_id
+      ));
   if (!config) {
     throw new Error('未配置图片模型，请在「AI 配置」中添加 image 类型且已启用的配置');
   }
@@ -2130,21 +2175,26 @@ function resolveImageLogMeta(db, opts = {}) {
       ? resolveSceneModelSelection(db, opts.scene_key, {
           serviceType: imageServiceType || 'image',
           preferredModel,
+          userId: resolveActorUserId(opts.user_id),
         })
       : null;
-    const config = routedSelection?.row && routedSelection?.config
-      ? routedSelection.config
-      : getDefaultImageConfig(
+    const config = getPinnedImageConfig(db, opts) || (
+      routedSelection?.row && routedSelection?.config
+        ? routedSelection.config
+        : getDefaultImageConfig(
           db,
           preferredModel,
           opts.preferred_provider ?? opts.preferredProvider,
-          imageServiceType
-        );
+          imageServiceType,
+          opts.user_id
+        )
+    );
     const model = config
       ? getModelFromConfig(config, routedSelection?.model_override || preferredModel)
       : (preferredModel || null);
     return {
       config_id: config?.id || null,
+      config_revision_id: config?.revision_id || null,
       provider: config?.provider || null,
       model,
     };
@@ -2208,6 +2258,7 @@ async function localizeModelImageResult(db, log, opts, result) {
 async function callImageApi(db, log, opts) {
   const meta = resolveImageLogMeta(db, opts);
   const record = aiRequestLogService.start(db, {
+    user_id: opts.user_id,
     service_type: 'image',
     operation: opts.scene_key || opts.image_type || 'image_generation',
     scene_key: opts.scene_key || null,
@@ -2275,13 +2326,24 @@ function createAndGenerateImage(db, log, opts) {
       ? opts.appearance_context_json
       : JSON.stringify(opts.appearance_context_json))
     : null;
+  const actorUserId = resolveActorUserId(opts.user_id);
+  const selectedConfig = resolveImageLogMeta(db, {
+    ...opts,
+    user_id: actorUserId,
+  });
 
   let resourceId;
   if (lookIdNum != null) resourceId = `character_look_${lookIdNum}`;
   else if (charIdNum != null) resourceId = `character_${charIdNum}`;
   else if (sceneIdNum != null) resourceId = `scene_${sceneIdNum}`;
   else resourceId = String(dramaIdNum);
-  const task = taskService.createTask(db, log, 'image_generation', resourceId);
+  const task = taskService.createTask(
+    db,
+    log,
+    'image_generation',
+    resourceId,
+    actorUserId
+  );
   const taskId = task.id;
 
   let imageGenId;
@@ -2291,8 +2353,9 @@ function createAndGenerateImage(db, log, opts) {
         (drama_id, character_id, character_look_id, character_look_revision,
          scene_id, provider, prompt, negative_prompt, model, size, quality,
          appearance_context_json, appearance_context_hash, generation_context_hash,
+         requested_by_user_id, ai_config_id, ai_config_revision_id,
          status, task_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
     ).run(
       dramaIdNum,
       charIdNum,
@@ -2308,6 +2371,9 @@ function createAndGenerateImage(db, log, opts) {
       appearanceContextJson,
       opts.appearance_context_hash || null,
       opts.generation_context_hash || null,
+      actorUserId,
+      selectedConfig.config_id,
+      selectedConfig.config_revision_id,
       taskId,
       now,
       now
@@ -2321,9 +2387,24 @@ function createAndGenerateImage(db, log, opts) {
       || (e.message || '').includes('appearance_context')
     ) {
       const info = db.prepare(
-        `INSERT INTO image_generations (drama_id, provider, prompt, model, size, quality, status, task_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
-      ).run(dramaIdNum, provider || 'openai', prompt || '', model || null, size || null, quality || null, taskId, now, now);
+        `INSERT INTO image_generations
+          (drama_id, provider, prompt, model, size, quality, requested_by_user_id,
+           ai_config_id, ai_config_revision_id, status, task_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+      ).run(
+        dramaIdNum,
+        provider || 'openai',
+        prompt || '',
+        model || null,
+        size || null,
+        quality || null,
+        actorUserId,
+        selectedConfig.config_id,
+        selectedConfig.config_revision_id,
+        taskId,
+        now,
+        now
+      );
       imageGenId = info.lastInsertRowid;
     } else {
       throw e;
@@ -2337,6 +2418,10 @@ function createAndGenerateImage(db, log, opts) {
       taskService.updateTaskStatus(db, taskId, 'processing', 10, '正在提交图片生成请求…');
       stopTaskHeartbeat = taskService.startTaskHeartbeat(db, log, taskId);
       const result = await callImageApi(db, log, {
+        ...opts,
+        user_id: actorUserId,
+        ai_config_id: selectedConfig.config_id,
+        ai_config_revision_id: selectedConfig.config_revision_id,
         prompt,
         model,
         size,
