@@ -58,6 +58,39 @@
               <el-form-item label="剧集 ID">
                 <el-input-number v-model="form.drama_id" :min="0" controls-position="right" />
               </el-form-item>
+              <el-form-item label="项目角色">
+                <el-select
+                  v-model="form.character_id"
+                  clearable
+                  filterable
+                  :disabled="!form.drama_id"
+                  placeholder="可选：使用角色衣橱"
+                  @change="onCharacterChange"
+                >
+                  <el-option
+                    v-for="character in projectCharacters"
+                    :key="character.id"
+                    :label="character.name || '未命名'"
+                    :value="character.id"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="角色造型">
+                <el-select
+                  v-model="form.character_look_id"
+                  clearable
+                  filterable
+                  :disabled="!form.character_id"
+                  placeholder="选择衣橱中的指定 Look"
+                >
+                  <el-option
+                    v-for="look in projectLooks"
+                    :key="look.id"
+                    :label="`${look.name}${look.is_default ? '（默认）' : ''}`"
+                    :value="look.id"
+                  />
+                </el-select>
+              </el-form-item>
               <el-form-item label="迁移模式">
                 <el-segmented v-model="form.mode" :options="modeOptions" />
               </el-form-item>
@@ -92,11 +125,11 @@
 
               <label class="upload-box">
                 <input type="file" accept="image/*" @change="onFileChange($event, 'reference')" />
-                <img v-if="referencePreview" :src="referencePreview" alt="" />
+                <img v-if="referencePreview || selectedLookPreview" :src="referencePreview || selectedLookPreview" alt="" />
                 <div v-else class="upload-placeholder">
                   <el-icon><Picture /></el-icon>
-                  <strong>参考人物图</strong>
-                  <span>上传要迁移到的新人物形象</span>
+                  <strong>参考人物图（可选）</strong>
+                  <span>已选角色造型时可不上传；未选造型时请上传</span>
                 </div>
                 <small v-if="form.referenceFile">{{ fileSummary(form.referenceFile) }}</small>
               </label>
@@ -211,7 +244,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheck,
@@ -225,6 +258,8 @@ import {
   Warning
 } from '@element-plus/icons-vue'
 import { actionMigrationAPI } from '@/api/actionMigration'
+import { dramaAPI } from '@/api/drama'
+import { characterLookAPI } from '@/api/characterLooks'
 
 const jobs = ref([])
 const selectedJob = ref(null)
@@ -236,11 +271,15 @@ const creatorRef = ref(null)
 const drivingPreview = ref('')
 const referencePreview = ref('')
 const pollTimer = ref(null)
+const projectCharacters = ref([])
+const projectLooks = ref([])
 
 const capability = reactive({ ok: true, message: '' })
 const form = reactive({
   title: '',
   drama_id: null,
+  character_id: null,
+  character_look_id: null,
   mode: 'balanced',
   aspect_ratio: '9:16',
   resolution: '480p',
@@ -257,7 +296,13 @@ const modeOptions = [
   { label: '强动作', value: 'motion' }
 ]
 
-const canCreate = computed(() => Boolean(form.drivingFile && form.referenceFile && !creating.value))
+const canCreate = computed(() =>
+  Boolean(form.drivingFile && (form.referenceFile || form.character_look_id) && !creating.value)
+)
+const selectedLookPreview = computed(() => {
+  const look = projectLooks.value.find((item) => Number(item.id) === Number(form.character_look_id))
+  return assetUrl(look?.local_path || look?.image_url || look?.ref_image)
+})
 const issues = computed(() => selectedJob.value?.preflight_report?.issues || [])
 const canSubmitSelected = computed(() => selectedJob.value?.preflight_report?.ok && !['running', 'completed'].includes(selectedJob.value?.status))
 const currentResultUrl = computed(() => assetUrl(selectedJob.value?.current_result?.video_url || selectedJob.value?.current_result?.local_path))
@@ -331,6 +376,35 @@ function onFileChange(event, kind) {
   }
 }
 
+async function loadProjectCharacters() {
+  form.character_id = null
+  form.character_look_id = null
+  projectCharacters.value = []
+  projectLooks.value = []
+  if (!form.drama_id) return
+  try {
+    const data = await dramaAPI.getCharacters(form.drama_id)
+    projectCharacters.value = Array.isArray(data) ? data : (data?.items || data?.characters || [])
+  } catch (error) {
+    ElMessage.error(error?.message || '加载项目角色失败')
+  }
+}
+
+async function onCharacterChange(characterId) {
+  form.character_look_id = null
+  projectLooks.value = []
+  if (!characterId) return
+  try {
+    const data = await characterLookAPI.list(characterId)
+    projectLooks.value = data?.items || []
+    form.character_look_id = projectLooks.value.find((item) => item.is_default)?.id || null
+  } catch (error) {
+    ElMessage.error(error?.message || '加载角色衣橱失败')
+  }
+}
+
+watch(() => form.drama_id, loadProjectCharacters)
+
 function scrollToCreator() {
   creatorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -370,6 +444,8 @@ async function createJob() {
     const body = new FormData()
     body.append('title', form.title || '动作迁移任务')
     if (form.drama_id) body.append('drama_id', String(form.drama_id))
+    if (form.character_id) body.append('character_id', String(form.character_id))
+    if (form.character_look_id) body.append('character_look_id', String(form.character_look_id))
     body.append('mode', form.mode)
     body.append('aspect_ratio', form.aspect_ratio)
     body.append('resolution', form.resolution)
@@ -377,7 +453,7 @@ async function createJob() {
     if (form.end_time != null) body.append('end_time', String(form.end_time))
     if (form.prompt?.trim()) body.append('prompt', form.prompt.trim())
     body.append('driving_video', form.drivingFile)
-    body.append('reference_image', form.referenceFile)
+    if (form.referenceFile) body.append('reference_image', form.referenceFile)
     const data = await actionMigrationAPI.createJob(body)
     ElMessage.success('任务已创建，预检完成')
     await refreshJobs()

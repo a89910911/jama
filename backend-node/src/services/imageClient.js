@@ -11,6 +11,8 @@ const taskService = require('./taskService');
 const { loadConfig } = require('../config');
 const { postJSONWithTimeout } = require('./aiClient');
 const { replaceIntoSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
+const { isDataUrl, localUrl, resolveStorageRoot } = require('./localMediaService');
 const {
   isFalConfig,
   falDirectBase,
@@ -2155,6 +2157,54 @@ function resolveImageLogMeta(db, opts = {}) {
   }
 }
 
+async function localizeModelImageResult(db, log, opts, result) {
+  if (!result || result.error || !isDataUrl(result.image_url)) return result;
+  try {
+    const cfg = loadConfig();
+    const storagePath = resolveStorageRoot(
+      opts.storage_local_path || cfg.storage?.local_path || './data/storage'
+    );
+    const imageType = String(opts.image_type || opts.scene_key || '').toLowerCase();
+    const category = opts.scene_id != null || imageType.includes('scene')
+      ? 'scenes'
+      : opts.character_id != null || opts.character_look_id != null || imageType.includes('character')
+        ? 'characters'
+        : imageType.includes('prop')
+          ? 'props'
+          : 'images';
+    const dramaId = Number(opts.drama_id);
+    const projectSubdir = Number.isFinite(dramaId) && dramaId > 0
+      ? storageLayout.getProjectStorageSubdir(db, dramaId)
+      : null;
+    const localPath = await uploadService.downloadImageToLocal(
+      storagePath,
+      result.image_url,
+      category,
+      log,
+      'model',
+      projectSubdir
+    );
+    if (!localPath) {
+      return {
+        error: '模型返回了 Base64 图片，但保存到本地失败，已阻止写入数据库',
+      };
+    }
+    return {
+      ...result,
+      image_url: localUrl(localPath),
+      local_path: localPath,
+    };
+  } catch (error) {
+    log.warn('Model Base64 image preprocessing failed', {
+      image_gen_id: opts.image_gen_id,
+      error: error.message,
+    });
+    return {
+      error: `模型返回的 Base64 图片保存到本地失败：${error.message}`,
+    };
+  }
+}
+
 async function callImageApi(db, log, opts) {
   const meta = resolveImageLogMeta(db, opts);
   const record = aiRequestLogService.start(db, {
@@ -2176,7 +2226,8 @@ async function callImageApi(db, log, opts) {
     },
   });
   try {
-    const result = await callImageApiInternal(db, log, opts);
+    const rawResult = await callImageApiInternal(db, log, opts);
+    const result = await localizeModelImageResult(db, log, opts, rawResult);
     if (result?.error) {
       aiRequestLogService.fail(db, record, result.error, result, meta);
     } else {
@@ -2197,6 +2248,7 @@ function createAndGenerateImage(db, log, opts) {
   const {
     drama_id,
     character_id,
+    character_look_id,
     scene_id,
     image_type,
     prompt,
@@ -2210,10 +2262,23 @@ function createAndGenerateImage(db, log, opts) {
   const now = new Date().toISOString();
   const dramaIdNum = Number(drama_id) || 0;
   const charIdNum = character_id != null ? Number(character_id) : null;
+  const lookIdNum = character_look_id != null ? Number(character_look_id) : null;
   const sceneIdNum = scene_id != null ? Number(scene_id) : null;
+  const lookRowAtSubmit = lookIdNum != null
+    ? characterLookService.getLookRow(db, lookIdNum)
+    : null;
+  const lookRevision = opts.character_look_revision != null
+    ? Number(opts.character_look_revision)
+    : Number(lookRowAtSubmit?.visual_revision || 0) || null;
+  const appearanceContextJson = opts.appearance_context_json
+    ? (typeof opts.appearance_context_json === 'string'
+      ? opts.appearance_context_json
+      : JSON.stringify(opts.appearance_context_json))
+    : null;
 
   let resourceId;
-  if (charIdNum != null) resourceId = `character_${charIdNum}`;
+  if (lookIdNum != null) resourceId = `character_look_${lookIdNum}`;
+  else if (charIdNum != null) resourceId = `character_${charIdNum}`;
   else if (sceneIdNum != null) resourceId = `scene_${sceneIdNum}`;
   else resourceId = String(dramaIdNum);
   const task = taskService.createTask(db, log, 'image_generation', resourceId);
@@ -2222,11 +2287,17 @@ function createAndGenerateImage(db, log, opts) {
   let imageGenId;
   try {
     const info = db.prepare(
-      `INSERT INTO image_generations (drama_id, character_id, scene_id, provider, prompt, negative_prompt, model, size, quality, status, task_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+      `INSERT INTO image_generations
+        (drama_id, character_id, character_look_id, character_look_revision,
+         scene_id, provider, prompt, negative_prompt, model, size, quality,
+         appearance_context_json, appearance_context_hash, generation_context_hash,
+         status, task_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
     ).run(
       dramaIdNum,
       charIdNum,
+      lookIdNum,
+      lookRevision,
       sceneIdNum,
       provider || 'openai',
       prompt || '',
@@ -2234,13 +2305,21 @@ function createAndGenerateImage(db, log, opts) {
       model || null,
       size || null,
       quality || null,
+      appearanceContextJson,
+      opts.appearance_context_hash || null,
+      opts.generation_context_hash || null,
       taskId,
       now,
       now
     );
     imageGenId = info.lastInsertRowid;
   } catch (e) {
-    if ((e.message || '').includes('scene_id') || (e.message || '').includes('character_id')) {
+    if (
+      (e.message || '').includes('scene_id')
+      || (e.message || '').includes('character_id')
+      || (e.message || '').includes('character_look_id')
+      || (e.message || '').includes('appearance_context')
+    ) {
       const info = db.prepare(
         `INSERT INTO image_generations (drama_id, provider, prompt, model, size, quality, status, task_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
@@ -2264,6 +2343,7 @@ function createAndGenerateImage(db, log, opts) {
         quality,
         drama_id: drama_id,
         character_id: character_id,
+        character_look_id: character_look_id,
         image_type,
         image_gen_id: imageGenId,
         user_negative_prompt: user_negative_prompt || undefined,
@@ -2275,7 +2355,13 @@ function createAndGenerateImage(db, log, opts) {
           'UPDATE image_generations SET status = ?, error_msg = ?, updated_at = ? WHERE id = ?'
         ).run('failed', result.error, now2, imageGenId);
         taskService.updateTaskError(db, taskId, result.error);
-        if (charIdNum != null) {
+        if (lookIdNum != null) {
+          try {
+            db.prepare(
+              'UPDATE character_looks SET error_msg = ?, updated_at = ? WHERE id = ?'
+            ).run(result.error, now2, lookIdNum);
+          } catch (_) {}
+        } else if (charIdNum != null) {
           try {
             db.prepare('UPDATE characters SET error_msg = ?, updated_at = ? WHERE id = ?').run(result.error, now2, charIdNum);
           } catch (_) {}
@@ -2321,8 +2407,57 @@ function createAndGenerateImage(db, log, opts) {
           throw e;
         }
       }
-      taskService.updateTaskResult(db, taskId, { image_generation_id: imageGenId, image_url: result.image_url, local_path: localPath, status: 'completed' });
-      if (charIdNum != null) {
+      let superseded = false;
+      if (lookIdNum != null) {
+        const currentLook = characterLookService.getLookRow(db, lookIdNum);
+        let newerGeneration = null;
+        try {
+          newerGeneration = db.prepare(
+            `SELECT id FROM image_generations
+              WHERE character_look_id = ? AND id > ? AND deleted_at IS NULL
+                AND status IN ('pending', 'processing', 'completed')
+              ORDER BY id DESC LIMIT 1`
+          ).get(lookIdNum, imageGenId);
+        } catch (_) {}
+        superseded = !!newerGeneration || !currentLook
+          || (lookRevision != null && Number(currentLook.visual_revision) !== Number(lookRevision));
+        if (superseded) {
+          db.prepare(
+            'UPDATE image_generations SET superseded = 1, updated_at = ? WHERE id = ?'
+          ).run(now2, imageGenId);
+          log.warn('Character look image completed after its look changed; kept as history only', {
+            image_gen_id: imageGenId,
+            character_look_id: lookIdNum,
+            submitted_revision: lookRevision,
+            current_revision: currentLook?.visual_revision ?? null,
+          });
+        } else {
+          const oldPath = currentLook.local_path || currentLook.image_url || '';
+          let extras = [];
+          try { extras = currentLook.extra_images ? JSON.parse(currentLook.extra_images) : []; } catch (_) {}
+          if (!Array.isArray(extras)) extras = [];
+          if (oldPath && !extras.includes(oldPath)) extras.push(oldPath);
+          db.prepare(
+            `UPDATE character_looks
+                SET image_url = ?, local_path = ?, extra_images = ?, error_msg = NULL,
+                    visual_revision = visual_revision + 1, updated_at = ?
+              WHERE id = ?`
+          ).run(
+            result.image_url,
+            localPath,
+            extras.length ? JSON.stringify(extras) : null,
+            now2,
+            lookIdNum
+          );
+          const owner = db.prepare(
+            'SELECT id, default_look_id FROM characters WHERE id = ? AND deleted_at IS NULL'
+          ).get(currentLook.character_id);
+          if (Number(owner?.default_look_id) === Number(lookIdNum)) {
+            characterLookService.mirrorDefaultLookToCharacter(db, owner.id);
+          }
+          characterLookService.markCharacterStoryboardsStale(db, currentLook.character_id);
+        }
+      } else if (charIdNum != null) {
         try {
           // 旧图追加到 extra_images，与上传逻辑保持一致
           const oldChar = db
@@ -2360,6 +2495,14 @@ function createAndGenerateImage(db, log, opts) {
           local_path: localPath,
         });
       }
+      taskService.updateTaskResult(db, taskId, {
+        image_generation_id: imageGenId,
+        image_url: result.image_url,
+        local_path: localPath,
+        character_look_id: lookIdNum,
+        superseded,
+        status: 'completed',
+      });
       if (sceneIdNum != null) {
         try {
           // 旧图追加到 extra_images，与上传逻辑保持一致
@@ -2408,7 +2551,13 @@ function createAndGenerateImage(db, log, opts) {
       } catch (e) {
         log.error('Image generation: failed to update task status', { task_id: taskId, error: e.message });
       }
-      if (charIdNum != null) {
+      if (lookIdNum != null) {
+        try {
+          db.prepare(
+            'UPDATE character_looks SET error_msg = ?, updated_at = ? WHERE id = ?'
+          ).run(errMsg, now2, lookIdNum);
+        } catch (_) {}
+      } else if (charIdNum != null) {
         try {
           db.prepare('UPDATE characters SET error_msg = ?, updated_at = ? WHERE id = ?').run(errMsg, now2, charIdNum);
         } catch (_) {}
@@ -2425,7 +2574,22 @@ function createAndGenerateImage(db, log, opts) {
   });
 
   const row = db.prepare('SELECT * FROM image_generations WHERE id = ?').get(imageGenId);
-  return row ? rowToItem(row) : { id: imageGenId, task_id: taskId, status: 'pending', drama_id: dramaIdNum, character_id: charIdNum, scene_id: sceneIdNum, prompt, model, size, quality, created_at: now, updated_at: now };
+  return row ? rowToItem(row) : {
+    id: imageGenId,
+    task_id: taskId,
+    status: 'pending',
+    drama_id: dramaIdNum,
+    character_id: charIdNum,
+    character_look_id: lookIdNum,
+    character_look_revision: lookRevision,
+    scene_id: sceneIdNum,
+    prompt,
+    model,
+    size,
+    quality,
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 function rowToItem(r) {
@@ -2434,6 +2598,8 @@ function rowToItem(r) {
     storyboard_id: r.storyboard_id,
     drama_id: r.drama_id,
     character_id: r.character_id,
+    character_look_id: r.character_look_id,
+    character_look_revision: r.character_look_revision,
     provider: r.provider,
     prompt: r.prompt,
     model: r.model,
@@ -2444,6 +2610,9 @@ function rowToItem(r) {
     status: r.status,
     task_id: r.task_id,
     error_msg: r.error_msg,
+    appearance_context_hash: r.appearance_context_hash,
+    generation_context_hash: r.generation_context_hash,
+    superseded: !!r.superseded,
     created_at: r.created_at,
     updated_at: r.updated_at,
     completed_at: r.completed_at,
@@ -2512,6 +2681,7 @@ function refListHasCanonical(list, ref) {
 module.exports = {
   getDefaultImageConfig,
   callImageApi,
+  localizeModelImageResult,
   createAndGenerateImage,
   resolveAssetUserNegativeForApi,
   getStoryboardReferenceLimits,

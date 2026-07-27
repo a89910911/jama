@@ -5,6 +5,7 @@ const {
   receiveMessageOnPort,
 } = require('worker_threads');
 const { translateSqliteSqlToMysql } = require('./sqlDialect');
+const { assertSafeWrite } = require('./dataUrlPersistenceGuard');
 
 const REQUIRED_TABLES = [
   'ai_model_map',
@@ -13,6 +14,9 @@ const REQUIRED_TABLES = [
   'assets',
   'async_tasks',
   'character_libraries',
+  'character_look_bindings',
+  'character_look_migration_warnings',
+  'character_looks',
   'characters',
   'codex_chat_messages',
   'codex_chat_sessions',
@@ -29,6 +33,7 @@ const REQUIRED_TABLES = [
   'prop_libraries',
   'props',
   'scene_libraries',
+  'scene_blocks',
   'scenes',
   'storyboard_characters',
   'storyboard_props',
@@ -206,6 +211,7 @@ class MysqlDatabase {
   }
 
   query(sql, values = []) {
+    assertSafeWrite(sql, values);
     Atomics.store(this.control, 0, 0);
     this.port.postMessage({ type: 'query', sql, values });
     return this.receive('query');

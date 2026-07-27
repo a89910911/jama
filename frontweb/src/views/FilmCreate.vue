@@ -551,6 +551,9 @@
                     <div class="asset-desc-full">{{ char.appearance || char.description || '暂无描述' }}</div>
                     <div class="asset-btns">
                       <el-button size="small" @click="editCharacter(char)">编辑</el-button>
+                      <el-button size="small" type="primary" plain @click="openWardrobe(char)">
+                        衣橱 · {{ char.look_count || 1 }}
+                      </el-button>
                       <el-button size="small" :loading="addingCharToLibraryId === char.id" :disabled="!hasAssetImage(char)" @click="onAddCharacterToLibrary(char)">
                         保存为可复用模板
                       </el-button>
@@ -991,6 +994,14 @@
             <ElButton type="info" plain size="large" @click="onAddSingleStoryboard">
             添加一个分镜
             </ElButton>
+            <el-button
+              plain
+              size="large"
+              :disabled="!currentEpisodeId"
+              @click="continuityVisible = true"
+            >
+              本集造型 / 连戏
+            </el-button>
           </div>
           <template v-if="storyboards.length > 0">
             <div class="sb-batch-right">
@@ -1543,6 +1554,48 @@
                       </template>
                     </el-dropdown>
                   </div>
+                  <div v-if="getSbSelectedCharacters(sb.id).length" class="sb-look-binding-list">
+                    <div
+                      v-for="c in getSbSelectedCharacters(sb.id)"
+                      :key="`look-${sb.id}-${c.id}`"
+                      class="sb-look-binding-item"
+                    >
+                      <span>{{ c.name }}</span>
+                      <el-select
+                        :model-value="effectiveStoryboardLookId(sb.id, c.id)"
+                        size="small"
+                        clearable
+                        placeholder="继承上级造型"
+                        @visible-change="(open) => open && ensureCharacterLooks(c.id)"
+                        @change="(lookId) => bindStoryboardLook(sb.id, c.id, lookId)"
+                      >
+                        <el-option
+                          v-for="look in characterLooksById[c.id] || []"
+                          :key="look.id"
+                          :label="`${look.name}${look.is_default ? '（默认）' : ''}`"
+                          :value="look.id"
+                        />
+                      </el-select>
+                      <el-tag
+                        v-if="effectiveStoryboardLook(sb.id, c.id)?.binding_source === 'storyboard'"
+                        size="small"
+                        type="warning"
+                      >
+                        本镜覆盖
+                      </el-tag>
+                      <el-tag v-else size="small" type="info">
+                        {{ effectiveStoryboardLook(sb.id, c.id)?.binding_source_label || '角色默认' }}
+                      </el-tag>
+                      <el-input
+                        v-if="effectiveStoryboardLook(sb.id, c.id)?.binding_source === 'storyboard'"
+                        class="sb-look-transition-note"
+                        size="small"
+                        :model-value="effectiveStoryboardLook(sb.id, c.id)?.binding?.transition_note || ''"
+                        placeholder="换装说明（同场次切换造型时必填）"
+                        @change="(note) => updateStoryboardLookTransitionNote(sb.id, c.id, note)"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div v-if="!isSbFirstLastFrameMode(sb)" class="sb-prompt-label">
@@ -1722,7 +1775,7 @@
                             v-for="item in getFrameHistoryItems(sb.id, 'first')"
                             :key="`first-${item.key}`"
                             class="sb-frame-history-card"
-                            :class="{ 'is-current': item.isCurrent }"
+                            :class="{ 'is-current': item.isCurrent, 'is-superseded': item.isSuperseded }"
                             :title="frameHistoryItemTitle(item, 'first')"
                             role="button"
                             tabindex="0"
@@ -1801,7 +1854,7 @@
                             v-for="item in getFrameHistoryItems(sb.id, 'last')"
                             :key="`last-${item.key}`"
                             class="sb-frame-history-card"
-                            :class="{ 'is-current': item.isCurrent }"
+                            :class="{ 'is-current': item.isCurrent, 'is-superseded': item.isSuperseded }"
                             :title="frameHistoryItemTitle(item, 'last')"
                             role="button"
                             tabindex="0"
@@ -1868,7 +1921,7 @@
                     v-for="item in getStripItems(sb.id)"
                     :key="item.key"
                     class="sb-img-thumb"
-                    :class="{ 'is-current': item.isCurrent }"
+                    :class="{ 'is-current': item.isCurrent, 'is-superseded': item.isSuperseded }"
                     :title="[item.label, item.prompt].filter(Boolean).join('\n\n') || '点击设为主图'"
                     @click="onSelectStripItem(sb, item)"
                   >
@@ -1995,8 +2048,8 @@
                       v-for="item in getVideoStripItems(sb.id)"
                       :key="item.key"
                       class="sb-video-thumb"
-                      :class="{ 'is-current': item.isCurrent }"
-                      :title="`${item.label}（点击切换）`"
+                      :class="{ 'is-current': item.isCurrent, 'is-superseded': item.isSuperseded }"
+                      :title="item.isSuperseded ? '生成期间造型或分镜已变化，仅保留为历史，不能设为当前' : `${item.label}（点击切换）`"
                       role="button"
                       tabindex="0"
                       @click="onSelectSbMainVideo(sb, item.video)"
@@ -2194,6 +2247,32 @@
     </el-dialog>
 
     <!-- 隐藏的文件输入框（放在弹窗外层，避免 el-form-item 干扰） -->
+    <el-drawer
+      v-model="wardrobeVisible"
+      title="角色衣橱 / 多套造型"
+      size="min(980px, 92vw)"
+      destroy-on-close
+    >
+      <CharacterWardrobePanel
+        v-if="wardrobeCharacter"
+        :character="wardrobeCharacter"
+        @changed="onWardrobeChanged"
+      />
+    </el-drawer>
+    <el-drawer
+      v-model="continuityVisible"
+      title="本集造型与连戏检查"
+      size="min(1040px, 94vw)"
+      destroy-on-close
+    >
+      <EpisodeWardrobeContinuity
+        v-if="currentEpisodeId"
+        :episode-id="currentEpisodeId"
+        :characters="characters"
+        @changed="onContinuityChanged"
+      />
+    </el-drawer>
+
     <input ref="addCharRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('character', $event)" />
     <input ref="addSceneRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('scene', $event)" />
     <input ref="addPropRefFileInput" type="file" accept="image/*" style="display:none" @change="onRefImageFileChange('prop', $event)" />
@@ -3178,6 +3257,7 @@ import { characterLibraryAPI } from '@/api/characterLibrary'
 import { sceneLibraryAPI } from '@/api/sceneLibrary'
 import { propLibraryAPI } from '@/api/propLibrary'
 import { generationSettingsAPI } from '@/api/prompts'
+import { characterLookAPI } from '@/api/characterLooks'
 import { authState } from '@/stores/auth'
 import { parseScriptIntoEpisodes, episodesListToPlainScript } from '@/utils/scriptEpisodes'
 import { exportStoryboardSheet } from '@/utils/exportStoryboardSheet'
@@ -3192,6 +3272,8 @@ import { buildStoryboardTimeRanges } from '@/utils/storyboardTimeRange'
 import StylePickerButton from '@/components/StylePickerButton.vue'
 import UniversalSegmentOmniAtEditor from '@/components/UniversalSegmentOmniAtEditor.vue'
 import CodexChatPanel from '@/components/CodexChatPanel.vue'
+import CharacterWardrobePanel from '@/components/CharacterWardrobePanel.vue'
+import EpisodeWardrobeContinuity from '@/components/EpisodeWardrobeContinuity.vue'
 import {
   generationStyleOptions,
   getStylePromptEn,
@@ -3211,6 +3293,114 @@ const store = useFilmStore()
 const genStore = useGenerationTaskStore()
 const { isDark, toggle: toggleTheme } = useTheme()
 const { videoResolution: storeVideoResolution } = storeToRefs(store)
+const wardrobeVisible = ref(false)
+const wardrobeCharacter = ref(null)
+const continuityVisible = ref(false)
+const characterLooksById = reactive({})
+const storyboardVisualContexts = reactive({})
+
+function openWardrobe(character) {
+  wardrobeCharacter.value = character
+  wardrobeVisible.value = true
+}
+
+async function onWardrobeChanged() {
+  await loadDrama()
+  const refreshed = characters.value.find(
+    (item) => Number(item.id) === Number(wardrobeCharacter.value?.id)
+  )
+  if (refreshed) wardrobeCharacter.value = refreshed
+}
+
+async function onContinuityChanged() {
+  await loadEpisodeLookContext()
+}
+
+async function ensureCharacterLooks(characterId) {
+  if (!characterId || characterLooksById[characterId]) return
+  const data = await characterLookAPI.list(characterId)
+  characterLooksById[characterId] = data?.items || []
+}
+
+async function loadEpisodeLookContext(episodeId = currentEpisodeId.value) {
+  Object.keys(storyboardVisualContexts).forEach((key) => delete storyboardVisualContexts[key])
+  if (!episodeId) return
+  try {
+    const data = await characterLookAPI.episodeContext(episodeId)
+    for (const context of data?.contexts || []) {
+      storyboardVisualContexts[context.storyboard_id] = context
+      for (const item of context.characters || []) {
+        const list = characterLooksById[item.character_id] || []
+        if (item.look && !list.some((look) => Number(look.id) === Number(item.look.id))) {
+          characterLooksById[item.character_id] = [
+            ...list,
+            {
+              ...item.look,
+              is_default: item.binding_source === 'default',
+            },
+          ]
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('加载分镜造型上下文失败', error)
+  }
+}
+
+function effectiveStoryboardLook(storyboardId, characterId) {
+  const item = storyboardVisualContexts[storyboardId]?.characters?.find(
+    (item) => Number(item.character_id) === Number(characterId)
+  ) || null
+  if (!item) return null
+  return {
+    ...item,
+    binding_source_label: {
+      episode: '本集继承',
+      scene_block: '场次继承',
+      default: '角色默认',
+      default_fallback: '默认回退',
+    }[item.binding_source] || '上级继承',
+  }
+}
+
+function effectiveStoryboardLookId(storyboardId, characterId) {
+  return effectiveStoryboardLook(storyboardId, characterId)?.look?.id || null
+}
+
+function hasStoryboardLookTransition(fromStoryboardId, toStoryboardId) {
+  const fromCharacters = storyboardVisualContexts[fromStoryboardId]?.characters || []
+  const toCharacters = storyboardVisualContexts[toStoryboardId]?.characters || []
+  const fromLookByCharacter = new Map(
+    fromCharacters.map((item) => [Number(item.character_id), Number(item.look?.id)])
+  )
+  return toCharacters.some((item) => {
+    const previousLookId = fromLookByCharacter.get(Number(item.character_id))
+    return previousLookId != null && previousLookId !== Number(item.look?.id)
+  })
+}
+
+async function bindStoryboardLook(storyboardId, characterId, lookId) {
+  try {
+    const current = effectiveStoryboardLook(storyboardId, characterId)
+    if (lookId == null || lookId === '') {
+      if (current?.binding_source === 'storyboard') {
+        await characterLookAPI.unbind('storyboard', storyboardId, characterId)
+      }
+    } else {
+      await characterLookAPI.bind({
+        scope_type: 'storyboard',
+        scope_id: storyboardId,
+        character_id: characterId,
+        look_id: lookId,
+        source: 'manual',
+      })
+    }
+    await loadEpisodeLookContext()
+    ElMessage.success('分镜造型已更新')
+  } catch (error) {
+    ElMessage.error(error?.message || '更新分镜造型失败')
+  }
+}
 
 // ── Composable: Navigation ─────────────────────────────
 const { navCollapsed, storyboardMenuExpanded, toggleNav, scrollToTop, scrollToAnchor } = useNavigation()
@@ -3223,6 +3413,25 @@ function goCanvasMode() {
   if (!dramaId.value) return
   const query = selectedEpisodeId.value ? { episode: String(selectedEpisodeId.value) } : {}
   router.push({ path: `/film/${dramaId.value}/canvas`, query })
+}
+
+async function updateStoryboardLookTransitionNote(storyboardId, characterId, note) {
+  const current = effectiveStoryboardLook(storyboardId, characterId)
+  if (current?.binding_source !== 'storyboard' || !current.look?.id) return
+  try {
+    await characterLookAPI.bind({
+      scope_type: 'storyboard',
+      scope_id: storyboardId,
+      character_id: characterId,
+      look_id: current.look.id,
+      source: 'manual',
+      transition_note: String(note || '').trim() || null,
+    })
+    await loadEpisodeLookContext()
+    ElMessage.success('换装说明已保存')
+  } catch (error) {
+    ElMessage.error(error?.message || '保存换装说明失败')
+  }
 }
 
 function openAiConfig() {
@@ -4450,7 +4659,7 @@ function frameTypeForSlot(slot) {
 function resolveSbImageById(storyboardId, imageId) {
   if (imageId == null) return null
   const images = getSbAllImages(storyboardId)
-  return images.find((i) => i.id === imageId) || null
+  return images.find((i) => i.id === imageId && !i.superseded) || null
 }
 
 /** 首帧图（首尾帧模式下严格优先服务器绑定的 first_frame_image_id） */
@@ -4466,11 +4675,11 @@ function getSbFirstImage(storyboardId) {
 
   const sel = sbSelectedImgId.value[storyboardId]
   if (sel != null) {
-    const found = images.find((i) => i.id === sel)
+    const found = images.find((i) => i.id === sel && !i.superseded)
     if (found) return found
   }
 
-  const typed = images.find((i) => i.frame_type === 'storyboard_first')
+  const typed = images.find((i) => i.frame_type === 'storyboard_first' && !i.superseded)
   if (typed) return typed
   // 不再回退到 images[0]，避免把尾帧图片误显示为首帧
   return null
@@ -4490,11 +4699,11 @@ function getSbLastImage(storyboardId) {
   // 仅在没有服务器绑定时才考虑手动选择（首尾帧生成后我们会主动清除手动选择）
   const sel = sbSelectedLastImgId.value[storyboardId]
   if (sel != null) {
-    const found = images.find((i) => i.id === sel)
+    const found = images.find((i) => i.id === sel && !i.superseded)
     if (found) return found
   }
 
-  const typed = images.find((i) => i.frame_type === 'storyboard_last')
+  const typed = images.find((i) => i.frame_type === 'storyboard_last' && !i.superseded)
   if (typed) return typed
 
   if (sb?.last_frame_image_url || sb?.last_frame_local_path) {
@@ -4542,17 +4751,17 @@ function getSbImage(storyboardId) {
   if (!images.length) return null
   const selectedId = sbSelectedImgId.value[storyboardId]
   if (selectedId != null) {
-    const found = images.find((i) => i.id === selectedId)
+    const found = images.find((i) => i.id === selectedId && !i.superseded)
     if (found) return found
   }
-  return images[0]
+  return images.find((i) => !i.superseded) || null
 }
 /** 取该分镜下的四宫格整图记录 */
 /** 取该分镜下的四宫格整图记录 */
 function getQuadGridImage(storyboardId) {
   const list = sbImages.value[storyboardId]
   if (!Array.isArray(list)) return null
-  return list.find((i) => i.status === 'completed' && (i.frame_type === 'quad_grid' || i.frame_type === 'nine_grid') && (i.image_url || i.local_path)) || null
+  return list.find((i) => i.status === 'completed' && !i.superseded && (i.frame_type === 'quad_grid' || i.frame_type === 'nine_grid') && (i.image_url || i.local_path)) || null
 }
 /** 取该分镜所有已完成的视频记录 */
 function getSbAllVideos(storyboardId) {
@@ -4566,7 +4775,7 @@ function hasSbVideoGenerationHistory(storyboardId) {
 }
 /** 取该分镜当前选中的视频（尊重 sbSelectedVideoId，否则默认第一条） */
 function getSbVideo(storyboardId) {
-  const all = getSbAllVideos(storyboardId)
+  const all = getSbAllVideos(storyboardId).filter((item) => !item.superseded)
   if (all.length === 0) return null
   const selectedId = sbSelectedVideoId.value[storyboardId]
   if (selectedId != null) {
@@ -4622,16 +4831,20 @@ function getVideoStripItems(storyboardId) {
         video: v,
         src: assetVideoUrl(v),
         isCurrent,
-        label: isCurrent ? '当前' : `历史${++historyIndex}`,
+        isSuperseded: !!v.superseded,
+        label: v.superseded ? '已过期' : isCurrent ? '当前' : `历史${++historyIndex}`,
       }
     })
 }
 /** 选中某条历史视频为当前视频，并持久化到分镜记录供合成视频使用 */
 function onSelectSbMainVideo(sb, video) {
+  if (video?.superseded) {
+    ElMessage.warning('该视频对应的角色造型或分镜上下文已变化，不能设为当前')
+    return
+  }
   sbSelectedVideoId.value = { ...sbSelectedVideoId.value, [sb.id]: video.id }
   storyboardsAPI.update(sb.id, {
-    video_url: video.video_url || null,
-    local_path: video.local_path || undefined,
+    current_video_generation_id: video.id,
   }).catch(e => console.warn('[主视频] 保存后端失败', e))
 }
 /** 取该分镜最近一次视频生成的错误信息（从 API 返回的记录或本地即时错误） */
@@ -4639,7 +4852,7 @@ function getSbVideoError(storyboardId) {
   if (sbVideoErrors.value[storyboardId]) return sbVideoErrors.value[storyboardId]
   const list = sbVideos.value[storyboardId]
   if (!Array.isArray(list) || list.length === 0) return ''
-  const hasCompleted = list.some((i) => i.status === 'completed' && recordHasPlayableVideoUrl(i))
+  const hasCompleted = list.some((i) => i.status === 'completed' && !i.superseded && recordHasPlayableVideoUrl(i))
   if (hasCompleted) return ''
   const bogusCompleted = list.find(
     (i) => i.status === 'completed' && i.video_url && !recordHasPlayableVideoUrl(i)
@@ -4838,7 +5051,8 @@ function getStripItems(storyboardId) {
         type: 'img',
         img,
         isCurrent,
-        label: currentLabel || `历史${++historyIndex}`,
+        label: img.superseded ? '已过期' : currentLabel || `历史${++historyIndex}`,
+        isSuperseded: !!img.superseded,
         frameBadge: img.frame_type === 'storyboard_first' ? '首' : img.frame_type === 'storyboard_last' ? '尾' : null,
         prompt: img.prompt || '',
       }
@@ -4856,7 +5070,7 @@ function getFrameHistoryItems(storyboardId, slot) {
     .filter(Boolean)
     .map((item) => ({
       ...item,
-      label: item.isCurrent ? '当前' : `历史${++historyIndex}`,
+      label: item.isSuperseded ? '已过期' : item.isCurrent ? '当前' : `历史${++historyIndex}`,
     }))
 }
 
@@ -4886,18 +5100,29 @@ function scrollFrameHistory(storyboardId, slot, direction) {
 }
 
 function frameHistoryItemTitle(item, slot) {
+  if (item?.isSuperseded) {
+    return '生成期间角色造型或分镜上下文已变化，仅保留为历史，不能设为当前'
+  }
   const action = slot === 'last' ? '点击图片设为尾帧' : '点击图片设为首帧'
   return [action, item.label, item.prompt].filter(Boolean).join('\n\n')
 }
 
 /** 点击缩略图条中的图片切换为主图 */
 function onSelectStripItem(sb, item) {
+  if (item?.isSuperseded) {
+    ElMessage.warning('该图片对应的角色造型或分镜上下文已变化，不能设为当前')
+    return
+  }
   onSelectSbMainImage(sb, item.img)
 }
 
 /** 选定首帧或尾帧参考图（持久化到后端） */
 function onSelectSbFrameImage(sb, img, slot) {
   if (!sb?.id || !img) return
+  if (img.superseded) {
+    ElMessage.warning('该图片对应的角色造型或分镜上下文已变化，不能设为当前')
+    return
+  }
   const isLast = slot === 'last'
 
   // 本地选中状态（用于部分回退逻辑）
@@ -5163,6 +5388,9 @@ async function onGenerateSbFrameImage(sb, slot) {
       const pollRes = await pollTask(res.task_id, () => loadSingleStoryboardMedia(sb.id), meta)
       if (pollRes?.status === 'failed') {
         sb.errorMsg = pollRes.error || '生成失败'
+      } else if (isSupersededGenerationResult(pollRes)) {
+        sb.errorMsg = '生成期间造型已变化，结果仅保留在历史记录中'
+        ElMessage.warning(sb.errorMsg)
       } else {
         await loadDrama()
         restoreSelectionsFromBackend()
@@ -5294,6 +5522,9 @@ async function onGenerateSbImage(sb) {
       const pollRes = await pollTask(res.task_id, () => loadSingleStoryboardMedia(sb.id), meta)
       if (pollRes?.status === 'failed') {
         sb.errorMsg = pollRes.error || '生成失败'
+      } else if (isSupersededGenerationResult(pollRes)) {
+        sb.errorMsg = '生成期间造型已变化，结果仅保留在历史记录中'
+        ElMessage.warning(sb.errorMsg)
       } else {
         ElMessage.success('分镜图生成完成')
       }
@@ -5485,6 +5716,7 @@ function onEpisodeSelect(epId) {
   scriptTitle.value = ep.title || '第' + (ep.episode_number || 0) + '集'
   syncStoryboardStateFromEpisode(ep)
   loadStoryboardMedia()
+  loadEpisodeLookContext(epId)
   recoverAndSyncEpisodeTasks(epId)
 }
 
@@ -5539,6 +5771,7 @@ async function loadDrama() {
     }
     syncStoryboardStateFromEpisode(ep)
     await loadStoryboardMedia()
+    await loadEpisodeLookContext(ep?.id)
     await recoverAndSyncEpisodeTasks(ep?.id)
   } catch (e) {
     ElMessage.error(e.message || '加载失败')
@@ -6628,7 +6861,14 @@ async function onExportStoryboardSheet() {
     {
       storyboards: boards,
       getScene: (sbId) => getSbSelectedScene(sbId),
-      getCharacters: (sbId) => getSbSelectedCharacters(sbId),
+      getCharacters: (sbId) => getSbSelectedCharacters(sbId).map((character) => {
+        const visual = effectiveStoryboardLook(sbId, character.id)
+        return {
+          ...character,
+          effective_look: visual?.look || null,
+          look_source_label: visual?.binding_source_label || '',
+        }
+      }),
       getProps: (sbId) => getSbSelectedProps(sbId),
       getMovementLabel,
       getFirstFramePrompt: resolveFirstFramePrompt,
@@ -7638,6 +7878,9 @@ async function onGenerateSbVideo(sb) {
       const pollRes = await pollTask(res.task_id, () => loadSingleStoryboardMedia(sb.id), meta)
       if (pollRes?.status === 'failed') {
         sbVideoErrors.value[sb.id] = pollRes.error || '视频生成失败'
+      } else if (isSupersededGenerationResult(pollRes)) {
+        sbVideoErrors.value[sb.id] = '生成期间造型已变化，结果仅保留在历史记录中'
+        ElMessage.warning(sbVideoErrors.value[sb.id])
       } else if (pollRes?.status === 'completed') {
         sbVideoErrors.value[sb.id] = ''
         ElMessage.success('视频生成完成')
@@ -7871,8 +8114,36 @@ async function onInsertStoryboardBefore(sb) {
   }
 }
 
+async function runVisualPreflight({ showSuccess = true, persist = true } = {}) {
+  if (!currentEpisodeId.value) return false
+  try {
+    const report = await characterLookAPI.preflight(currentEpisodeId.value, persist)
+    await loadEpisodeLookContext(currentEpisodeId.value)
+    const errors = report?.errors || (report?.issues || []).filter((item) => item.level === 'error')
+    const warnings = report?.warnings || (report?.issues || []).filter((item) => item.level !== 'error')
+    if (errors.length) {
+      const detail = errors.slice(0, 5).map((item) => `• ${item.message || item.code}`).join('\n')
+      await ElMessageBox.alert(
+        `${detail}${errors.length > 5 ? `\n另有 ${errors.length - 5} 项` : ''}\n\n请在“本集造型 / 连戏”中修复后重试。`,
+        '造型连戏预检未通过',
+        { type: 'error', confirmButtonText: '知道了' }
+      )
+      return false
+    }
+    if (showSuccess) {
+      if (warnings.length) ElMessage.warning(`预检通过，另有 ${warnings.length} 条连戏提醒`)
+      else ElMessage.success('造型与连戏预检通过')
+    }
+    return true
+  } catch (error) {
+    ElMessage.error(error?.message || '造型连戏预检失败')
+    return false
+  }
+}
+
 async function startBatchImageGeneration() {
   if (!currentEpisodeId.value || batchImageRunning.value || pipelineRunning.value) return
+  if (!await runVisualPreflight({ showSuccess: false })) return
   batchImageErrors.value = []
   batchImageStopping.value = false
   batchImageRunning.value = true
@@ -7909,6 +8180,7 @@ async function startBatchImageGeneration() {
                 (taskId) => pollTask(taskId, () => loadSingleStoryboardMedia(sb.id))
               )
               if (pollRes?.status === 'failed') throw new Error(pollRes.error || '生成失败')
+              assertGenerationResultCurrent(pollRes)
             }
           } else {
             const res = await imagesAPI.create({
@@ -7922,6 +8194,7 @@ async function startBatchImageGeneration() {
             if (res?.task_id) {
               const pollRes = await pollTask(res.task_id, () => loadSingleStoryboardMedia(sb.id))
               if (pollRes?.status === 'failed') throw new Error(pollRes.error || '生成失败')
+              assertGenerationResultCurrent(pollRes)
             } else {
               await loadSingleStoryboardMedia(sb.id)
             }
@@ -7955,6 +8228,7 @@ async function startBatchImageGeneration() {
 
 async function startBatchVideoGeneration() {
   if (!currentEpisodeId.value || batchVideoRunning.value || pipelineRunning.value) return
+  if (!await runVisualPreflight({ showSuccess: false })) return
   batchVideoErrors.value = []
   batchVideoStopping.value = false
   batchVideoRunning.value = true
@@ -7967,7 +8241,7 @@ async function startBatchVideoGeneration() {
     // 只处理：有参考图（经典=分镜主图；全能=场景/角色/道具，不含经典主图）且 还没有已完成视频 的分镜
     const todo = boards.filter((sb) => {
       const vidList = sbVideos.value[sb.id] || []
-      if (vidList.some((v) => v.status === 'completed' && recordHasPlayableVideoUrl(v))) return false
+      if (vidList.some((v) => v.status === 'completed' && !v.superseded && recordHasPlayableVideoUrl(v))) return false
       if (isSbUniversalMode(sb.id)) {
         if (!sbCanSubmitVideo(sb)) return false
         return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
@@ -7984,6 +8258,7 @@ async function startBatchVideoGeneration() {
     const videoConcurrency = contiguity ? 1 : (pipelineVideoConcurrency.value || 2)
     let videoDoneCount = 0
     let prevVideoItem = null  // 连贯帧：保存上一条已完成的视频记录
+    let prevVideoStoryboardId = null
 
     let videoQueueIdx = 0
     const videoWorker = async () => {
@@ -8015,7 +8290,13 @@ async function startBatchVideoGeneration() {
           const absoluteUrl = universal ? (omniRefs[0] || '') : toAbsoluteImageUrl(firstFrameUrl)
           // 连贯帧：提取上一条视频末帧作为参考（全能模式不走连贯帧替换）
           let contiguityFirstFrameUrl = absoluteUrl
-          if (contiguity && prevVideoItem && !universal) {
+          if (
+            contiguity
+            && prevVideoItem
+            && prevVideoStoryboardId
+            && !universal
+            && !hasStoryboardLookTransition(prevVideoStoryboardId, sb.id)
+          ) {
             const prevVideoUrl = prevVideoItem.local_path
               ? toAbsoluteImageUrl('/static/' + prevVideoItem.local_path.replace(/^\//, ''))
               : prevVideoItem.video_url
@@ -8059,22 +8340,31 @@ async function startBatchVideoGeneration() {
               batchVideoErrors.value.push(`#${sb.storyboard_number ?? sb.id}: ${pollRes.error || '生成失败'}`)
               batchVideoProgress.value = { ...batchVideoProgress.value, failed: batchVideoProgress.value.failed + 1 }
               prevVideoItem = null
+              prevVideoStoryboardId = null
+            } else if (isSupersededGenerationResult(pollRes)) {
+              batchVideoErrors.value.push(`#${sb.storyboard_number ?? sb.id}: 生成期间造型已变化，结果仅保留在历史记录中`)
+              batchVideoProgress.value = { ...batchVideoProgress.value, failed: batchVideoProgress.value.failed + 1 }
+              prevVideoItem = null
+              prevVideoStoryboardId = null
             } else if (contiguity && pollRes?.status === 'completed') {
               // 连贯帧：保存本条视频用于下一条
               const vList = sbVideos.value[sb.id] || []
-              prevVideoItem = vList.find((v) => v.status === 'completed') || null
+              prevVideoItem = vList.find((v) => v.status === 'completed' && !v.superseded) || null
+              prevVideoStoryboardId = prevVideoItem ? sb.id : null
             }
           } else {
             await loadSingleStoryboardMedia(sb.id)
             if (contiguity) {
               const vList = sbVideos.value[sb.id] || []
-              prevVideoItem = vList.find((v) => v.status === 'completed') || null
+              prevVideoItem = vList.find((v) => v.status === 'completed' && !v.superseded) || null
+              prevVideoStoryboardId = prevVideoItem ? sb.id : null
             }
           }
         } catch (e) {
           batchVideoErrors.value.push(`#${sb.storyboard_number ?? sb.id}: ${e.message || '提交失败'}`)
           batchVideoProgress.value = { ...batchVideoProgress.value, failed: batchVideoProgress.value.failed + 1 }
           if (contiguity) prevVideoItem = null
+          if (contiguity) prevVideoStoryboardId = null
         } finally {
           generatingSbVideoIds.delete(sb.id)
         }
@@ -8187,6 +8477,16 @@ function resolvePollMeta(meta = {}) {
 
 function pollTask(taskId, onDone, meta = {}) {
   return genStore.pollTask(taskId, resolvePollMeta(meta), onDone, { ElMessage })
+}
+
+function isSupersededGenerationResult(pollResult) {
+  return !!pollResult?.result?.superseded
+}
+
+function assertGenerationResultCurrent(pollResult) {
+  if (isSupersededGenerationResult(pollResult)) {
+    throw new Error('生成期间角色造型或分镜上下文已变化，结果仅保留在历史记录中，请按当前造型重新生成')
+  }
 }
 
 /** 一键生成视频：暂停时等待，返回 { paused: true } 表示被暂停中断 */
@@ -8674,6 +8974,38 @@ async function runOneClickPipeline(textOnly = false) {
       if (paused) { await waitForResume() }
     }
 
+    // 分镜真正使用的非默认 Look 也必须有参考图；一键流程自动补齐。
+    {
+      let report = await characterLookAPI.preflight(episodeId)
+      const missingLooks = (report?.required_looks || []).filter((item) => !item.has_reference)
+      if (missingLooks.length) {
+        setPipelineStep(7, `生成造型参考图（${missingLooks.length} 套）...`)
+        const { paused } = await runConcurrently(
+          missingLooks,
+          pipelineConcurrency.value,
+          async (item) => {
+            await checkPause()
+            const res = await characterLookAPI.generateImage(item.look_id, { style })
+            const taskId = res?.image_generation?.task_id ?? res?.task_id
+            if (taskId) {
+              const result = await pollTaskWithPause(taskId, () => loadEpisodeLookContext(episodeId))
+              if (result?.paused) return { paused: true }
+              if (result?.error) throw new Error(result.error)
+            }
+          },
+          { getLabel: (item) => `造型图 ${item.character_name}·${item.look_name}` }
+        )
+        if (paused) await waitForResume()
+        report = await characterLookAPI.preflight(episodeId, true)
+      }
+      const blockers = report?.errors || (report?.issues || []).filter((item) => item.level === 'error')
+      if (blockers.length) {
+        addPipelineError('造型连戏预检', blockers.map((item) => item.message || item.code).join('；'))
+        continuityVisible.value = true
+        return
+      }
+    }
+
     // ════════════════════════════════════════════════════════
     // ⏱ 倒计时 30 秒：请浏览角色/场景/道具图，确认后开始生成分镜图
     // ════════════════════════════════════════════════════════
@@ -8709,6 +9041,7 @@ async function runOneClickPipeline(textOnly = false) {
                 )
                 if (result?.paused) return { paused: true }
                 if (result?.error) throw new Error(result.error)
+                assertGenerationResultCurrent(result)
               }
             } else {
               const res = await imagesAPI.create({
@@ -8723,6 +9056,7 @@ async function runOneClickPipeline(textOnly = false) {
                 const result = await pollTaskWithPause(res.task_id, () => loadSingleStoryboardMedia(sb.id))
                 if (result?.paused) return { paused: true }
                 if (result?.error) throw new Error(result.error)
+                assertGenerationResultCurrent(result)
               } else await loadSingleStoryboardMedia(sb.id)
             }
           })
@@ -8749,7 +9083,7 @@ async function runOneClickPipeline(textOnly = false) {
       await loadStoryboardMedia()
       const boards2 = (store.storyboards || []).filter((sb) => {
         const vidList = sbVideos.value[sb.id] || []
-        if (vidList.some((v) => v.status === 'completed' && recordHasPlayableVideoUrl(v))) return false
+        if (vidList.some((v) => v.status === 'completed' && !v.superseded && recordHasPlayableVideoUrl(v))) return false
         if (isSbUniversalMode(sb.id)) {
           if (!sbCanSubmitVideo(sb)) return false
           return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
@@ -8793,6 +9127,7 @@ async function runOneClickPipeline(textOnly = false) {
               const result = await pollTaskWithPause(res.task_id, () => loadSingleStoryboardMedia(sb.id), meta)
               if (result?.paused) return { paused: true }
               if (result?.error) throw new Error(result.error)
+              assertGenerationResultCurrent(result)
             } else await loadSingleStoryboardMedia(sb.id)
           })
           if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
@@ -9074,6 +9409,7 @@ async function runRepairPipeline() {
               )
               if (result?.paused) return { paused: true }
               if (result?.error) throw new Error(result.error)
+              assertGenerationResultCurrent(result)
             }
           } else {
             const res = await imagesAPI.create({
@@ -9088,6 +9424,7 @@ async function runRepairPipeline() {
               const result = await pollTaskWithPause(res.task_id, () => loadSingleStoryboardMedia(sb.id))
               if (result?.paused) return { paused: true }
               if (result?.error) throw new Error(result.error)
+              assertGenerationResultCurrent(result)
             } else await loadSingleStoryboardMedia(sb.id)
           }
         })
@@ -9098,7 +9435,7 @@ async function runRepairPipeline() {
     await loadStoryboardMedia()
     const boards2 = (store.storyboards || []).filter((sb) => {
       const vidList = sbVideos.value[sb.id] || []
-      if (vidList.some((v) => v.status === 'completed' && recordHasPlayableVideoUrl(v))) return false
+      if (vidList.some((v) => v.status === 'completed' && !v.superseded && recordHasPlayableVideoUrl(v))) return false
       if (isSbUniversalMode(sb.id)) {
         if (!sbCanSubmitVideo(sb)) return false
         return collectSbOmniReferenceAbsoluteUrls(sb).length > 0
@@ -9142,6 +9479,7 @@ async function runRepairPipeline() {
               const result = await pollTaskWithPause(res.task_id, () => loadSingleStoryboardMedia(sb.id), meta)
               if (result?.paused) return { paused: true }
               if (result?.error) throw new Error(result.error)
+              assertGenerationResultCurrent(result)
             } else await loadSingleStoryboardMedia(sb.id)
           })
           if (ok && typeof ok === 'object' && ok.paused) return { paused: true }
@@ -11524,6 +11862,36 @@ html.light .sb-selected-thumbs {
   gap: 8px;
   align-items: flex-start;
 }
+.sb-look-binding-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+.sb-look-binding-item {
+  display: grid;
+  grid-template-columns: 64px 150px auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 270px;
+  padding: 6px 8px;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 8px;
+  background: rgba(139, 92, 246, 0.06);
+  font-size: 12px;
+}
+.sb-look-binding-item > span:first-child {
+  width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-look-binding-item :deep(.el-select) {
+  width: 150px;
+}
+.sb-look-transition-note {
+  grid-column: 2 / -1;
+}
 .sb-thumb-item {
   position: relative;
   width: 88px;
@@ -12040,6 +12408,13 @@ html.light .sb-frame-history__nav button {
 .sb-frame-history-card.is-current {
   border-color: #8b5cf6;
   box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18);
+}
+.sb-frame-history-card.is-superseded,
+.sb-img-thumb.is-superseded,
+.sb-video-thumb.is-superseded {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.55);
 }
 .sb-frame-history-card:focus-visible {
   border-color: #a78bfa;

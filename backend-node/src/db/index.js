@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { MysqlDatabase } = require('./mysql');
+const { guardSqliteDatabase } = require('./dataUrlPersistenceGuard');
 
 let db = null;
 
@@ -16,12 +17,13 @@ function getDb(config) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  db = new Database(dbPath, {
+  const sqlite = new Database(dbPath, {
     verbose: config.type === 'sqlite' && process.env.DEBUG ? console.log : undefined,
   });
-  db.pragma('journal_mode = WAL');
-  db.pragma('busy_timeout = 5000');
-  db.dialect = 'sqlite';
+  sqlite.pragma('journal_mode = WAL');
+  sqlite.pragma('busy_timeout = 5000');
+  sqlite.dialect = 'sqlite';
+  db = guardSqliteDatabase(sqlite);
   return db;
 }
 

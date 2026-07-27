@@ -37,8 +37,9 @@ function createApp() {
   resumeProcessingVideoGenerations(db, log);
 
   const app = express();
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true }));
+  // A 16 MB binary upload expands to roughly 21.4 MB when represented as Base64.
+  app.use(express.json({ limit: '24mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '24mb' }));
 
   app.use(
     cors({

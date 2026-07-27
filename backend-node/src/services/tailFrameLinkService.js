@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 /**
  * 尾帧衔接服务：提取当前分镜视频的最后一帧，设为下一个分镜的首帧
@@ -18,23 +20,34 @@ function routes(db, cfg, log) {
           return res.status(400).json({ error: '缺少必要参数' });
         }
 
-        // 1. 获取当前分镜的最新已完成视频
+        const currentSb = db.prepare(
+          `SELECT sb.episode_id, sb.storyboard_number, sb.current_video_generation_id,
+                  e.drama_id
+             FROM storyboards sb
+             INNER JOIN episodes e ON e.id = sb.episode_id AND e.deleted_at IS NULL
+            WHERE sb.id = ? AND sb.deleted_at IS NULL`
+        ).get(storyboardId);
+        if (!currentSb) {
+          return res.status(404).json({ error: '分镜不存在' });
+        }
+        if (Number(currentSb.drama_id) !== Number(dramaId)) {
+          return res.status(400).json({ error: '分镜与项目不匹配' });
+        }
+
+        // 1. 获取显式主版本；缺失时回退最新未过期的已完成视频。
         const video = db.prepare(`
           SELECT id, local_path, video_url FROM video_generations
-          WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL
-          ORDER BY created_at DESC LIMIT 1
-        `).get(storyboardId);
+          WHERE storyboard_id = ? AND status = 'completed'
+            AND superseded = 0 AND deleted_at IS NULL
+          ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, created_at DESC, id DESC
+          LIMIT 1
+        `).get(storyboardId, currentSb.current_video_generation_id || -1);
 
         if (!video || !video.local_path) {
           return res.status(400).json({ error: '当前分镜没有可用的本地视频文件' });
         }
 
         // 2. 找到下一个分镜
-        const currentSb = db.prepare('SELECT episode_id, storyboard_number FROM storyboards WHERE id = ?').get(storyboardId);
-        if (!currentSb) {
-          return res.status(404).json({ error: '分镜不存在' });
-        }
-
         const nextSb = db.prepare(`
           SELECT id, storyboard_number FROM storyboards
           WHERE episode_id = ? AND storyboard_number > ? AND deleted_at IS NULL
@@ -43,6 +56,33 @@ function routes(db, cfg, log) {
 
         if (!nextSb) {
           return res.status(400).json({ error: '没有下一个分镜可供衔接' });
+        }
+
+        let targetVisualContext = null;
+        if (characterLookService.hasWardrobeTables(db)) {
+          const sourceVisualContext = visualContextResolver.resolveStoryboardVisualContext(
+            db,
+            storyboardId,
+            { persist: true }
+          );
+          targetVisualContext = visualContextResolver.resolveStoryboardVisualContext(
+            db,
+            Number(nextSb.id),
+            { persist: true }
+          );
+          const sourceByCharacter = new Map(
+            (sourceVisualContext?.characters || []).map((item) => [Number(item.character_id), item])
+          );
+          const changedLooks = (targetVisualContext?.characters || []).filter((target) => {
+            const source = sourceByCharacter.get(Number(target.character_id));
+            return source && Number(source.look?.id) !== Number(target.look?.id);
+          });
+          if (changedLooks.length) {
+            const names = changedLooks.map((item) => item.character_name).filter(Boolean).join('、');
+            return res.status(400).json({
+              error: `相邻分镜存在角色换装（${names || '角色造型不同'}），不能直接用上一镜尾帧覆盖下一镜首帧`,
+            });
+          }
         }
 
         // 3. 检查 ffmpeg 是否可用
@@ -118,12 +158,32 @@ function routes(db, cfg, log) {
         const now = new Date().toISOString();
         const prompt = `尾帧衔接：从分镜 #${currentSb.storyboard_number ?? storyboardId} 视频提取的最后一帧`;
 
+        let appearanceContextJson = null;
+        let appearanceContextHash = null;
+        let generationContextHash = null;
+        if (characterLookService.hasWardrobeTables(db)) {
+          const context = targetVisualContext || visualContextResolver.resolveStoryboardVisualContext(
+            db,
+            Number(nextSb.id),
+            { persist: true }
+          );
+          if (context) {
+            appearanceContextJson = JSON.stringify(context);
+            appearanceContextHash = context.appearance_context_hash;
+            generationContextHash = visualContextResolver.generationContextHash(
+              appearanceContextHash,
+              { operation: 'tail_frame_link', source_video_generation_id: video.id }
+            );
+          }
+        }
+
         const insert = db.prepare(`
           INSERT INTO image_generations (
             drama_id, episode_id, storyboard_id, prompt, provider, model, status,
             image_url, local_path, width, height,
+            appearance_context_json, appearance_context_hash, generation_context_hash, superseded,
             created_at, updated_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         `);
 
         // 假设有 files_base_url 配置
@@ -142,6 +202,9 @@ function routes(db, cfg, log) {
           outputRelPath,
           width,
           height,
+          appearanceContextJson,
+          appearanceContextHash,
+          generationContextHash,
           now,
           now,
           now

@@ -1,5 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { tableExists } = require('../db/portableSql');
+const { loadConfig } = require('../config');
+const { normalizeDataUrlsForPersistence } = require('./localMediaService');
 
 const ACTIVE_TASK_STATUSES = ['pending', 'processing', 'running'];
 const DEFAULT_ORPHAN_STALE_MS = 60 * 1000;
@@ -7,6 +9,16 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 10 * 1000;
 const DEFAULT_REAPER_INTERVAL_MS = 30 * 1000;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 2;
 const taskHeartbeats = new Map();
+
+function normalizeTaskPayloadForPersistence(payload, prefix) {
+  const config = loadConfig();
+  return normalizeDataUrlsForPersistence(payload, {
+    storagePath: config.storage?.local_path || './data/storage',
+    baseUrl: config.storage?.base_url,
+    category: 'task-results',
+    prefix,
+  }).value;
+}
 
 function positiveNumber(value, fallback) {
   const parsed = Number(value);
@@ -31,7 +43,13 @@ function createTask(db, log, taskType, resourceId) {
 }
 
 function setTaskRequestPayload(db, taskId, payload) {
-  const serialized = JSON.stringify(payload || {});
+  const normalized = normalizeTaskPayloadForPersistence(
+    payload || {},
+    'task-request'
+  );
+  const serialized = typeof normalized === 'string'
+    ? normalized
+    : JSON.stringify(normalized);
   db.prepare('UPDATE async_tasks SET request_payload = ? WHERE id = ?').run(serialized, taskId);
 }
 
@@ -166,7 +184,13 @@ function updateTaskError(db, taskId, errMsg) {
 
 function updateTaskResult(db, taskId, result) {
   const now = new Date().toISOString();
-  const resultStr = typeof result === 'string' ? result : JSON.stringify(result || {});
+  const normalized = normalizeTaskPayloadForPersistence(
+    result || {},
+    'task-result'
+  );
+  const resultStr = typeof normalized === 'string'
+    ? normalized
+    : JSON.stringify(normalized);
   db.prepare(
     `UPDATE async_tasks
      SET status = 'completed', progress = 100, message = '', error = NULL,

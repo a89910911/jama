@@ -1578,6 +1578,28 @@ function copyStoryboardAssetLinks(db, fromSbId, toSbId) {
     ));
     for (const p of props) insP.run(to, p.prop_id);
   } catch (_) {}
+  try {
+    const bindings = db.prepare(
+      `SELECT character_id, look_id, source
+         FROM character_look_bindings
+        WHERE scope_type = 'storyboard' AND scope_id = ? AND deleted_at IS NULL`
+    ).all(from);
+    const insertBinding = db.prepare(
+      `INSERT INTO character_look_bindings (
+         scope_type, scope_id, character_id, look_id, source, created_at, updated_at
+       ) VALUES ('storyboard', ?, ?, ?, ?, ?, ?)`
+    );
+    for (const binding of bindings) {
+      insertBinding.run(
+        to,
+        binding.character_id,
+        binding.look_id,
+        binding.source || 'split_inherit',
+        now,
+        now
+      );
+    }
+  } catch (_) {}
 }
 
 function durationForSplitSegment(type, text) {

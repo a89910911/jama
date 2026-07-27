@@ -188,22 +188,52 @@ function getEpisodeResources(db, dramaId, episodeId) {
      ORDER BY storyboard_number ASC, id ASC`
   ).all(episodeId);
 
-  return { characters, scenes, props: Array.from(propMap.values()), storyboards };
+  let characterLooks = [];
+  try {
+    characterLooks = db.prepare(
+      `SELECT l.*, c.name AS character_name
+         FROM character_looks l
+         INNER JOIN characters c ON c.id = l.character_id
+         INNER JOIN episode_characters ec ON ec.character_id = c.id
+        WHERE ec.episode_id = ? AND l.drama_id = ?
+          AND l.deleted_at IS NULL AND l.status = 'active' AND c.deleted_at IS NULL
+        ORDER BY c.sort_order ASC, c.id ASC, l.id ASC`
+    ).all(episodeId, dramaId);
+  } catch (_) {}
+
+  return { characters, characterLooks, scenes, props: Array.from(propMap.values()), storyboards };
 }
 
 function latestStoryboardImage(db, storyboard) {
   if (storyboard.first_frame_image_id != null) {
-    const bound = db.prepare(
-      `SELECT * FROM image_generations
-       WHERE id = ? AND deleted_at IS NULL AND status = 'completed'`
-    ).get(storyboard.first_frame_image_id);
+    let bound = null;
+    try {
+      bound = db.prepare(
+        `SELECT * FROM image_generations
+         WHERE id = ? AND deleted_at IS NULL AND status = 'completed' AND superseded = 0`
+      ).get(storyboard.first_frame_image_id);
+    } catch (_) {
+      bound = db.prepare(
+        `SELECT * FROM image_generations
+         WHERE id = ? AND deleted_at IS NULL AND status = 'completed'`
+      ).get(storyboard.first_frame_image_id);
+    }
     if (bound && (bound.local_path || bound.image_url)) return bound;
   }
-  const rows = db.prepare(
-    `SELECT * FROM image_generations
-     WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed'
-     ORDER BY created_at DESC, id DESC`
-  ).all(storyboard.id);
+  let rows;
+  try {
+    rows = db.prepare(
+      `SELECT * FROM image_generations
+       WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed' AND superseded = 0
+       ORDER BY created_at DESC, id DESC`
+    ).all(storyboard.id);
+  } catch (_) {
+    rows = db.prepare(
+      `SELECT * FROM image_generations
+       WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed'
+       ORDER BY created_at DESC, id DESC`
+    ).all(storyboard.id);
+  }
   return rows.find((row) => (
     !LAST_FRAME_TYPES.has(String(row.frame_type || '').toLowerCase())
     && (row.local_path || row.image_url)
@@ -211,13 +241,33 @@ function latestStoryboardImage(db, storyboard) {
 }
 
 function latestStoryboardVideo(db, storyboardId) {
-  return db.prepare(
-    `SELECT * FROM video_generations
-     WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed'
-       AND (local_path IS NOT NULL OR video_url IS NOT NULL)
-     ORDER BY created_at DESC, id DESC
-     LIMIT 1`
-  ).get(storyboardId) || null;
+  try {
+    const storyboard = db.prepare(
+      'SELECT current_video_generation_id FROM storyboards WHERE id = ?'
+    ).get(storyboardId);
+    if (storyboard?.current_video_generation_id) {
+      const current = db.prepare(
+        `SELECT * FROM video_generations
+          WHERE id = ? AND storyboard_id = ? AND deleted_at IS NULL
+            AND status = 'completed' AND superseded = 0
+            AND (local_path IS NOT NULL OR video_url IS NOT NULL)`
+      ).get(storyboard.current_video_generation_id, storyboardId);
+      if (current) return current;
+    }
+    return db.prepare(
+      `SELECT * FROM video_generations
+        WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed'
+          AND superseded = 0 AND (local_path IS NOT NULL OR video_url IS NOT NULL)
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).get(storyboardId) || null;
+  } catch (_) {
+    return db.prepare(
+      `SELECT * FROM video_generations
+        WHERE storyboard_id = ? AND deleted_at IS NULL AND status = 'completed'
+          AND (local_path IS NOT NULL OR video_url IS NOT NULL)
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).get(storyboardId) || null;
+  }
 }
 
 function buildAssets(db, dramaId, episodeId, rawScope = 'all') {
@@ -236,6 +286,20 @@ function buildAssets(db, dramaId, episodeId, rawScope = 'all') {
         url: item.image_url,
       });
     }
+  }
+  for (const look of resources.characterLooks || []) {
+    const localPath = look.local_path || null;
+    const url = look.image_url || look.ref_image || look.four_view_image_url || null;
+    if (!localPath && !url) continue;
+    assets.push({
+      id: `character_look_${look.id}`,
+      scope: 'characters',
+      kind: 'image',
+      folder: '角色衣橱',
+      name: `${look.character_name || `角色${look.character_id}`}_${look.name || `造型${look.id}`}`,
+      localPath,
+      url,
+    });
   }
   for (const item of resources.scenes) {
     if (item.local_path || item.image_url) {

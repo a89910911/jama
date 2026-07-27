@@ -4,6 +4,7 @@ const dramaService = require('./dramaService');
 const propService = require('./propService');
 const sceneService = require('./sceneService');
 const { insertIgnoreSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
 
 const RESOURCE_SCOPES = ['character', 'prop', 'scene'];
 
@@ -225,6 +226,7 @@ function persistExtractedResources(db, log, session, extracted) {
         );
         row = { id: Number(info.lastInsertRowid) };
       }
+      characterLookService.syncDefaultLookFromCharacter(db, row.id);
       if (episodeId) {
         db.prepare(insertIgnoreSql(
           db,
@@ -353,15 +355,22 @@ function listResourceImageTargets(db, session, scopes, options = {}) {
       ).all(dramaId);
     }
     for (const row of rows) {
+      const defaultLook = characterLookService.ensureDefaultLook(db, row.id);
+      const look = defaultLook
+        ? characterLookService.getLookRow(db, defaultLook.id)
+        : null;
       targets.push({
         targetType: 'character',
         targetId: row.id,
         characterId: row.id,
+        characterLookId: look?.id || null,
+        characterLookRevision: look?.visual_revision || null,
         name: row.name,
-        description: row.appearance || row.description || '',
-        imagePrompt: row.polished_prompt || row.appearance || row.description || '',
-        imageUrl: row.image_url || '',
-        localPath: row.local_path || '',
+        lookName: look?.name || '默认造型',
+        description: look?.appearance || row.appearance || row.description || '',
+        imagePrompt: look?.polished_prompt || look?.appearance || row.polished_prompt || row.appearance || row.description || '',
+        imageUrl: look?.image_url || row.image_url || '',
+        localPath: look?.local_path || row.local_path || '',
       });
     }
   }

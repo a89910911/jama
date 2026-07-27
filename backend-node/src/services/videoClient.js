@@ -3609,6 +3609,13 @@ function buildSd2ActiveAssetUrlLookup(db, dramaId) {
     rows = db.prepare(
       'SELECT image_url, local_path, seedance2_asset FROM characters WHERE drama_id = ? AND deleted_at IS NULL'
     ).all(Number(dramaId));
+    try {
+      rows.push(...db.prepare(
+        `SELECT image_url, local_path, seedance2_asset
+           FROM character_looks
+          WHERE drama_id = ? AND deleted_at IS NULL AND status = 'active'`
+      ).all(Number(dramaId)));
+    } catch (_) {}
   } catch (_) {
     return { urlToAsset, relPathToAsset };
   }
@@ -4544,21 +4551,21 @@ async function callVideoApiInternal(db, log, opts) {
     if (voiceMap.size > 0) {
       // 优先使用分镜显式指定的角色（如果有），否则取第一个
       let chosen = null;
-      if (opts.storyboard_id) {
+      if (opts.voice_character_id && voiceMap.has(Number(opts.voice_character_id))) {
+        chosen = voiceMap.get(Number(opts.voice_character_id));
+      } else if (opts.storyboard_id) {
         try {
           const sbRow = db.prepare('SELECT characters FROM storyboards WHERE id = ?').get(opts.storyboard_id);
           if (sbRow && sbRow.characters) {
             const charList = typeof sbRow.characters === 'string' ? JSON.parse(sbRow.characters) : sbRow.characters;
             const ids = Array.isArray(charList) ? charList.map(c => Number(c?.id || c)).filter(Boolean) : [];
+            const matches = [];
             for (const cid of ids) {
-              if (voiceMap.has(cid)) { chosen = voiceMap.get(cid); break; }
+              if (voiceMap.has(cid)) matches.push(voiceMap.get(cid));
             }
+            if (matches.length === 1) chosen = matches[0];
           }
         } catch (_) {}
-      }
-      if (!chosen) {
-        // 取 Map 中的第一个
-        chosen = voiceMap.values().next().value;
       }
       if (chosen) {
         opts.voice_reference_url = chosen;
@@ -4568,7 +4575,7 @@ async function callVideoApiInternal(db, log, opts) {
           voice_ref_url: String(chosen).slice(0, 100)
         });
       } else {
-        log.info('[视频][SD2][全能] 检测到活跃音色参考但未匹配到当前分镜角色', {
+        log.info('[视频][SD2][全能] 当前分镜存在多个或没有唯一可判定音色，未自动注入；可显式指定 voice_character_id', {
           video_gen_id,
           storyboard_id: opts.storyboard_id,
           available_voice_char_ids: Array.from(voiceMap.keys())

@@ -6,6 +6,8 @@ const taskService = require('./taskService');
 const { safeParseAIJSON } = require('../utils/safeJson');
 const storyboardService = require('./storyboardService');
 const angleService = require('./angleService');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 const {
   parseNamesFromAnchorLines,
   sanitizeFramePrompt,
@@ -126,6 +128,34 @@ function buildCharacterAnchorText(db, storyboardId, name, anchors, appearance) {
 
 function loadStoryboardCharacterNames(db, storyboardId) {
   const sid = Number(storyboardId);
+  if (characterLookService.hasWardrobeTables(db)) {
+    const visualContext = visualContextResolver.resolveStoryboardVisualContext(db, sid);
+    if (visualContext) {
+      return visualContext.characters.map((item) => {
+        const character = db.prepare(
+          'SELECT name, appearance, identity_appearance, identity_anchors FROM characters WHERE id = ? AND deleted_at IS NULL'
+        ).get(item.character_id);
+        let anchors = null;
+        if (character?.identity_anchors) {
+          try { anchors = JSON.parse(character.identity_anchors); } catch (_) {}
+        }
+        const identityText = buildCharacterAnchorText(
+          db,
+          sid,
+          character?.name || item.character_name,
+          anchors,
+          character?.identity_appearance || character?.appearance
+        );
+        const lookParts = [
+          item.look?.appearance,
+          item.look?.polished_prompt,
+        ].map((value) => String(value || '').trim()).filter(Boolean);
+        return lookParts.length
+          ? `${identityText}；当前造型「${item.look.name}」：${lookParts.join('；')}`
+          : `${identityText}；当前造型「${item.look?.name || '默认造型'}」`;
+      });
+    }
+  }
   let ids = [];
   let usedExplicitCharactersColumn = false;
 
@@ -306,11 +336,30 @@ function parseFramePromptJSON(log, aiResponse) {
 
 function saveFramePrompt(db, log, storyboardId, frameType, prompt, description, layout) {
   const now = new Date().toISOString();
+  let contextHash = null;
+  if (characterLookService.hasWardrobeTables(db)) {
+    contextHash = visualContextResolver.resolveStoryboardVisualContext(
+      db,
+      Number(storyboardId)
+    )?.appearance_context_hash || null;
+  }
   db.prepare('DELETE FROM frame_prompts WHERE storyboard_id = ? AND frame_type = ?').run(Number(storyboardId), frameType);
   db.prepare(
-    `INSERT INTO frame_prompts (storyboard_id, frame_type, prompt, description, layout, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(Number(storyboardId), frameType, prompt, description ?? null, layout ?? null, now, now);
+    `INSERT INTO frame_prompts (
+       storyboard_id, frame_type, prompt, description, layout,
+       context_hash, context_stale, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
+  ).run(
+    Number(storyboardId),
+    frameType,
+    prompt,
+    description ?? null,
+    layout ?? null,
+    contextHash,
+    now,
+    now
+  );
   log.info('Frame prompt saved', { storyboard_id: storyboardId, frame_type: frameType });
 }
 

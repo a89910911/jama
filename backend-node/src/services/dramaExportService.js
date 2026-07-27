@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
-const EXPORT_VERSION = '1.4';  // 1.4: 完整导出分镜图片历史（含首尾帧 first/last 绑定）、frame_prompts、layout_description 等，支持导入后恢复首尾帧模式数据
+const EXPORT_VERSION = '1.5';  // 1.5: 增加角色衣橱、默认造型与分集/场次/分镜造型绑定
 
 function getStoragePath(cfg) {
   const raw = cfg?.storage?.local_path || './data/storage';
@@ -36,6 +36,40 @@ function parseExtraImages(raw) {
   } catch (_) { return []; }
 }
 
+function parseJsonValue(raw, fallback = null) {
+  if (raw == null || raw === '') return fallback;
+  if (typeof raw !== 'string') return raw;
+  try { return JSON.parse(raw); } catch (_) { return fallback; }
+}
+
+function currentStoryboardVideo(db, storyboardId) {
+  try {
+    const storyboard = db.prepare(
+      'SELECT current_video_generation_id FROM storyboards WHERE id = ?'
+    ).get(storyboardId);
+    if (storyboard?.current_video_generation_id) {
+      const current = db.prepare(
+        `SELECT * FROM video_generations
+          WHERE id = ? AND storyboard_id = ? AND status = 'completed'
+            AND superseded = 0 AND deleted_at IS NULL`
+      ).get(storyboard.current_video_generation_id, storyboardId);
+      if (current) return current;
+    }
+    return db.prepare(
+      `SELECT * FROM video_generations
+        WHERE storyboard_id = ? AND status = 'completed'
+          AND superseded = 0 AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).get(storyboardId);
+  } catch (_) {
+    return db.prepare(
+      `SELECT * FROM video_generations
+        WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).get(storyboardId);
+  }
+}
+
 const EXPORT_FIRST_FRAME_TYPES = ['storyboard_first', 'first', 'first_frame'];
 const EXPORT_LAST_FRAME_TYPES = ['storyboard_last', 'last', 'tail', 'last_frame'];
 
@@ -45,11 +79,21 @@ function supplementFramePromptsFromImageGens(db, sbId, fps) {
   const hasType = (t) => out.some((f) => f && f.frame_type === t);
   const pickPrompt = (types) => {
     const ph = types.map(() => '?').join(',');
-    const row = db.prepare(
-      `SELECT prompt FROM image_generations WHERE storyboard_id = ? AND deleted_at IS NULL
-       AND frame_type IN (${ph}) AND prompt IS NOT NULL AND TRIM(prompt) != ''
-       ORDER BY created_at DESC LIMIT 1`
-    ).get(sbId, ...types);
+    let row;
+    try {
+      row = db.prepare(
+        `SELECT prompt FROM image_generations WHERE storyboard_id = ? AND deleted_at IS NULL
+         AND superseded = 0 AND frame_type IN (${ph})
+         AND prompt IS NOT NULL AND TRIM(prompt) != ''
+         ORDER BY created_at DESC, id DESC LIMIT 1`
+      ).get(sbId, ...types);
+    } catch (_) {
+      row = db.prepare(
+        `SELECT prompt FROM image_generations WHERE storyboard_id = ? AND deleted_at IS NULL
+         AND frame_type IN (${ph}) AND prompt IS NOT NULL AND TRIM(prompt) != ''
+         ORDER BY created_at DESC, id DESC LIMIT 1`
+      ).get(sbId, ...types);
+    }
     return (row?.prompt || '').trim();
   };
   const now = new Date().toISOString();
@@ -112,9 +156,7 @@ function exportDrama(db, cfg, log, dramaId) {
     ).all(sbId);
     allImagesBySb[sbId] = igs.filter(ig => ig && ig.local_path);
 
-    const vg = db.prepare(
-      "SELECT video_url, local_path FROM video_generations WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
-    ).get(sbId);
+    const vg = currentStoryboardVideo(db, sbId);
     if (vg) videosBySb[sbId] = vg;
   }
 
@@ -142,6 +184,27 @@ function exportDrama(db, cfg, log, dramaId) {
   const characters = db.prepare(
     'SELECT * FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order, id'
   ).all(Number(dramaId));
+  let characterLooks = [];
+  let lookBindings = [];
+  let sceneBlocks = [];
+  try {
+    characterLooks = db.prepare(
+      `SELECT * FROM character_looks
+        WHERE drama_id = ? AND deleted_at IS NULL AND status = 'active'
+        ORDER BY character_id, id`
+    ).all(Number(dramaId));
+    lookBindings = db.prepare(
+      `SELECT b.* FROM character_look_bindings b
+         JOIN episodes e ON e.id = b.episode_id AND e.deleted_at IS NULL
+        WHERE b.drama_id = ? AND b.deleted_at IS NULL
+        ORDER BY b.episode_id, b.character_id, b.scope_type, b.scope_id`
+    ).all(Number(dramaId));
+    sceneBlocks = db.prepare(
+      `SELECT * FROM scene_blocks
+        WHERE drama_id = ? AND deleted_at IS NULL
+        ORDER BY episode_id, sort_order, id`
+    ).all(Number(dramaId));
+  } catch (_) {}
 
   // ---- 6. 读取场景 ----
   const scenes = db.prepare(
@@ -173,6 +236,14 @@ function exportDrama(db, cfg, log, dramaId) {
   // ---- 构建 ID → 导出数组下标 的映射（用于分镜 characters/scene_id/prop_ids 跨项目还原） ----
   const charIdToIndex = {};
   characters.forEach((c, idx) => { charIdToIndex[c.id] = idx; });
+  const looksByCharacter = new Map();
+  const lookIndexById = new Map();
+  for (const look of characterLooks) {
+    if (!looksByCharacter.has(look.character_id)) looksByCharacter.set(look.character_id, []);
+    const list = looksByCharacter.get(look.character_id);
+    lookIndexById.set(look.id, list.length);
+    list.push(look);
+  }
   const sceneIdToIndex = {};
   dedupedScenes.forEach((s, idx) => { sceneIdToIndex[s.id] = idx; });
   // 去重丢弃的重复场景 ID 也指向保留场景的下标
@@ -223,7 +294,9 @@ function exportDrama(db, cfg, log, dramaId) {
         storyboards: sbs.map(sb => {
           const igsForThis = allImagesBySb[sb.id] || [];
           // 兼容：仍提供 image_file（指向首帧或最新一张），旧版导入器可继续工作
-          let mainIg = igsForThis.find(g => g.id === sb.first_frame_image_id) || igsForThis[igsForThis.length - 1];
+          let mainIg = igsForThis.find(g => g.id === sb.first_frame_image_id)
+            || [...igsForThis].reverse().find((g) => !g.superseded)
+            || igsForThis[igsForThis.length - 1];
           const sbImageFile = mainIg ? `media/storyboards/sb_${sb.id}_gen_${mainIg.id}${extOf(mainIg.local_path)}` : null;
           const vg = videosBySb[sb.id];
           const sbVideoFile = vg && vg.local_path ? `media/videos/sb_${sb.id}${extOf(vg.local_path)}` : null;
@@ -304,7 +377,8 @@ function exportDrama(db, cfg, log, dramaId) {
               size: ig.size || null,
               quality: ig.quality || null,
               status: ig.status || 'completed',
-              error_msg: ig.error_msg || null,
+               error_msg: ig.error_msg || null,
+              superseded: !!ig.superseded,
               created_at: ig.created_at || null,
               updated_at: ig.updated_at || null,
               completed_at: ig.completed_at || null,
@@ -324,6 +398,38 @@ function exportDrama(db, cfg, log, dramaId) {
         extraFilesToPack.push({ localRelPath: relPath, zipPath });
         return zipPath;
       });
+      const looks = (looksByCharacter.get(c.id) || []).map((look, lookIndex) => {
+        const lookExtras = parseExtraImages(look.extra_images);
+        const lookExtraFiles = lookExtras.map((relPath, extraIndex) => {
+          const zipPath = `media/character_looks/extra_${c.id}_${look.id}_${extraIndex}${extOf(relPath)}`;
+          extraFilesToPack.push({ localRelPath: relPath, zipPath });
+          return zipPath;
+        });
+        const imageFile = look.local_path
+          ? `media/character_looks/look_${c.id}_${look.id}${extOf(look.local_path)}`
+          : null;
+        if (look.local_path && imageFile) {
+          extraFilesToPack.push({ localRelPath: look.local_path, zipPath: imageFile });
+        }
+        return {
+          name: look.name,
+          category: look.category,
+          appearance: look.appearance,
+          polished_prompt: look.polished_prompt,
+          negative_prompt: look.negative_prompt,
+          image_url: look.image_url,
+          image_file: imageFile,
+          ref_image: look.ref_image,
+          extra_image_files: lookExtraFiles,
+          reference_images: parseJsonValue(look.reference_images, []),
+          style_tokens: parseJsonValue(look.style_tokens, null),
+          color_palette: parseJsonValue(look.color_palette, null),
+          seedance2_asset: parseJsonValue(look.seedance2_asset, null),
+          visual_revision: Number(look.visual_revision || 1),
+          is_default: Number(c.default_look_id) === Number(look.id),
+          order: lookIndex,
+        };
+      });
       return {
         name: c.name,
         role: c.role,
@@ -332,8 +438,12 @@ function exportDrama(db, cfg, log, dramaId) {
         appearance: c.appearance,
         voice_style: c.voice_style,
         polished_prompt: c.polished_prompt || null,
+        identity_appearance: c.identity_appearance || null,
+        identity_anchors: parseJsonValue(c.identity_anchors, null),
+        seedance2_voice_asset: parseJsonValue(c.seedance2_voice_asset, null),
         image_file: c.local_path ? `media/characters/char_${c.id}${extOf(c.local_path)}` : null,
         extra_image_files: extraFiles,
+        looks,
       };
     }),
     scenes: dedupedScenes.map(s => {
@@ -372,6 +482,39 @@ function exportDrama(db, cfg, log, dramaId) {
         extra_image_files: extraFiles,
       };
     }),
+    look_bindings: lookBindings.map((binding) => {
+      const characterIndex = charIdToIndex[binding.character_id];
+      const episodeIndex = episodes.findIndex((episode) => Number(episode.id) === Number(binding.episode_id));
+      const scope = {
+        scope_type: binding.scope_type,
+        episode_index: episodeIndex >= 0 ? episodeIndex : null,
+        character_index: characterIndex,
+        look_index: lookIndexById.get(binding.look_id),
+        source: binding.source,
+        transition_note: binding.transition_note || null,
+      };
+      if (binding.scope_type === 'episode') {
+        scope.scope_episode_index = episodes.findIndex(
+          (episode) => Number(episode.id) === Number(binding.scope_id)
+        );
+      } else if (binding.scope_type === 'storyboard') {
+        for (let epIndex = 0; epIndex < episodes.length; epIndex += 1) {
+          const sbIndex = (storyboardsByEp[episodes[epIndex].id] || [])
+            .findIndex((storyboard) => Number(storyboard.id) === Number(binding.scope_id));
+          if (sbIndex >= 0) {
+            scope.scope_episode_index = epIndex;
+            scope.scope_storyboard_index = sbIndex;
+            break;
+          }
+        }
+      } else if (binding.scope_type === 'scene_block') {
+        const block = sceneBlocks.find((item) => Number(item.id) === Number(binding.scope_id));
+        scope.scope_scene_block_key = block?.stable_key || null;
+      }
+      return scope;
+    }).filter((binding) =>
+      binding.character_index != null && binding.look_index != null
+    ),
   };
 
   // ---- 9. 打包 ZIP ----

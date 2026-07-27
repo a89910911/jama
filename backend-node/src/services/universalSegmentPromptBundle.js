@@ -7,6 +7,8 @@
  * @returns {{ ok:true, userPrompt:string, durationLabel:string, durationSec:number, sbId:number, episodeId:number, storyboardNumber:number } | { ok:false, code:'not_found'|'bad_request', message:string }}
  */
 const promptTemplates = require('./promptTemplateService');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
   const bodyIn = reqBody && typeof reqBody === 'object' ? reqBody : {};
@@ -156,7 +158,22 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
       charNamesOrdered.push(nm);
     }
   }
-  const charNames = charNamesOrdered.join(', ');
+  let charNames = charNamesOrdered.join(', ');
+  let wardrobeContext = null;
+  if (characterLookService.hasWardrobeTables(db)) {
+    try {
+      wardrobeContext = visualContextResolver.resolveStoryboardVisualContext(db, sbId);
+      if (wardrobeContext) {
+        charNames = wardrobeContext.characters.map((item) => {
+          const look = item.look || {};
+          const detail = look.polished_prompt || look.appearance || '';
+          return `${item.character_name}（${look.name || '默认造型'}${detail ? `：${detail}` : ''}）`;
+        }).join(', ');
+      }
+    } catch (_) {
+      wardrobeContext = null;
+    }
+  }
 
   let propRows = [];
   try {
@@ -214,27 +231,40 @@ function buildUniversalSegmentUserPromptBundle(db, sbId, reqBody, opts = {}) {
     const brief = String(summary || '').trim() || kind;
     slots.push({ num, tag: `@图片${num}`, kind, summary: brief });
   };
-  if (sceneRow && hasMediaRef(sceneRow)) {
-    pushSlot('场景', String(sceneRow.location || '').trim() || '场景环境');
-  }
-  for (const ent of charOrderEntries) {
-    let row = null;
-    if (ent.key.startsWith('drama:')) {
-      row = db
-        .prepare('SELECT name, local_path, image_url FROM characters WHERE id = ? AND deleted_at IS NULL')
-        .get(Number(ent.key.slice(6)));
-    } else if (ent.key.startsWith('lib:')) {
-      row = db
-        .prepare('SELECT name, local_path, image_url FROM character_libraries WHERE id = ? AND deleted_at IS NULL')
-        .get(Number(ent.key.slice(4)));
+  if (wardrobeContext) {
+    for (const slot of wardrobeContext.reference_slots || []) {
+      const kind = slot.kind === 'character_look'
+        ? '角色'
+        : slot.kind === 'scene'
+          ? '场景'
+          : slot.kind === 'prop'
+            ? '道具'
+            : slot.kind;
+      pushSlot(kind, slot.name);
     }
-    if (!hasMediaRef(row)) continue;
-    const cn = String(row.name || ent.nameHint || '角色').trim();
-    pushSlot('角色', cn);
-  }
-  for (const pr of propRows) {
-    if (!hasMediaRef(pr)) continue;
-    pushSlot('道具', String(pr.name || '道具').trim());
+  } else {
+    if (sceneRow && hasMediaRef(sceneRow)) {
+      pushSlot('场景', String(sceneRow.location || '').trim() || '场景环境');
+    }
+    for (const ent of charOrderEntries) {
+      let row = null;
+      if (ent.key.startsWith('drama:')) {
+        row = db
+          .prepare('SELECT name, local_path, image_url FROM characters WHERE id = ? AND deleted_at IS NULL')
+          .get(Number(ent.key.slice(6)));
+      } else if (ent.key.startsWith('lib:')) {
+        row = db
+          .prepare('SELECT name, local_path, image_url FROM character_libraries WHERE id = ? AND deleted_at IS NULL')
+          .get(Number(ent.key.slice(4)));
+      }
+      if (!hasMediaRef(row)) continue;
+      const cn = String(row.name || ent.nameHint || '角色').trim();
+      pushSlot('角色', cn);
+    }
+    for (const pr of propRows) {
+      if (!hasMediaRef(pr)) continue;
+      pushSlot('道具', String(pr.name || '道具').trim());
+    }
   }
 
   const charSlots = slots.filter((s) => s.kind === '角色');

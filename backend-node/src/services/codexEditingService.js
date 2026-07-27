@@ -2,6 +2,8 @@ const { safeParseAIJSON } = require('../utils/safeJson');
 const dramaService = require('./dramaService');
 const codexResources = require('./codexResourceService');
 const codexStoryboards = require('./codexStoryboardService');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 const STORYBOARD_DETAIL_FIELDS = [
   'title',
@@ -165,10 +167,22 @@ function persistResourcePromptUpdates(db, session, targets, parsed) {
     const target = targetById.get(update.target_id);
     if (!target) throw new Error(`资源 ${update.target_id} 不属于本次任务`);
     if (target.targetType === 'character') {
-      db.prepare(
-        `UPDATE characters SET polished_prompt = ?, updated_at = ?
-          WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
-      ).run(update.optimized_prompt, now, update.target_id, Number(session.drama_id));
+      const character = db.prepare(
+        'SELECT id, drama_id FROM characters WHERE id = ? AND drama_id = ? AND deleted_at IS NULL'
+      ).get(update.target_id, Number(session.drama_id));
+      if (!character) throw new Error(`角色 ${update.target_id} 不存在`);
+      if (characterLookService.hasWardrobeTables(db)) {
+        const look = characterLookService.ensureDefaultLook(db, character.id);
+        const updated = characterLookService.updateLook(db, look.id, {
+          polished_prompt: update.optimized_prompt,
+        });
+        if (!updated.ok) throw new Error(updated.error || '默认造型提示词保存失败');
+      } else {
+        db.prepare(
+          `UPDATE characters SET polished_prompt = ?, updated_at = ?
+            WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
+        ).run(update.optimized_prompt, now, update.target_id, Number(session.drama_id));
+      }
     } else if (target.targetType === 'prop') {
       db.prepare(
         `UPDATE props SET prompt = ?, updated_at = ?
@@ -200,7 +214,7 @@ function parseIds(value) {
 
 function enrichStoryboardTarget(db, session, row) {
   const characterIds = parseIds(row.characters);
-  const characters = characterIds.length
+  let characters = characterIds.length
     ? db.prepare(
       `SELECT id, name, appearance, description, polished_prompt
          FROM characters
@@ -208,6 +222,19 @@ function enrichStoryboardTarget(db, session, row) {
           AND drama_id = ? AND deleted_at IS NULL`
     ).all(...characterIds, Number(session.drama_id))
     : [];
+  if (characterLookService.hasWardrobeTables(db)) {
+    const context = visualContextResolver.resolveStoryboardVisualContext(db, row.id);
+    if (context) {
+      characters = context.characters.map((item) => ({
+        id: item.character_id,
+        name: item.character_name,
+        appearance: item.look?.appearance || '',
+        description: `当前造型：${item.look?.name || '默认造型'}`,
+        polished_prompt: item.look?.polished_prompt || '',
+        look_id: item.look?.id || null,
+      }));
+    }
+  }
   const props = db.prepare(
     `SELECT p.id, p.name, p.description, p.prompt
        FROM storyboard_props sp JOIN props p ON p.id = sp.prop_id

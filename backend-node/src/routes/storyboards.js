@@ -9,6 +9,7 @@ const promptTemplates = require('../services/promptTemplateService');
 const angleService = require('../services/angleService');
 const { buildUniversalSegmentUserPromptBundle } = require('../services/universalSegmentPromptBundle');
 const { normalizeUniversalSegmentShotDurations } = require('../services/universalSegmentDurationNormalize');
+const visualContextResolver = require('../services/visualContextResolver');
 
 function resolveStoryboardPrompt(db, storyboardId, promptKey, variables = {}, cfg = null) {
   const activeCfg = cfg || require('../config').loadConfig();
@@ -254,7 +255,14 @@ function routes(db, log) {
         response.created(res, sb);
       } catch (err) {
         log.error('storyboards create', { error: err.message });
-        if (err.code === 'STORYBOARD_DURATION_RANGE') return response.badRequest(res, err.message);
+        if ([
+          'STORYBOARD_DURATION_RANGE',
+          'INVALID_STORYBOARD_CHARACTER',
+          'INVALID_STORYBOARD_SCENE',
+          'INVALID_STORYBOARD_PROP',
+          'INVALID_STORYBOARD_IMAGE',
+          'INVALID_STORYBOARD_VIDEO',
+        ].includes(err.code)) return response.badRequest(res, err.message);
         response.internalError(res, err.message);
       }
     },
@@ -286,7 +294,14 @@ function routes(db, log) {
         response.success(res, sb);
       } catch (err) {
         log.error('storyboards update', { error: err.message });
-        if (err.code === 'STORYBOARD_DURATION_RANGE') return response.badRequest(res, err.message);
+        if ([
+          'STORYBOARD_DURATION_RANGE',
+          'INVALID_STORYBOARD_CHARACTER',
+          'INVALID_STORYBOARD_SCENE',
+          'INVALID_STORYBOARD_PROP',
+          'INVALID_STORYBOARD_IMAGE',
+          'INVALID_STORYBOARD_VIDEO',
+        ].includes(err.code)) return response.badRequest(res, err.message);
         response.internalError(res, err.message);
       }
     },
@@ -506,6 +521,25 @@ function routes(db, log) {
             if (lib?.name) nameSet.add(lib.name);
           }
           assetNames = [...nameSet].join(', ');
+        } catch (_) {}
+
+        // 衣橱启用后，提示词和连戏快照必须使用本镜头的有效 Look，而不是角色默认图。
+        try {
+          const visualContext = visualContextResolver.resolveStoryboardVisualContext(db, sbId);
+          if (visualContext) {
+            const lookAssets = visualContext.characters.map((item) => {
+              const look = item.look || {};
+              const detail = look.polished_prompt || look.appearance || look.name || '';
+              return `${item.character_name} [Look: ${look.name || '默认造型'}${detail ? `；${detail}` : ''}]`;
+            });
+            const sceneAssets = visualContext.scene
+              ? [`场景: ${visualContext.scene.name}${visualContext.scene.prompt ? `；${visualContext.scene.prompt}` : ''}`]
+              : [];
+            const propAssets = visualContext.props.map((item) =>
+              `道具: ${item.name}${item.prompt ? `；${item.prompt}` : ''}`
+            );
+            assetNames = [...lookAssets, ...sceneAssets, ...propAssets].join('\n') || assetNames;
+          }
         } catch (_) {}
 
         const polishedPrompt = await aiClient.generateText(

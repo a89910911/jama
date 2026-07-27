@@ -4,8 +4,8 @@
   "description": "Node.js backend for JamaAI",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node --env-file=.env.mysql.test src/server.js",
+    "dev": "node --watch --env-file=.env.mysql.test src/server.js",
     "start:mysql:test": "node --env-file=.env.mysql.test src/server.js",
     "dev:mysql:test": "node --watch --env-file=.env.mysql.test src/server.js",
     "start:mysql:prod": "node --env-file=.env.mysql.prod src/server.js",
@@ -14,7 +14,9 @@
     "db:migrate:mysql:prod": "node --env-file=.env.mysql.prod tools/migrate-sqlite-to-mysql.js",
     "db:verify:mysql:test": "node --env-file=.env.mysql.test tools/migrate-sqlite-to-mysql.js --verify-only",
     "db:verify:mysql:prod": "node --env-file=.env.mysql.prod tools/migrate-sqlite-to-mysql.js --verify-only",
-    "migrate": "node src/db/migrate.js",
+    "media:migrate-base64": "node --env-file=.env.mysql.test tools/migrate-base64-media.js",
+    "media:migrate-base64:apply": "node --env-file=.env.mysql.test tools/migrate-base64-media.js --apply",
+    "migrate": "node --env-file=.env.mysql.test src/db/migrate.js",
     "migrate:07": "node scripts/run-migration-07.js"
   },
   "engines": {

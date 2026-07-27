@@ -276,6 +276,9 @@
                   <div class="drama-res-desc">{{ (item.description || item.prompt || '').slice(0, 80) }}</div>
                   <div class="drama-res-actions">
                     <el-button size="small" @click="openEditDramaChar(item)">编辑</el-button>
+                    <el-button size="small" type="primary" plain @click="openDramaWardrobe(item)">
+                      衣橱 · {{ item.look_count || 1 }}
+                    </el-button>
                   </div>
                 </div>
               </div>
@@ -558,6 +561,19 @@
       </template>
     </el-dialog>
 
+    <el-drawer
+      v-model="dramaWardrobeVisible"
+      title="角色衣橱 / 多套造型"
+      size="min(980px, 92vw)"
+      destroy-on-close
+    >
+      <CharacterWardrobePanel
+        v-if="dramaWardrobeCharacter"
+        :character="dramaWardrobeCharacter"
+        @changed="onDramaWardrobeChanged"
+      />
+    </el-drawer>
+
     <!-- 图片预览 -->
     <Teleport to="body">
       <div v-if="previewUrl" class="image-preview-overlay" @click="previewUrl = null">
@@ -575,6 +591,7 @@ import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, Grid, D
 import EpisodeBatchImportDialog from '@/components/EpisodeBatchImportDialog.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
+import CharacterWardrobePanel from '@/components/CharacterWardrobePanel.vue'
 import { useTheme } from '@/composables/useTheme'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
@@ -615,6 +632,21 @@ const editDramaSceneSaving  = ref(false)
 const editDramaPropVisible = ref(false)
 const editDramaPropForm    = ref(null)
 const editDramaPropSaving  = ref(false)
+const dramaWardrobeVisible = ref(false)
+const dramaWardrobeCharacter = ref(null)
+
+function openDramaWardrobe(character) {
+  dramaWardrobeCharacter.value = character
+  dramaWardrobeVisible.value = true
+}
+
+async function onDramaWardrobeChanged() {
+  await loadDrama()
+  const refreshed = drama.value?.characters?.find(
+    (item) => Number(item.id) === Number(dramaWardrobeCharacter.value?.id)
+  )
+  if (refreshed) dramaWardrobeCharacter.value = refreshed
+}
 
 function startImageProgress(form) {
   form.progress = 1

@@ -33,6 +33,9 @@ function rowToItem(r) {
     drama_id: r.drama_id,
     scene_id: r.scene_id ?? undefined,
     character_id: r.character_id,
+    character_look_id: r.character_look_id ?? undefined,
+    character_look_revision: r.character_look_revision ?? undefined,
+    parent_generation_id: r.parent_generation_id ?? undefined,
     provider: r.provider,
     prompt: r.prompt,
     model: r.model,
@@ -42,6 +45,9 @@ function rowToItem(r) {
     task_id: r.task_id,
     error_msg: r.error_msg,
     frame_type: r.frame_type ?? undefined,
+    appearance_context_hash: r.appearance_context_hash ?? undefined,
+    generation_context_hash: r.generation_context_hash ?? undefined,
+    superseded: !!r.superseded,
     created_at: r.created_at,
     updated_at: r.updated_at,
     completed_at: r.completed_at,
@@ -61,8 +67,11 @@ const uploadService = require('./uploadService');
 const storageLayout = require('./storageLayout');
 const aiClient = require('./aiClient');
 const promptTemplates = require('./promptTemplateService');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 const LAST_FRAME_TYPES = new Set(['last', 'storyboard_last', 'tail', 'last_frame']);
+const FIRST_FRAME_TYPES = new Set(['first', 'storyboard_first', 'first_frame']);
 
 function isLastFrameType(frameType) {
   if (frameType == null || frameType === '') return false;
@@ -149,19 +158,32 @@ async function splitQuadGridToImages(db, log, originalRow, absLocalPath, storage
           : null;
         // 插入 image_generation 记录（status=completed，直接可用）
         db.prepare(
-          `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, character_id, provider, prompt, model, frame_type, image_url, local_path, status, created_at, updated_at, completed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`
+          `INSERT INTO image_generations
+            (storyboard_id, drama_id, scene_id, character_id, character_look_id,
+             character_look_revision, parent_generation_id, provider, prompt, model,
+             frame_type, image_url, local_path, appearance_context_json,
+             appearance_context_hash, generation_context_hash, superseded,
+             status, created_at, updated_at, completed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   'completed', ?, ?, ?)`
         ).run(
           originalRow.storyboard_id ?? null,
           originalRow.drama_id ?? 0,
           originalRow.scene_id ?? null,
           originalRow.character_id ?? null,
+          originalRow.character_look_id ?? null,
+          originalRow.character_look_revision ?? null,
+          originalRow.id,
           originalRow.provider || 'system',
           `[${labels[q.idx]}] ${originalRow.prompt || ''}`.slice(0, 1000),
           originalRow.model ?? null,
           `quad_panel_${q.idx}`,
           panelImageUrl,
           relPanelPath,
+          originalRow.appearance_context_json ?? null,
+          originalRow.appearance_context_hash ?? null,
+          originalRow.generation_context_hash ?? null,
+          originalRow.superseded ? 1 : 0,
           now, now, now
         );
         log.info(`[四宫格拆分] 面板 ${q.idx}(${labels[q.idx]}) 已保存`, { rel_path: relPanelPath });
@@ -322,18 +344,32 @@ async function splitNineGridToImages(db, log, originalRow, absLocalPath, storage
         fs.writeFileSync(absPanelPath, panelBuf);
         const panelImageUrl = imageUrl_ ? imageUrl_.replace(/[^/\\]+$/, panelFilename) : null;
         db.prepare(
-          `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, model, frame_type, image_url, local_path, status, created_at, updated_at, completed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`
+          `INSERT INTO image_generations
+            (storyboard_id, drama_id, scene_id, character_id, character_look_id,
+             character_look_revision, parent_generation_id, provider, prompt, model,
+             frame_type, image_url, local_path, appearance_context_json,
+             appearance_context_hash, generation_context_hash, superseded,
+             status, created_at, updated_at, completed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   'completed', ?, ?, ?)`
         ).run(
           originalRow.storyboard_id ?? null,
           originalRow.drama_id ?? 0,
           originalRow.scene_id ?? null,
+          originalRow.character_id ?? null,
+          originalRow.character_look_id ?? null,
+          originalRow.character_look_revision ?? null,
+          originalRow.id,
           originalRow.provider || 'system',
           `[${labels[c.idx]}] ${originalRow.prompt || ''}`.slice(0, 1000),
           originalRow.model ?? null,
           `nine_panel_${c.idx}`,
           panelImageUrl,
           relPanelPath,
+          originalRow.appearance_context_json ?? null,
+          originalRow.appearance_context_hash ?? null,
+          originalRow.generation_context_hash ?? null,
+          originalRow.superseded ? 1 : 0,
           now, now, now
         );
         log.info(`[九宫格拆分] 面板 ${c.idx}(${labels[c.idx]}) 已保存`, { rel_path: relPanelPath });
@@ -490,34 +526,103 @@ function mergePromptWithStyle(prompt, style) {
 
 function create(db, log, req) {
   const now = new Date().toISOString();
-  const task = taskService.createTask(db, log, 'image_generation', String(req.drama_id || ''));
-  const taskId = task.id;
   const frameType = req.frame_type ?? null;
   const sceneId = req.scene_id != null ? Number(req.scene_id) : null;
-  const refImagesJson =
-    req.reference_images && Array.isArray(req.reference_images)
-      ? JSON.stringify(req.reference_images.slice(0, 10))
-      : null;
-  if (req.reference_images && Array.isArray(req.reference_images)) {
-    log.info('reference_images 完整路径（请求入参）', {
+  let effectiveDramaId = Number(req.drama_id) || 0;
+  let visualContext = null;
+  let referenceImages = Array.isArray(req.reference_images)
+    ? req.reference_images.slice(0, 10)
+    : [];
+
+  if (req.storyboard_id && characterLookService.hasWardrobeTables(db)) {
+    visualContext = visualContextResolver.resolveStoryboardVisualContext(
+      db,
+      Number(req.storyboard_id),
+      { persist: true }
+    );
+    if (!visualContext) {
+      const error = new Error('分镜不存在，无法解析视觉上下文');
+      error.code = 'STORYBOARD_NOT_FOUND';
+      throw error;
+    }
+    if (effectiveDramaId && effectiveDramaId !== Number(visualContext.drama_id)) {
+      const error = new Error('分镜与项目不匹配');
+      error.code = 'VISUAL_CONTEXT_DRAMA_MISMATCH';
+      throw error;
+    }
+    const blockingIssues = visualContext.warnings.filter((item) => item.level === 'error');
+    if (blockingIssues.length) {
+      const error = new Error(blockingIssues.map((item) => item.message).join('；'));
+      error.code = 'VISUAL_PREFLIGHT_FAILED';
+      error.issues = blockingIssues;
+      throw error;
+    }
+    effectiveDramaId = Number(visualContext.drama_id);
+
+    if (isLastFrameType(frameType) && resolveUseFirstFrameLayoutLock(req, frameType)) {
+      const storyboard = db.prepare(
+        `SELECT first_frame_image_id, image_url, local_path
+           FROM storyboards WHERE id = ? AND deleted_at IS NULL`
+      ).get(Number(req.storyboard_id));
+      let firstFrameReference = storyboard?.local_path || storyboard?.image_url || '';
+      if (storyboard?.first_frame_image_id) {
+        const firstFrame = db.prepare(
+          'SELECT local_path, image_url FROM image_generations WHERE id = ? AND deleted_at IS NULL'
+        ).get(Number(storyboard.first_frame_image_id));
+        firstFrameReference = firstFrame?.local_path || firstFrame?.image_url || firstFrameReference;
+      }
+      if (firstFrameReference) {
+        visualContext.reference_slots = [
+          {
+            index: 1,
+            kind: 'layout_lock',
+            id: Number(storyboard.first_frame_image_id) || null,
+            name: '首帧站位与构图',
+            url: firstFrameReference,
+          },
+          ...visualContext.reference_slots.map((slot, index) => ({ ...slot, index: index + 2 })),
+        ];
+      }
+    }
+    referenceImages = visualContext.reference_slots.map((slot) => slot.url).filter(Boolean);
+  }
+
+  const task = taskService.createTask(db, log, 'image_generation', String(effectiveDramaId || ''));
+  const taskId = task.id;
+  const refImagesJson = referenceImages.length ? JSON.stringify(referenceImages) : null;
+  if (referenceImages.length) {
+    log.info('reference_images 完整路径（服务端冻结）', {
       image_gen_create: true,
-      count: req.reference_images.length,
-      reference_images: req.reference_images,
+      count: referenceImages.length,
+      reference_images: referenceImages,
     });
   }
   const mergedPrompt = mergePromptWithStyle(req.prompt || '', req.style);
-  // 优先使用请求中直接传入的 size；其次将 aspect_ratio 转成 size；未提供则存 NULL 留给 processImageGeneration 从 drama 元数据读取
   let reqSize = req.size || null;
   if (!reqSize && req.aspect_ratio) {
     reqSize = aspectRatioToSize(req.aspect_ratio) || null;
   }
   const useFirstFrameLayoutLock = resolveUseFirstFrameLayoutLock(req, frameType);
+  const appearanceContextJson = visualContext ? JSON.stringify(visualContext) : null;
+  const appearanceContextHash = visualContext?.appearance_context_hash || null;
+  const generationContextHash = visualContext
+    ? visualContextResolver.generationContextHash(appearanceContextHash, {
+      ...req,
+      reference_urls: referenceImages,
+      size: reqSize,
+    })
+    : null;
   const info = db.prepare(
-    `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model, frame_type, reference_images, use_first_frame_layout_lock, size, status, task_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+    `INSERT INTO image_generations (
+       storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model,
+       frame_type, reference_images, use_first_frame_layout_lock, size, status, task_id,
+       appearance_context_json, appearance_context_hash, generation_context_hash,
+       created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`
   ).run(
     req.storyboard_id ?? null,
-    Number(req.drama_id) || 0,
+    effectiveDramaId,
     sceneId,
     req.provider || 'openai',
     mergedPrompt,
@@ -528,6 +633,9 @@ function create(db, log, req) {
     useFirstFrameLayoutLock,
     reqSize,
     taskId,
+    appearanceContextJson,
+    appearanceContextHash,
+    generationContextHash,
     now,
     now
   );
@@ -537,6 +645,13 @@ function create(db, log, req) {
     processImageGeneration(db, log, imageGenId);
   });
   return { id: imageGenId, task_id: taskId, status: 'pending', ...getById(db, imageGenId) };
+}
+
+function frameGenerationSlot(frameType) {
+  const normalized = String(frameType || '').toLowerCase();
+  if (LAST_FRAME_TYPES.has(normalized)) return 'last';
+  if (FIRST_FRAME_TYPES.has(normalized)) return 'first';
+  return normalized;
 }
 
 /**
@@ -691,6 +806,12 @@ async function processImageGeneration(db, log, imageGenId) {
     let reference_context_note = null;
     /** 分镜 characters 列已显式配置时，不再用 Step2.3「台词是否出现人名」过滤参考图（以勾选为准） */
     let skipStep23PromptCharFilter = false;
+    let frozenVisualContext = null;
+    if (row.appearance_context_json) {
+      try {
+        frozenVisualContext = JSON.parse(row.appearance_context_json);
+      } catch (_) {}
+    }
     if (row.reference_images) {
       try {
         const parsed = JSON.parse(row.reference_images);
@@ -702,7 +823,7 @@ async function processImageGeneration(db, log, imageGenId) {
     }
 
     // ── 首尾帧专用：尾帧图生可选注入首帧作为“人物站位+构图锁”参考图（默认开启，可由 use_first_frame_layout_lock=0 关闭）──
-    if (row.storyboard_id) {
+    if (row.storyboard_id && !frozenVisualContext) {
       const isLastFrame = isLastFrameType(row.frame_type);
       const useFirstLayoutLock = rowUseFirstFrameLayoutLock(row);
       if (isLastFrame && useFirstLayoutLock) {
@@ -759,7 +880,7 @@ async function processImageGeneration(db, log, imageGenId) {
     }
 
     // 尾帧可能已注入首帧站位锁参考，仍需合并当前勾选的角色/场景/道具参考图
-    if (row.storyboard_id) {
+    if (row.storyboard_id && !frozenVisualContext) {
       const sb = db.prepare('SELECT scene_id, characters, angle_s, shot_type FROM storyboards WHERE id = ? AND deleted_at IS NULL').get(row.storyboard_id);
       if (sb) {
         const refs = [];
@@ -1007,6 +1128,40 @@ async function processImageGeneration(db, log, imageGenId) {
           }
         }
       }
+    }
+    if (frozenVisualContext && Array.isArray(frozenVisualContext.reference_slots)) {
+      const characterSlots = frozenVisualContext.reference_slots.filter(
+        (slot) => slot.kind === 'character_look'
+      );
+      if (characterSlots.length > refLimits.maxCharacters) {
+        const error = new Error(
+          `当前模型最多支持 ${refLimits.maxCharacters} 个角色参考，但本镜头需要 ${characterSlots.length} 个`
+        );
+        error.code = 'TOO_MANY_CHARACTER_REFERENCES';
+        throw error;
+      }
+      const essentialSlots = frozenVisualContext.reference_slots.filter(
+        (slot) => ['layout_lock', 'scene', 'character_look'].includes(slot.kind)
+      );
+      if (essentialSlots.length > refLimits.total) {
+        const error = new Error(
+          `当前模型最多支持 ${refLimits.total} 张参考图，但本镜头的首帧、场景和角色造型共需 ${essentialSlots.length} 张`
+        );
+        error.code = 'TOO_MANY_REQUIRED_REFERENCES';
+        throw error;
+      }
+      const selectedSlots = [
+        ...essentialSlots,
+        ...frozenVisualContext.reference_slots.filter(
+          (slot) => !['layout_lock', 'scene', 'character_look'].includes(slot.kind)
+        ),
+      ].slice(0, refLimits.total);
+      reference_image_urls = selectedSlots.map((slot) => slot.url).filter(Boolean);
+      reference_context_note = selectedSlots.map(
+        (slot, index) => `Image ${index + 1}: ${slot.kind} reference for "${slot.name || slot.id}"`
+      ).join('\n');
+      reference_source = 'frozen-visual-context';
+      skipStep23PromptCharFilter = true;
     }
     log.info('[图生] Step2 参考图', {
       id: imageGenId,
@@ -1485,14 +1640,45 @@ async function processImageGeneration(db, log, imageGenId) {
     }
 
     // ── Step 6: 写库 & 任务完成 ──────────────────────────────────────
+    let superseded = false;
+    if (row.storyboard_id) {
+      try {
+        const newerRows = db.prepare(
+          `SELECT id, frame_type FROM image_generations
+            WHERE storyboard_id = ? AND id > ? AND deleted_at IS NULL
+              AND status IN ('pending', 'processing', 'completed')
+            ORDER BY id DESC`
+        ).all(Number(row.storyboard_id), Number(imageGenId));
+        superseded = newerRows.some(
+          (candidate) => frameGenerationSlot(candidate.frame_type) === frameGenerationSlot(row.frame_type)
+        );
+      } catch (_) {}
+    }
+    if (!superseded && row.storyboard_id && row.appearance_context_hash && characterLookService.hasWardrobeTables(db)) {
+      try {
+        const currentContext = visualContextResolver.resolveStoryboardVisualContext(
+          db,
+          Number(row.storyboard_id)
+        );
+        superseded = !currentContext
+          || currentContext.appearance_context_hash !== row.appearance_context_hash;
+      } catch (contextError) {
+        superseded = true;
+        log.warn('[图生] 完成时视觉上下文复核失败，结果仅保留在历史记录', {
+          id: imageGenId,
+          error: contextError.message,
+        });
+      }
+    }
     db.prepare(
-      'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
-    ).run('completed', persistedImageUrl, localPath, now2, now2, imageGenId);
+      'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, superseded = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
+    ).run('completed', persistedImageUrl, localPath, superseded ? 1 : 0, now2, now2, imageGenId);
     if (row.task_id) {
       taskService.updateTaskResult(db, row.task_id, {
         image_generation_id: imageGenId,
         image_url: persistedImageUrl,
         status: 'completed',
+        superseded,
       });
     }
     
@@ -1542,7 +1728,7 @@ async function processImageGeneration(db, log, imageGenId) {
       } catch (_) {}
     }
 
-    if (row.storyboard_id && effectiveFrameTypeForBind !== 'quad_grid' && effectiveFrameTypeForBind !== 'nine_grid') {
+    if (!superseded && row.storyboard_id && effectiveFrameTypeForBind !== 'quad_grid' && effectiveFrameTypeForBind !== 'nine_grid') {
       try {
         const { bindStoryboardFrameImage } = require('./storyboardFrameBinding');
         bindStoryboardFrameImage(
@@ -1577,6 +1763,12 @@ async function processImageGeneration(db, log, imageGenId) {
       const absLocalPath = path.join(storagePath2, localPath);
       splitNineGridToImages(db, log, row, absLocalPath, storagePath2, persistedImageUrl).catch((e) => {
         log.warn('[图生] Step7 九宫格拆分异常', { id: imageGenId, error: e.message });
+      });
+    }
+    if (superseded) {
+      log.warn('[图生] 生成期间角色造型或分镜上下文已变化，结果已保留但未覆盖当前首尾帧', {
+        id: imageGenId,
+        storyboard_id: row.storyboard_id,
       });
     }
 
@@ -1630,17 +1822,45 @@ function getBackgroundsForEpisode(db, episodeId) {
 function upload(db, log, req) {
   const now = new Date().toISOString();
   const frameType = req.frame_type ?? null;
+  let dramaId = Number(req.drama_id) || 0;
+  let visualContext = null;
+  if (req.storyboard_id && characterLookService.hasWardrobeTables(db)) {
+    visualContext = visualContextResolver.resolveStoryboardVisualContext(
+      db,
+      Number(req.storyboard_id),
+      { persist: true }
+    );
+    if (!visualContext) throw new Error('分镜不存在，无法记录上传图片的视觉上下文');
+    if (dramaId && dramaId !== Number(visualContext.drama_id)) {
+      throw new Error('分镜与项目不匹配');
+    }
+    dramaId = Number(visualContext.drama_id);
+  }
+  const appearanceContextJson = visualContext ? JSON.stringify(visualContext) : null;
+  const appearanceContextHash = visualContext?.appearance_context_hash || null;
+  const generationContextHash = appearanceContextHash
+    ? visualContextResolver.generationContextHash(appearanceContextHash, {
+      prompt: req.prompt || '',
+      reference_urls: visualContext.reference_slots?.map((slot) => slot.url) || [],
+    })
+    : null;
   const info = db.prepare(
-    `INSERT INTO image_generations (storyboard_id, drama_id, provider, prompt, image_url, local_path, frame_type, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
+    `INSERT INTO image_generations
+      (storyboard_id, drama_id, provider, prompt, image_url, local_path, frame_type,
+       appearance_context_json, appearance_context_hash, generation_context_hash,
+       status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
   ).run(
     req.storyboard_id ?? null,
-    Number(req.drama_id) || 0,
+    dramaId,
     'upload',
     req.prompt || '',
     req.image_url || '',
     req.local_path ?? null,
     frameType,
+    appearanceContextJson,
+    appearanceContextHash,
+    generationContextHash,
     now,
     now
   );

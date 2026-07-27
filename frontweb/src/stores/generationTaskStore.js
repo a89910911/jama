@@ -8,6 +8,7 @@ import { resolveGenerationProgress } from '@/utils/generationProgress'
 /** 资源类型常量 */
 export const GEN_RESOURCE = {
   CHAR_IMAGE: 'char_image',
+  CHAR_LOOK_IMAGE: 'char_look_image',
   PROP_IMAGE: 'prop_image',
   SCENE_IMAGE: 'scene_image',
   SB_IMAGE: 'sb_image',
@@ -493,6 +494,15 @@ export const useGenerationTaskStore = defineStore('generationTask', () => {
           : resourceType === GEN_RESOURCE.SB_FIRST_IMAGE
             ? `${epLabel} 首帧 #${num}`
             : `${epLabel} 分镜图 #${num}`
+      } else if (
+        img.character_look_id != null
+        && img.character_id != null
+        && charIdSet.has(Number(img.character_id))
+      ) {
+        resourceType = GEN_RESOURCE.CHAR_LOOK_IMAGE
+        resourceId = Number(img.character_look_id)
+        const c = characters.find((x) => Number(x.id) === Number(img.character_id))
+        label = `${epLabel} ${c?.name || img.character_id} · 造型 #${resourceId}`
       } else if (img.character_id != null && charIdSet.has(Number(img.character_id))) {
         resourceType = GEN_RESOURCE.CHAR_IMAGE
         resourceId = Number(img.character_id)

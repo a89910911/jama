@@ -125,9 +125,34 @@
       >
         生成参考图
       </el-button>
+      <el-button
+        v-if="kind === 'character'"
+        size="small"
+        type="primary"
+        plain
+        @click.stop="wardrobeVisible = true"
+      >
+        衣橱 · {{ entity.look_count || 1 }}
+      </el-button>
       <el-button size="small" plain @click.stop="highlightRelated">关联分镜</el-button>
       <el-button size="small" type="danger" plain @click.stop="deleteAsset">删除</el-button>
     </div>
+
+    <el-drawer
+      v-model="wardrobeVisible"
+      title="角色衣橱 / 多套造型"
+      size="min(920px, 92vw)"
+      append-to-body
+      destroy-on-close
+      @pointerdown.stop
+      @click.stop
+    >
+      <CharacterWardrobePanel
+        v-if="kind === 'character'"
+        :character="entity"
+        @changed="onWardrobeChanged"
+      />
+    </el-drawer>
   </div>
 </template>
 
@@ -140,6 +165,7 @@ import { propAPI } from '@/api/props'
 import { useCanvasContext } from '@/composables/useCanvasContext'
 import { generateAssetReferenceImage } from '@/composables/useCanvasAssetGenerate'
 import { assetImageUrl } from '@/utils/mediaUrl'
+import CharacterWardrobePanel from '@/components/CharacterWardrobePanel.vue'
 
 const props = defineProps({
   kind: { type: String, required: true },
@@ -150,6 +176,7 @@ const props = defineProps({
 const ctx = useCanvasContext()
 const saving = ref(false)
 const generating = ref(false)
+const wardrobeVisible = ref(false)
 const form = reactive({
   name: '',
   role: '',
@@ -295,6 +322,10 @@ async function generateImage() {
 
 function highlightRelated() {
   ctx?.setHighlightAsset?.(props.nodeId)
+}
+
+async function onWardrobeChanged() {
+  await ctx?.refreshDrama?.(true)
 }
 </script>
 

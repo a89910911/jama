@@ -4,6 +4,8 @@ const {
   STORYBOARD_MAX_DURATION,
 } = require('./storyboardDurationPlanner');
 const { insertIgnoreSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 function validateStoryboardDuration(value) {
   const duration = Number(value);
@@ -111,19 +113,104 @@ function createStoryboard(db, log, req) {
 }
 
 function updateStoryboard(db, log, id, req) {
-  const row = db.prepare('SELECT id FROM storyboards WHERE id = ? AND deleted_at IS NULL').get(Number(id));
+  const row = db.prepare(
+    'SELECT id, episode_id FROM storyboards WHERE id = ? AND deleted_at IS NULL'
+  ).get(Number(id));
   if (!row) return null;
-  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'narration', 'action', 'result', 'atmosphere', 'image_prompt', 'polished_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'audio_local_path', 'narration_audio_local_path', 'status', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s', 'movement', 'segment_index', 'segment_title', 'creation_mode', 'universal_segment_text', 'use_first_last_frame', 'layout_description', 'first_frame_image_id', 'last_frame_image_id', 'last_frame_image_url', 'last_frame_local_path'];
+  const allowed = ['title', 'description', 'location', 'time', 'duration', 'dialogue', 'narration', 'action', 'result', 'atmosphere', 'image_prompt', 'polished_prompt', 'video_prompt', 'scene_id', 'characters', 'composed_image', 'image_url', 'local_path', 'main_panel_idx', 'video_url', 'current_video_generation_id', 'audio_local_path', 'narration_audio_local_path', 'status', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s', 'movement', 'segment_index', 'segment_title', 'creation_mode', 'universal_segment_text', 'use_first_last_frame', 'layout_description', 'first_frame_image_id', 'last_frame_image_id', 'last_frame_image_url', 'last_frame_local_path'];
   const updates = [];
   const params = [];
   // 前端可能传 character_ids，与 characters 统一：存为 JSON 字符串
   const charactersValue = req.character_ids !== undefined ? req.character_ids : req.characters;
+  if (charactersValue !== undefined || req.scene_id != null || req.prop_ids !== undefined) {
+    try {
+      row.drama_id = db.prepare(
+        'SELECT drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL'
+      ).get(row.episode_id)?.drama_id || null;
+    } catch (_) {
+      row.drama_id = null;
+    }
+  }
   let parsedDramaCharIdsForSync = null;
   if (charactersValue !== undefined) {
     updates.push('characters = ?');
     const jsonStr = Array.isArray(charactersValue) ? JSON.stringify(charactersValue) : (typeof charactersValue === 'string' ? charactersValue : '[]');
     params.push(jsonStr);
     parsedDramaCharIdsForSync = parseDramaCharacterIds(charactersValue) ?? [];
+    const uniqueCharacterIds = [...new Set(parsedDramaCharIdsForSync)];
+    if (uniqueCharacterIds.length && row.drama_id) {
+      const placeholders = uniqueCharacterIds.map(() => '?').join(',');
+      const validRows = db.prepare(
+        `SELECT id FROM characters
+          WHERE id IN (${placeholders}) AND drama_id = ? AND deleted_at IS NULL`
+      ).all(...uniqueCharacterIds, row.drama_id);
+      if (validRows.length !== uniqueCharacterIds.length) {
+        const error = new Error('角色名单包含不存在或不属于当前项目的角色');
+        error.code = 'INVALID_STORYBOARD_CHARACTER';
+        throw error;
+      }
+    }
+    parsedDramaCharIdsForSync = uniqueCharacterIds;
+  }
+  if (req.scene_id != null && row.drama_id) {
+    const scene = db.prepare(
+      'SELECT id FROM scenes WHERE id = ? AND drama_id = ? AND deleted_at IS NULL'
+    ).get(Number(req.scene_id), row.drama_id);
+    if (!scene) {
+      const error = new Error('场景不存在或不属于当前项目');
+      error.code = 'INVALID_STORYBOARD_SCENE';
+      throw error;
+    }
+  }
+  if (req.prop_ids !== undefined) {
+    const propIds = [...new Set(
+      (Array.isArray(req.prop_ids) ? req.prop_ids : [])
+        .map(Number)
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )];
+    if (propIds.length && row.drama_id) {
+      const placeholders = propIds.map(() => '?').join(',');
+      const validRows = db.prepare(
+        `SELECT id FROM props
+          WHERE id IN (${placeholders}) AND drama_id = ? AND deleted_at IS NULL`
+      ).all(...propIds, row.drama_id);
+      if (validRows.length !== propIds.length) {
+        const error = new Error('道具名单包含不存在或不属于当前项目的道具');
+        error.code = 'INVALID_STORYBOARD_PROP';
+        throw error;
+      }
+    }
+    req = { ...req, prop_ids: propIds };
+  }
+  for (const field of ['first_frame_image_id', 'last_frame_image_id']) {
+    if (req[field] == null) continue;
+    const image = db.prepare(
+      `SELECT id FROM image_generations
+        WHERE id = ? AND storyboard_id = ? AND status = 'completed'
+          AND superseded = 0 AND deleted_at IS NULL`
+    ).get(Number(req[field]), Number(id));
+    if (!image) {
+      const error = new Error('所选分镜图片不存在、已过期或不属于当前分镜');
+      error.code = 'INVALID_STORYBOARD_IMAGE';
+      throw error;
+    }
+  }
+  if (req.current_video_generation_id != null) {
+    const video = db.prepare(
+      `SELECT id, video_url, local_path FROM video_generations
+        WHERE id = ? AND storyboard_id = ? AND status = 'completed'
+          AND superseded = 0 AND deleted_at IS NULL`
+    ).get(Number(req.current_video_generation_id), Number(id));
+    if (!video) {
+      const error = new Error('所选分镜视频不存在、已过期或不属于当前分镜');
+      error.code = 'INVALID_STORYBOARD_VIDEO';
+      throw error;
+    }
+    req = {
+      ...req,
+      video_url: video.video_url
+        || (video.local_path ? `/static/${String(video.local_path).replace(/^[/\\]+/, '').replace(/\\/g, '/')}` : null),
+    };
   }
   for (const key of allowed) {
     if (key === 'characters') continue;
@@ -147,6 +234,29 @@ function updateStoryboard(db, log, id, req) {
   if (parsedDramaCharIdsForSync !== null) {
     try {
       syncStoryboardCharacterLinks(db, id, parsedDramaCharIdsForSync);
+      try {
+        const episodeLink = db.prepare(insertIgnoreSql(
+          db,
+          'INSERT INTO episode_characters (episode_id, character_id) VALUES (?, ?)'
+        ));
+        for (const characterId of parsedDramaCharIdsForSync) {
+          episodeLink.run(row.episode_id, characterId);
+        }
+      } catch (_) {}
+      try {
+        const keep = new Set(parsedDramaCharIdsForSync.map(Number));
+        const existingBindings = db.prepare(
+          `SELECT id, character_id FROM character_look_bindings
+            WHERE scope_type = 'storyboard' AND scope_id = ? AND deleted_at IS NULL`
+        ).all(Number(id));
+        const now = new Date().toISOString();
+        for (const binding of existingBindings) {
+          if (keep.has(Number(binding.character_id))) continue;
+          db.prepare(
+            'UPDATE character_look_bindings SET deleted_at = ?, updated_at = ? WHERE id = ?'
+          ).run(now, now, binding.id);
+        }
+      } catch (_) {}
     } catch (e) {
       log.warn('syncStoryboardCharacterLinks failed', { id, message: e.message });
     }
@@ -161,6 +271,32 @@ function updateStoryboard(db, log, id, req) {
     ));
     for (const pid of propIds) ins.run(Number(id), Number(pid));
   }
+  const appearanceFieldsChanged =
+    charactersValue !== undefined || req.scene_id !== undefined || req.prop_ids !== undefined;
+  const promptFieldsChanged = appearanceFieldsChanged || [
+    'description', 'location', 'time', 'dialogue', 'narration', 'action', 'result',
+    'atmosphere', 'shot_type', 'angle', 'angle_h', 'angle_v', 'angle_s',
+    'movement', 'layout_description',
+  ].some((key) => req[key] !== undefined);
+  if (appearanceFieldsChanged && characterLookService.hasWardrobeTables(db)) {
+    db.prepare(
+      `UPDATE storyboards
+          SET visual_context_stale = 1, updated_at = ?
+        WHERE id = ?`
+    ).run(new Date().toISOString(), Number(id));
+    try {
+      db.prepare(
+        'UPDATE redraw_cards SET context_stale = 1, updated_at = ? WHERE storyboard_id = ? AND deleted_at IS NULL'
+      ).run(new Date().toISOString(), Number(id));
+    } catch (_) {}
+  }
+  if (promptFieldsChanged) {
+    try {
+      db.prepare(
+        'UPDATE frame_prompts SET context_stale = 1, updated_at = ? WHERE storyboard_id = ?'
+      ).run(new Date().toISOString(), Number(id));
+    } catch (_) {}
+  }
   log.info('Storyboard updated', { id });
   return getStoryboardById(db, id);
 }
@@ -169,6 +305,13 @@ function deleteStoryboard(db, log, id) {
   const now = new Date().toISOString();
   const result = db.prepare('UPDATE storyboards SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, Number(id));
   if (result.changes === 0) return false;
+  try {
+    db.prepare(
+      `UPDATE character_look_bindings
+          SET deleted_at = ?, updated_at = ?
+        WHERE scope_type = 'storyboard' AND scope_id = ? AND deleted_at IS NULL`
+    ).run(now, now, Number(id));
+  } catch (_) {}
   log.info('Storyboard deleted', { id });
   return true;
 }
@@ -221,6 +364,10 @@ function getStoryboardById(db, id) {
     last_frame_image_id: r.last_frame_image_id ?? null,
     last_frame_image_url: r.last_frame_image_url ?? null,
     last_frame_local_path: r.last_frame_local_path ?? null,
+    scene_block_id: r.scene_block_id ?? null,
+    current_video_generation_id: r.current_video_generation_id ?? null,
+    appearance_context_hash: r.appearance_context_hash ?? null,
+    visual_context_stale: !!r.visual_context_stale,
     characters,
     prop_ids: propIds,
     composed_image: r.composed_image,
@@ -247,6 +394,8 @@ function getFramePrompts(db, storyboardId) {
     prompt: r.prompt,
     description: r.description,
     layout: r.layout,
+    context_hash: r.context_hash ?? null,
+    context_stale: !!r.context_stale,
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
@@ -254,21 +403,42 @@ function getFramePrompts(db, storyboardId) {
 
 function saveFramePrompt(db, log, storyboardId, frameType, prompt, description, layout) {
   const now = new Date().toISOString();
+  const contextHash = characterLookService.hasWardrobeTables(db)
+    ? visualContextResolver.resolveStoryboardVisualContext(db, storyboardId)?.appearance_context_hash || null
+    : null;
   const existing = db.prepare('SELECT id FROM frame_prompts WHERE storyboard_id = ? AND frame_type = ?').get(Number(storyboardId), frameType);
   if (existing) {
-    db.prepare('UPDATE frame_prompts SET prompt = ?, description = ?, layout = ?, updated_at = ? WHERE id = ?').run(
+    db.prepare(
+      `UPDATE frame_prompts
+          SET prompt = ?, description = ?, layout = ?, context_hash = ?,
+              context_stale = 0, updated_at = ?
+        WHERE id = ?`
+    ).run(
       prompt,
       description ?? null,
       layout ?? null,
+      contextHash,
       now,
       existing.id
     );
     return getFramePrompts(db, storyboardId);
   }
   db.prepare(
-    `INSERT INTO frame_prompts (storyboard_id, frame_type, prompt, description, layout, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(Number(storyboardId), frameType, prompt, description ?? null, layout ?? null, now, now);
+    `INSERT INTO frame_prompts (
+       storyboard_id, frame_type, prompt, description, layout,
+       context_hash, context_stale, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
+  ).run(
+    Number(storyboardId),
+    frameType,
+    prompt,
+    description ?? null,
+    layout ?? null,
+    contextHash,
+    now,
+    now
+  );
   log.info('Frame prompt saved', { storyboard_id: storyboardId, frame_type: frameType });
   return getFramePrompts(db, storyboardId);
 }

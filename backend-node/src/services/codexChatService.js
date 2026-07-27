@@ -17,6 +17,8 @@ const codexResources = require('./codexResourceService');
 const codexStoryboards = require('./codexStoryboardService');
 const codexIntents = require('./codexIntentService');
 const assistantActions = require('./assistantActionRegistry');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 const codexEditing = require('./codexEditingService');
 const uploadService = require('./uploadService');
 const imageService = require('./imageService');
@@ -496,37 +498,101 @@ async function persistAssistantImage(db, log, cfg, details) {
     localPath = `${relDir}/${filename}`;
   }
   const now = new Date().toISOString();
+  const appearanceContextJson = details.appearanceContext
+    ? JSON.stringify(details.appearanceContext)
+    : null;
+  const appearanceContextHash = details.appearanceContextHash
+    || details.appearanceContext?.appearance_context_hash
+    || null;
+  const generationContextHash = appearanceContextHash
+    ? visualContextResolver.generationContextHash(appearanceContextHash, {
+      prompt: details.prompt,
+      model: details.model,
+      provider: details.provider,
+    })
+    : null;
+  let superseded = appearanceContextJson
+    ? !visualContextResolver.isAppearanceContextCurrent(
+      db,
+      appearanceContextJson,
+      appearanceContextHash
+    )
+    : false;
+  if (details.characterLookId) {
+    const currentLook = characterLookService.getLookRow(db, details.characterLookId);
+    superseded = superseded
+      || !currentLook
+      || Number(currentLook.visual_revision || 1) !== Number(details.characterLookRevision || 1);
+  }
 
   const transaction = db.transaction(() => {
-    const info = db.prepare(
-      `INSERT INTO image_generations
-        (storyboard_id, drama_id, episode_id, scene_id, character_id, provider,
-         prompt, model, frame_type, size, image_url, local_path, width, height,
-         status, task_id, completed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)`
-    ).run(
-      details.storyboardId || null,
-      Number(details.dramaId),
-      details.episodeId || null,
-      details.sceneId || null,
-      details.characterId || null,
-      details.provider || CODEX_PROVIDER,
-      details.prompt,
-      details.model || null,
-      details.frameType || null,
-      `${metadata.width || 0}x${metadata.height || 0}`,
-      `/static/${localPath}`,
-      localPath,
-      metadata.width || null,
-      metadata.height || null,
-      details.taskId,
-      now,
-      now,
-      now
-    );
+    let info;
+    if (characterLookService.hasWardrobeTables(db)) {
+      info = db.prepare(
+        `INSERT INTO image_generations
+          (storyboard_id, drama_id, episode_id, scene_id, character_id,
+           character_look_id, character_look_revision, provider,
+           prompt, model, frame_type, size, image_url, local_path, width, height,
+           status, task_id, appearance_context_json, appearance_context_hash,
+           generation_context_hash, superseded, completed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        details.storyboardId || null,
+        Number(details.dramaId),
+        details.episodeId || null,
+        details.sceneId || null,
+        details.characterId || null,
+        details.characterLookId || null,
+        details.characterLookRevision || null,
+        details.provider || CODEX_PROVIDER,
+        details.prompt,
+        details.model || null,
+        details.frameType || null,
+        `${metadata.width || 0}x${metadata.height || 0}`,
+        `/static/${localPath}`,
+        localPath,
+        metadata.width || null,
+        metadata.height || null,
+        details.taskId,
+        appearanceContextJson,
+        appearanceContextHash,
+        generationContextHash,
+        superseded ? 1 : 0,
+        now,
+        now,
+        now
+      );
+    } else {
+      info = db.prepare(
+        `INSERT INTO image_generations
+          (storyboard_id, drama_id, episode_id, scene_id, character_id, provider,
+           prompt, model, frame_type, size, image_url, local_path, width, height,
+           status, task_id, completed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)`
+      ).run(
+        details.storyboardId || null,
+        Number(details.dramaId),
+        details.episodeId || null,
+        details.sceneId || null,
+        details.characterId || null,
+        details.provider || CODEX_PROVIDER,
+        details.prompt,
+        details.model || null,
+        details.frameType || null,
+        `${metadata.width || 0}x${metadata.height || 0}`,
+        `/static/${localPath}`,
+        localPath,
+        metadata.width || null,
+        metadata.height || null,
+        details.taskId,
+        now,
+        now,
+        now
+      );
+    }
     const imageGenId = Number(info.lastInsertRowid);
 
-    if (details.storyboardId) {
+    if (details.storyboardId && !superseded) {
       bindStoryboardFrameImage(
         db,
         details.storyboardId,
@@ -535,11 +601,25 @@ async function persistAssistantImage(db, log, cfg, details) {
         `/static/${localPath}`,
         localPath
       );
+    } else if (details.characterLookId) {
+      if (!superseded) {
+        const updated = characterLookService.updateLook(db, details.characterLookId, {
+          image_url: `/static/${localPath}`,
+          local_path: localPath,
+          expected_revision: details.characterLookRevision,
+        });
+        if (!updated.ok) throw new Error(updated.error || '造型图片回写失败');
+      }
     } else if (details.characterId) {
       db.prepare(
         `UPDATE characters SET image_url = ?, local_path = ?, updated_at = ?
           WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
       ).run(`/static/${localPath}`, localPath, now, details.characterId, details.dramaId);
+      characterLookService.syncDefaultLookFromCharacter(
+        db,
+        details.characterId,
+        ['image_url', 'local_path']
+      );
     } else if (details.sceneId) {
       db.prepare(
         `UPDATE scenes SET image_url = ?, local_path = ?, updated_at = ?
@@ -609,6 +689,22 @@ function validateImageTarget(db, session, body) {
       frameType: body.frame_type || 'first',
     };
   }
+  if (targetType === 'character_look') {
+    const row = db.prepare(
+      `SELECT l.id, l.character_id, l.visual_revision
+         FROM character_looks l
+         JOIN characters c ON c.id = l.character_id
+        WHERE l.id = ? AND l.drama_id = ? AND l.deleted_at IS NULL
+          AND l.status = 'active' AND c.deleted_at IS NULL`
+    ).get(targetId, session.drama_id);
+    if (!row) throw new Error('目标造型不属于当前项目');
+    return {
+      targetType,
+      characterId: Number(row.character_id),
+      characterLookId: Number(row.id),
+      characterLookRevision: Number(row.visual_revision || 1),
+    };
+  }
   const tableMap = { character: 'characters', scene: 'scenes', prop: 'props' };
   const table = tableMap[targetType];
   if (!table) throw new Error('不支持的图片绑定目标');
@@ -616,9 +712,15 @@ function validateImageTarget(db, session, body) {
     `SELECT id FROM ${table} WHERE id = ? AND drama_id = ? AND deleted_at IS NULL`
   ).get(targetId, session.drama_id);
   if (!row) throw new Error('图片绑定目标不属于当前项目');
+  let defaultLook = null;
+  if (targetType === 'character' && characterLookService.hasWardrobeTables(db)) {
+    defaultLook = characterLookService.ensureDefaultLook(db, targetId);
+  }
   return {
     targetType,
     characterId: targetType === 'character' ? targetId : null,
+    characterLookId: defaultLook?.id || null,
+    characterLookRevision: defaultLook?.visual_revision || null,
     sceneId: targetType === 'scene' ? targetId : null,
     propId: targetType === 'prop' ? targetId : null,
   };

@@ -29,6 +29,11 @@ const aiRequestLogService = require('../services/aiRequestLogService');
 const codexChatRoutes = require('./codexChat');
 const redrawRoutes = require('./redraw');
 const actionMigrationRoutes = require('./actionMigration');
+const characterLookRoutes = require('./characterLooks');
+const {
+  normalizeDataUrlsForPersistence,
+  resolveStorageRoot,
+} = require('../services/localMediaService');
 
 function setupRouter(cfg, db, log) {
   const r = express.Router();
@@ -61,11 +66,42 @@ function setupRouter(cfg, db, log) {
   const codexChat = codexChatRoutes(db, cfg, log);
   const redraw = redrawRoutes(db, cfg, log);
   const actionMigration = actionMigrationRoutes(db, cfg, log);
+  const characterLooks = characterLookRoutes(db, cfg, log);
 
   // ---------- authentication ----------
   // 登录是唯一公开 API；其余业务接口都必须具有有效登录会话。
   r.post('/auth/login', auth.login);
   r.use(authService.authenticate(db));
+  const requestMediaStorageRoot = resolveStorageRoot(
+    cfg.storage?.local_path || './data/storage'
+  );
+  r.use((req, res, next) => {
+    if (!req.body || typeof req.body !== 'object') return next();
+    try {
+      const normalized = normalizeDataUrlsForPersistence(req.body, {
+        storagePath: requestMediaStorageRoot,
+        baseUrl: cfg.storage?.base_url,
+        category: 'ingested',
+        prefix: 'request',
+        log,
+      });
+      req.body = normalized.value;
+      return next();
+    } catch (error) {
+      log.warn('Request Base64 media preprocessing failed', {
+        path: req.path,
+        error: error.message,
+      });
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_BASE64_MEDIA',
+          message: `Base64 媒体保存到本地失败：${error.message}`,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
   r.use(aiRequestLogService.requestContextMiddleware);
   r.post('/auth/logout', auth.logout);
   r.get('/auth/me', auth.me);
@@ -307,6 +343,8 @@ function setupRouter(cfg, db, log) {
   r.post('/episodes/:episode_id/characters/extract', stub.episodeCharactersExtract);
   r.get('/episodes/:episode_id/storyboards', storyboards.episodeStoryboardsGet);
   r.get('/episodes/:episode_id/media', episodeMedia.get);
+  r.get('/episodes/:episode_id/look-context', characterLooks.episodeContext);
+  r.post('/episodes/:episode_id/visual-preflight', characterLooks.episodePreflight);
   r.post('/episodes/:episode_id/finalize', drama.finalizeEpisode);
   r.get('/episodes/:episode_id/download', drama.downloadEpisodeVideo);
 
@@ -399,6 +437,7 @@ function setupRouter(cfg, db, log) {
   r.post('/storyboards', storyboards.create);
   r.post('/storyboards/:id/insert-before', storyboards.insertBefore);
   r.get('/storyboards/:id', storyboards.getOne);
+  r.get('/storyboards/:storyboard_id/visual-context', characterLooks.storyboardContext);
   r.put('/storyboards/:id', storyboards.update);
   r.delete('/storyboards/:id', storyboards.delete);
   r.post('/storyboards/:id/props', prop.associateProps);
@@ -416,6 +455,21 @@ function setupRouter(cfg, db, log) {
   r.post('/storyboards/:id/regenerate-layout-description', storyboards.regenerateLayoutDescription);
   r.post('/storyboards/:id/rebuild-video-prompt', storyboards.rebuildVideoPrompt);
   r.post('/storyboards/:id/split-by-audio', storyboards.splitByAudio);
+
+  // ---------- character wardrobe ----------
+  r.get('/characters/:character_id/looks', characterLooks.list);
+  r.post('/characters/:character_id/looks', characterLooks.create);
+  r.get('/character-looks/:look_id', characterLooks.get);
+  r.put('/character-looks/:look_id', characterLooks.update);
+  r.post('/character-looks/:look_id/set-default', characterLooks.setDefault);
+  r.post('/character-looks/:look_id/generate-image', characterLooks.generateImage);
+  r.post('/character-looks/:look_id/upload-image', uploadModule.multerSingle, characterLooks.uploadImage);
+  r.delete('/character-looks/:look_id', characterLooks.remove);
+  r.put('/look-bindings', characterLooks.upsertBinding);
+  r.delete(
+    '/look-bindings/:scope_type/:scope_id/characters/:character_id',
+    characterLooks.removeBinding
+  );
 
   // ---------- audio ----------
   r.post('/audio/extract', audio.extract);

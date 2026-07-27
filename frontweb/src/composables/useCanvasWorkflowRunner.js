@@ -1,6 +1,8 @@
 import { taskAPI } from '@/api/task'
 import { imagesAPI } from '@/api/images'
 import { videosAPI } from '@/api/videos'
+import { storyboardsAPI } from '@/api/storyboards'
+import { characterLookAPI } from '@/api/characterLooks'
 import request from '@/utils/request'
 import { storyboardImageUrl } from '@/utils/mediaUrl'
 import {
@@ -34,7 +36,24 @@ async function pollTaskSimple(taskId, options = {}) {
   return { status: 'timeout', error: '任务超时' }
 }
 
+function assertGenerationResultCurrent(polled) {
+  if (polled?.result?.superseded) {
+    throw new Error('生成期间角色造型或分镜上下文已变化，结果仅保留在历史记录中，请按当前造型重新生成')
+  }
+}
+
+async function assertEpisodeVisualPreflight(sb) {
+  if (!sb?.episode_id) return
+  const report = await characterLookAPI.preflight(sb.episode_id, true)
+  const errors = report?.errors || (report?.issues || []).filter((item) => item.level === 'error')
+  if (errors.length) {
+    const summary = errors.slice(0, 3).map((item) => item.message || item.code).join('；')
+    throw new Error(`造型连戏预检未通过：${summary}`)
+  }
+}
+
 export async function runImageStep(drama, sb, genOpts, hooks = {}) {
+  await assertEpisodeVisualPreflight(sb)
   const basePrompt = sb.polished_prompt || sb.image_prompt || sb.description || sb.action || ''
   if (!basePrompt.trim()) throw new Error(`分镜 #${sb.storyboard_number ?? sb.id} 缺少图片提示词`)
   const useFirstLast = storyboardUsesFirstLastFrame(sb, drama)
@@ -69,11 +88,13 @@ export async function runImageStep(drama, sb, genOpts, hooks = {}) {
     if (res?.task_id) {
       const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
       if (polled.status !== 'completed') throw new Error(polled.error || '分镜图生成失败')
+      assertGenerationResultCurrent(polled)
     }
   }
 }
 
 export async function runVideoStep(drama, sb, genOpts, hooks = {}) {
+  await assertEpisodeVisualPreflight(sb)
   const useFirstLast = storyboardUsesFirstLastFrame(sb, drama)
   const imagesBySbId = genOpts?.imagesBySbId || {}
   const { first, last } = sbVideoFirstLastUrls(sb, imagesBySbId, useFirstLast)
@@ -99,6 +120,7 @@ export async function runVideoStep(drama, sb, genOpts, hooks = {}) {
   if (res?.task_id) {
     const polled = await pollTaskSimple(res.task_id, { onProgress: hooks.onProgress })
     if (polled.status !== 'completed') throw new Error(polled.error || '视频生成失败')
+    assertGenerationResultCurrent(polled)
   }
 }
 

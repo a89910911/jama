@@ -7,6 +7,9 @@ const {
   DEFAULT_DATABASE_TYPE,
   resolveDatabaseType,
 } = require('../src/config');
+const {
+  ensureCharacterLookMysqlTextCapacity,
+} = require('../src/db/migrate');
 
 test('server and source development default to MySQL', () => {
   assert.equal(DEFAULT_DATABASE_TYPE, 'mysql');
@@ -29,6 +32,51 @@ test('explicit database type remains available outside packaged desktop mode', (
     resolveDatabaseType({ type: 'mysql' }, { JAMA_DB_TYPE: 'sqlite' }),
     'sqlite'
   );
+});
+
+test('default backend commands load the local MySQL environment file', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
+  );
+  for (const scriptName of ['start', 'dev', 'migrate']) {
+    assert.match(
+      packageJson.scripts[scriptName],
+      /--env-file=\.env\.mysql\.test(?:\s|$)/,
+      `${scriptName} must load .env.mysql.test`
+    );
+  }
+});
+
+test('MySQL wardrobe image fields are widened without running SQLite-only DDL', () => {
+  const execs = [];
+  const mysql = {
+    dialect: 'mysql',
+    prepare() {
+      return {
+        all() {
+          return [
+            { name: 'image_url', type: 'text' },
+            { name: 'appearance', type: 'longtext' },
+          ];
+        },
+      };
+    },
+    exec(sql) {
+      execs.push(sql);
+    },
+  };
+  assert.deepEqual(ensureCharacterLookMysqlTextCapacity(mysql), ['image_url']);
+  assert.deepEqual(execs, [
+    'ALTER TABLE `character_looks` MODIFY COLUMN `image_url` LONGTEXT NULL',
+  ]);
+
+  const sqlite = {
+    dialect: 'sqlite',
+    prepare() {
+      throw new Error('SQLite metadata should not be queried');
+    },
+  };
+  assert.deepEqual(ensureCharacterLookMysqlTextCapacity(sqlite), []);
 });
 
 test('business SQL does not contain SQLite-only query syntax', () => {

@@ -22,6 +22,15 @@ function routes(db, cfg, log) {
         response.created(res, rec);
       } catch (err) {
         log.error('images create', { error: err.message });
+        if ([
+          'STORYBOARD_NOT_FOUND',
+          'VISUAL_CONTEXT_DRAMA_MISMATCH',
+          'VISUAL_PREFLIGHT_FAILED',
+          'TOO_MANY_CHARACTER_REFERENCES',
+          'TOO_MANY_REQUIRED_REFERENCES',
+        ].includes(err.code)) {
+          return response.badRequest(res, err.message);
+        }
         response.internalError(res, err.message);
       }
     },

@@ -6,6 +6,8 @@ const taskService = require('./taskService');
 const videoClient = require('./videoClient');
 const storageLayout = require('./storageLayout');
 const { getFfmpegPath, getFfprobePath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 const MODE_PRESETS = {
   identity: {
@@ -341,6 +343,8 @@ function rowToJob(row, results = []) {
     ...row,
     preflight_report: parseJson(row.preflight_report, null),
     settings: parseJson(row.settings, {}),
+    appearance_context: parseJson(row.appearance_context_json, null),
+    context_stale: !!row.context_stale,
     results: results.map(rowToResult),
     current_result: results.map(rowToResult).find((item) => item?.id === row.current_result_id) || null,
   };
@@ -350,12 +354,71 @@ function getJobRow(db, jobId) {
   return db.prepare('SELECT * FROM action_migration_jobs WHERE id = ? AND deleted_at IS NULL').get(String(jobId));
 }
 
+function actionLookContext(db, dramaId, characterId, lookId) {
+  const character = db.prepare(
+    'SELECT * FROM characters WHERE id = ? AND drama_id = ? AND deleted_at IS NULL'
+  ).get(Number(characterId), Number(dramaId));
+  const look = characterLookService.getLookRow(db, lookId);
+  if (!character || !look || Number(look.character_id) !== Number(character.id)) return null;
+  const referenceUrl = visualContextResolver.publicMediaUrl(
+    look,
+    ['image_url', 'local_path', 'ref_image', 'four_view_image_url']
+  );
+  const context = {
+    schema_version: '1.0',
+    drama_id: Number(dramaId),
+    characters: [{
+      character_id: Number(character.id),
+      character_name: character.name,
+      look_id: Number(look.id),
+      look_name: look.name,
+      look_revision: Number(look.visual_revision || 1),
+      reference_url: referenceUrl,
+    }],
+  };
+  context.appearance_context_hash = visualContextResolver.hashObject(context);
+  return { character, look, context, referenceUrl };
+}
+
+function syncActionLookContext(db, row) {
+  if (!row?.character_id || !row?.character_look_id) return row;
+  const resolved = actionLookContext(
+    db,
+    row.drama_id,
+    row.character_id,
+    row.character_look_id
+  );
+  if (!resolved?.referenceUrl) return row;
+  db.prepare(
+    `UPDATE action_migration_jobs
+        SET reference_image_path = ?, reference_image_url = ?,
+            appearance_context_json = ?, appearance_context_hash = ?,
+            context_stale = 0, updated_at = ?
+      WHERE id = ?`
+  ).run(
+    resolved.look.local_path || null,
+    resolved.referenceUrl,
+    JSON.stringify(resolved.context),
+    resolved.context.appearance_context_hash,
+    nowIso(),
+    row.id
+  );
+  return getJobRow(db, row.id);
+}
+
 function calculatePreflight(db, cfg, row) {
   const issues = [];
   const driving = fileInfo(cfg, row.structure_video_path || row.driving_video_path);
   const reference = fileInfo(cfg, row.reference_image_path || row.reference_image_url);
   const meta = parseJson(row.settings, {}).video_metadata || {};
   const capability = configCapability(getActionVideoConfig(db));
+  if (row.character_look_id && row.context_stale) {
+    issues.push({
+      level: 'error',
+      code: 'stale_character_look',
+      message: '所选角色造型已变化或不可用，请重新选择造型',
+    });
+  }
 
   if (!row.driving_video_path && !row.driving_video_url) {
     issues.push({ level: 'error', code: 'missing_driving_video', message: '缺少驱动视频' });
@@ -390,7 +453,7 @@ function calculatePreflight(db, cfg, row) {
 }
 
 function updatePreflight(db, cfg, jobId) {
-  const row = getJobRow(db, jobId);
+  const row = syncActionLookContext(db, getJobRow(db, jobId));
   if (!row) return null;
   const report = calculatePreflight(db, cfg, row);
   const nextStatus = report.ok
@@ -415,13 +478,31 @@ function createJob(db, cfg, log, body, files) {
   const drivingFile = files?.driving_video?.[0] || files?.drivingVideo?.[0];
   const referenceFile = files?.reference_image?.[0] || files?.referenceImage?.[0];
   if (!drivingFile) throw new Error('请上传驱动视频');
-  if (!referenceFile) throw new Error('请上传参考人物图');
 
   const jobId = `am_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const dramaId = body.drama_id ? Number(body.drama_id) : null;
+  const characterId = body.character_id ? Number(body.character_id) : null;
+  const lookId = body.character_look_id ? Number(body.character_look_id) : null;
+  const resolvedLook = characterId && lookId
+    ? actionLookContext(db, dramaId, characterId, lookId)
+    : null;
+  if ((characterId || lookId) && !resolvedLook) {
+    throw new Error('所选角色造型不存在或不属于当前项目');
+  }
+  if (!referenceFile && !resolvedLook?.referenceUrl) throw new Error('请选择角色造型或上传参考人物图');
   const mode = MODE_PRESETS[body.mode] ? body.mode : 'balanced';
   const driving = moveUploadToJobDir(cfg, db, jobId, dramaId, drivingFile, 'driving');
-  const reference = moveUploadToJobDir(cfg, db, jobId, dramaId, referenceFile, 'reference');
+  const reference = resolvedLook
+    ? {
+      local_path: resolvedLook.look.local_path || '',
+      url: resolvedLook.referenceUrl,
+      filename: `${resolvedLook.character.name}-${resolvedLook.look.name}`,
+      bytes: null,
+    }
+    : moveUploadToJobDir(cfg, db, jobId, dramaId, referenceFile, 'reference');
+  if (resolvedLook && referenceFile?.path) {
+    try { fs.unlinkSync(referenceFile.path); } catch (_) {}
+  }
   const metadata = probeVideo(driving.absolute_path) || {};
   const trim = {
     start: body.start_time !== '' && body.start_time != null ? Number(body.start_time) : null,
@@ -450,8 +531,10 @@ function createJob(db, cfg, log, body, files) {
     `INSERT INTO action_migration_jobs
       (id, drama_id, title, mode, driving_video_path, driving_video_url, structure_video_path,
        reference_image_path, reference_image_url, prompt, negative_prompt, duration, aspect_ratio,
-       resolution, status, settings, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+       resolution, status, settings, character_id, character_look_id,
+       appearance_context_json, appearance_context_hash, context_stale,
+       created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 0, ?, ?)`
   ).run(
     jobId,
     dramaId,
@@ -468,6 +551,10 @@ function createJob(db, cfg, log, body, files) {
     aspect,
     body.resolution || '480p',
     JSON.stringify(settings),
+    characterId,
+    lookId,
+    resolvedLook ? JSON.stringify(resolvedLook.context) : null,
+    resolvedLook?.context.appearance_context_hash || null,
     now,
     now
   );
@@ -488,6 +575,34 @@ function syncVideoGenerationResult(db, cfg, videoGenId) {
   const now = nowIso();
   if (video.status === 'completed') {
     const quality = inspectVideoResult(cfg, video);
+    if (video.superseded) {
+      db.prepare(
+        `UPDATE action_migration_results
+            SET status = 'completed', is_current = 0, video_url = ?, local_path = ?,
+                error_code = 'superseded_context',
+                error_msg = '生成期间角色造型已变化，结果仅保留在历史记录',
+                quality_report = ?, completed_at = COALESCE(?, completed_at)
+          WHERE id = ?`
+      ).run(
+        video.video_url || null,
+        video.local_path || null,
+        JSON.stringify(quality),
+        video.completed_at || now,
+        result.id
+      );
+      db.prepare(
+        `UPDATE action_migration_jobs
+            SET status = 'ready', current_video_generation_id = NULL,
+                current_result_id = NULL, context_stale = 1,
+                error_code = 'superseded_context',
+                error_msg = '角色造型已变化，请按当前造型重新生成', updated_at = ?
+          WHERE id = ?`
+      ).run(now, row.id);
+      event(db, row.id, 'superseded', '角色造型变化，旧结果未设为当前版本', {
+        video_generation_id: video.id,
+      });
+      return getJob(db, cfg, row.id);
+    }
     db.prepare(
       `UPDATE action_migration_results
           SET status = 'completed', video_url = ?, local_path = ?, error_code = NULL, error_msg = NULL,
@@ -571,13 +686,14 @@ function listJobs(db, cfg, query = {}) {
 }
 
 function submitJob(db, cfg, log, jobId, options = {}) {
-  const row = getJobRow(db, jobId);
+  let row = getJobRow(db, jobId);
   if (!row) return null;
   const report = updatePreflight(db, cfg, jobId);
   if (!report?.ok) {
     const first = report?.issues?.find((item) => item.level === 'error');
     throw new Error(first?.message || '预检未通过');
   }
+  row = getJobRow(db, jobId);
   const config = getActionVideoConfig(db);
   const capability = configCapability(config);
   if (!capability.ok) throw new Error(capability.message);
@@ -588,15 +704,28 @@ function submitJob(db, cfg, log, jobId, options = {}) {
   const now = nowIso();
   const model = getVideoModel(config);
   const provider = config.provider || '';
+  const finalPrompt = options.prompt ? buildPrompt(row.mode, options.prompt) : row.prompt;
+  const generationContextHash = row.appearance_context_hash
+    ? visualContextResolver.generationContextHash(row.appearance_context_hash, {
+      prompt: finalPrompt,
+      negative_prompt: row.negative_prompt,
+      model,
+      duration: row.duration,
+      aspect_ratio: row.aspect_ratio,
+      reference_urls: refs,
+    })
+    : null;
   const insertInfo = db.prepare(
     `INSERT INTO video_generations
       (drama_id, provider, prompt, model, duration, aspect_ratio, resolution, watermark,
-       image_url, reference_image_urls, source_video_url, status, task_id, action_migration_job_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?)`
+       image_url, reference_image_urls, source_video_url, status, task_id,
+       action_migration_job_id, appearance_context_json, appearance_context_hash,
+       generation_context_hash, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     row.drama_id || null,
     provider,
-    options.prompt ? buildPrompt(row.mode, options.prompt) : row.prompt,
+    finalPrompt,
     model,
     row.duration || null,
     row.aspect_ratio || '9:16',
@@ -606,6 +735,9 @@ function submitJob(db, cfg, log, jobId, options = {}) {
     publicUrlFromLocalPath(source),
     task.id,
     row.id,
+    row.appearance_context_json || null,
+    row.appearance_context_hash || null,
+    generationContextHash,
     now,
     now
   );

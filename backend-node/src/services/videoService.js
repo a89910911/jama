@@ -1,6 +1,12 @@
 /** 轮询/同步返回的 video_url 须为 http(s)，避免中转 FAILURE 时 result_url 为错误文案 */
 function resolveRemoteVideoUrl(videoUrl, fallbackError) {
-  if (videoUrl && videoClient.isPlausibleHttpVideoUrl(videoUrl)) {
+  if (
+    videoUrl &&
+    (
+      videoClient.isPlausibleHttpVideoUrl(videoUrl) ||
+      /^data:video\/[^;,]+;base64,/i.test(String(videoUrl).trim())
+    )
+  ) {
     return { ok: true, video_url: String(videoUrl).trim() };
   }
   if (videoUrl) {
@@ -74,6 +80,10 @@ function rowToItem(r) {
     status: r.status,
     task_id: r.task_id,
     error_msg: r.error_msg,
+    appearance_context_hash: r.appearance_context_hash ?? undefined,
+    generation_context_hash: r.generation_context_hash ?? undefined,
+    superseded: !!r.superseded,
+    voice_character_id: r.voice_character_id ?? undefined,
     created_at: r.created_at,
     updated_at: r.updated_at,
     completed_at: r.completed_at,
@@ -94,6 +104,15 @@ const taskService = require('./taskService');
 const storageLayout = require('./storageLayout');
 const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
 const { clampStoryboardDuration } = require('./storyboardDurationPlanner');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
+const {
+  existingLocalMedia,
+  isDataUrl,
+  localUrl,
+  persistDataUrlToLocal,
+  resolveStorageRoot,
+} = require('./localMediaService');
 
 /** @returns {{ dir: string, relPrefix: string }} 与图片 uploads 一致的工程子目录规则 */
 function resolveVideosDir(storagePath, projectSubdir) {
@@ -111,7 +130,31 @@ function resolveVideosDir(storagePath, projectSubdir) {
  */
 async function downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir = null) {
   if (!videoUrl || typeof videoUrl !== 'string') return null;
-  const { dir, relPrefix } = resolveVideosDir(storagePath, projectSubdir);
+  const storageRoot = resolveStorageRoot(storagePath);
+  const existing = existingLocalMedia(storageRoot, videoUrl);
+  if (existing) return existing.local_path;
+  if (isDataUrl(videoUrl)) {
+    try {
+      const saved = persistDataUrlToLocal(videoUrl, {
+        storagePath: storageRoot,
+        projectSubdir,
+        category: 'videos',
+        prefix: `vg_${videoGenId}`,
+        log,
+      });
+      if (!saved?.mime_type?.startsWith('video/')) {
+        throw new Error(`Expected video media, received ${saved?.mime_type || 'unknown'}`);
+      }
+      return saved.local_path;
+    } catch (error) {
+      log.warn('Save Base64 video error', {
+        videoGenId,
+        error: error.message,
+      });
+      return null;
+    }
+  }
+  const { dir, relPrefix } = resolveVideosDir(storageRoot, projectSubdir);
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const ext = (videoUrl.split('?')[0].match(/\.(mp4|webm|mov)$/i) || [])[1] || 'mp4';
@@ -283,24 +326,54 @@ async function finalizeSuccessfulVideo(
       : await downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir);
     maybeNormalizeVideoAfterDownload(storagePath, localPath, rowForAspect, videoGenId, log);
   } catch (_) {}
-  const persistedVideoUrl =
-    videoUrl ||
-    (localPath ? `/static/${String(localPath).replace(/^\/+/, '')}` : null);
+  const persistedVideoUrl = localPath ? localUrl(localPath) : videoUrl;
+  let superseded = false;
+  if (row.appearance_context_json && row.appearance_context_hash
+    && characterLookService.hasWardrobeTables(db)) {
+    try {
+      superseded = !visualContextResolver.isAppearanceContextCurrent(
+        db,
+        row.appearance_context_json,
+        row.appearance_context_hash
+      );
+    } catch (contextError) {
+      superseded = true;
+      log.warn('视频完成时视觉上下文复核失败，结果仅保留在历史记录', {
+        id: videoGenId,
+        error: contextError.message,
+      });
+    }
+  }
+  if (!superseded && row.storyboard_id) {
+    try {
+      const storyboard = db.prepare(
+        'SELECT current_video_generation_id FROM storyboards WHERE id = ? AND deleted_at IS NULL'
+      ).get(row.storyboard_id);
+      if (storyboard?.current_video_generation_id
+        && Number(storyboard.current_video_generation_id) !== Number(videoGenId)) {
+        superseded = true;
+      }
+    } catch (_) {}
+  }
   try {
     db.prepare(
-      'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, completed_at = ?, updated_at = ? WHERE id = ?'
-    ).run('completed', persistedVideoUrl, localPath, now, now, videoGenId);
+      'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, superseded = ?, completed_at = ?, updated_at = ? WHERE id = ?'
+    ).run('completed', persistedVideoUrl, localPath, superseded ? 1 : 0, now, now, videoGenId);
   } catch (e) {
     if ((e.message || '').includes('completed_at')) {
       db.prepare(
-        'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, updated_at = ? WHERE id = ?'
-      ).run('completed', persistedVideoUrl, localPath, now, videoGenId);
+        'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, superseded = ?, updated_at = ? WHERE id = ?'
+      ).run('completed', persistedVideoUrl, localPath, superseded ? 1 : 0, now, videoGenId);
     } else throw e;
   }
-  if (row.storyboard_id) {
+  if (!superseded && row.storyboard_id) {
     try {
-      db.prepare('UPDATE storyboards SET video_url = ?, local_path = ?, updated_at = ? WHERE id = ?').run(
-        persistedVideoUrl, localPath, now, row.storyboard_id
+      db.prepare(
+        `UPDATE storyboards
+            SET video_url = ?, current_video_generation_id = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(
+        persistedVideoUrl, videoGenId, now, row.storyboard_id
       );
       log.info('Updated storyboard video' + (logLabel ? ` (${logLabel})` : ''), {
         storyboard_id: row.storyboard_id,
@@ -313,6 +386,7 @@ async function finalizeSuccessfulVideo(
       video_generation_id: videoGenId,
       video_url: persistedVideoUrl,
       status: 'completed',
+      superseded,
     });
   }
   log.info('Video generation completed' + (logLabel ? ` (${logLabel})` : ''), {
@@ -320,13 +394,27 @@ async function finalizeSuccessfulVideo(
     video_url: persistedVideoUrl,
     local_path: localPath,
   });
-  try {
-    require('./redrawService').syncVideoGenerationResult(db, log, videoGenId);
-  } catch (_) {}
-  try {
-    const cfg = require('../config').loadConfig();
-    require('./actionMigrationService').syncVideoGenerationResult(db, cfg, videoGenId);
-  } catch (_) {}
+  if (!superseded) {
+    try {
+      require('./redrawService').syncVideoGenerationResult(db, log, videoGenId);
+    } catch (_) {}
+    try {
+      const cfg = require('../config').loadConfig();
+      require('./actionMigrationService').syncVideoGenerationResult(db, cfg, videoGenId);
+    } catch (_) {}
+  } else {
+    log.warn('视频生成期间角色造型或分镜上下文已变化，结果已保留但未覆盖当前分镜', {
+      id: videoGenId,
+      storyboard_id: row.storyboard_id,
+    });
+    try {
+      require('./redrawService').syncVideoGenerationResult(db, log, videoGenId);
+    } catch (_) {}
+    try {
+      const cfg = require('../config').loadConfig();
+      require('./actionMigrationService').syncVideoGenerationResult(db, cfg, videoGenId);
+    } catch (_) {}
+  }
 }
 
 async function pollProviderTaskAndFinalize(db, log, videoGenId, row, rowForAspect, providerTaskId, config) {
@@ -560,6 +648,7 @@ async function processVideoGeneration(db, log, videoGenId) {
       provider: row.provider,
       drama_id: row.drama_id,
       storyboard_id: row.storyboard_id || undefined,
+      voice_character_id: row.voice_character_id || undefined,
       image_url: hasOmniRefs ? undefined : row.image_url,
       source_video_url: row.source_video_url || undefined,
       first_frame_url: hasOmniRefs ? undefined : row.first_frame_url,
@@ -612,9 +701,66 @@ async function processVideoGeneration(db, log, videoGenId) {
 }
 
 function deleteById(db, log, id) {
+  const numId = Number(id);
   const now = new Date().toISOString();
-  const result = db.prepare('UPDATE video_generations SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, Number(id));
-  return result.changes > 0;
+  const remove = db.transaction(() => {
+    const row = db.prepare(
+      `SELECT id, storyboard_id, video_url, local_path
+         FROM video_generations
+        WHERE id = ? AND deleted_at IS NULL`
+    ).get(numId);
+    if (!row) return false;
+
+    db.prepare(
+      'UPDATE video_generations SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL'
+    ).run(now, now, numId);
+
+    if (row.storyboard_id != null) {
+      const storyboard = db.prepare(
+        `SELECT current_video_generation_id, video_url
+           FROM storyboards
+          WHERE id = ? AND deleted_at IS NULL`
+      ).get(Number(row.storyboard_id));
+      const deletedWasCurrent = storyboard
+        && (
+          Number(storyboard.current_video_generation_id) === numId
+          || (
+            storyboard.current_video_generation_id == null
+            && storyboard.video_url
+            && [row.video_url, row.local_path, row.local_path ? `/static/${String(row.local_path).replace(/^\/+/, '')}` : null]
+              .filter(Boolean)
+              .includes(storyboard.video_url)
+          )
+        );
+      if (deletedWasCurrent) {
+        const replacement = db.prepare(
+          `SELECT id, video_url, local_path
+             FROM video_generations
+            WHERE storyboard_id = ? AND deleted_at IS NULL
+              AND status = 'completed' AND superseded = 0
+              AND (video_url IS NOT NULL OR local_path IS NOT NULL)
+            ORDER BY completed_at DESC, created_at DESC, id DESC
+            LIMIT 1`
+        ).get(Number(row.storyboard_id));
+        const replacementUrl = replacement?.video_url
+          || (replacement?.local_path
+            ? `/static/${String(replacement.local_path).replace(/^\/+/, '')}`
+            : null);
+        db.prepare(
+          `UPDATE storyboards
+              SET current_video_generation_id = ?, video_url = ?, updated_at = ?
+            WHERE id = ?`
+        ).run(replacement?.id || null, replacementUrl, now, Number(row.storyboard_id));
+      }
+    }
+    return true;
+  });
+  try {
+    return remove();
+  } catch (error) {
+    log?.error?.('Video generation delete failed', { id: numId, error: error.message });
+    throw error;
+  }
 }
 
 module.exports = {
@@ -623,4 +769,6 @@ module.exports = {
   deleteById,
   processVideoGeneration,
   resumeProcessingVideoGenerations,
+  downloadVideoToLocal,
+  resolveRemoteVideoUrl,
 };

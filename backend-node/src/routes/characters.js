@@ -4,15 +4,18 @@ const response = require('../response');
 const characterLibraryService = require('../services/characterLibraryService');
 const storageLayout = require('../services/storageLayout');
 const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
+const characterLookService = require('../services/characterLookService');
 
 function routes(db, cfg, log, uploadService) {
   return {
     getOne: (req, res) => {
       try {
-        const row = db.prepare(
-          'SELECT id, drama_id, name, role, appearance, description, personality, voice_style, image_url, local_path, polished_prompt, four_view_image_url, identity_anchors, seedance2_asset, seedance2_voice_asset, negative_prompt, updated_at FROM characters WHERE id = ? AND deleted_at IS NULL'
+        let row = db.prepare(
+          'SELECT * FROM characters WHERE id = ? AND deleted_at IS NULL'
         ).get(Number(req.params.id));
         if (!row) return response.notFound(res, '角色不存在');
+        characterLookService.ensureDefaultLook(db, row.id);
+        row = db.prepare('SELECT * FROM characters WHERE id = ?').get(row.id);
         if (row.seedance2_asset) {
           try {
             row.seedance2_asset = JSON.parse(row.seedance2_asset);
@@ -31,6 +34,18 @@ function routes(db, cfg, log, uploadService) {
         } else {
           row.seedance2_voice_asset = null;
         }
+        for (const key of ['identity_anchors', 'style_tokens', 'color_palette', 'stages']) {
+          if (!row[key]) {
+            row[key] = null;
+            continue;
+          }
+          try {
+            row[key] = JSON.parse(row[key]);
+          } catch (_) {}
+        }
+        const looks = characterLookService.listLooks(db, row.id);
+        row.default_look = looks.find((look) => look.is_default) || looks[0] || null;
+        row.look_count = looks.length;
         response.success(res, { character: row });
       } catch (err) {
         log.error('characters getOne', { error: err.message });
@@ -52,9 +67,20 @@ function routes(db, cfg, log, uploadService) {
     },
     delete: (req, res) => {
       try {
-        const out = characterLibraryService.deleteCharacter(db, log, req.params.id);
+        const out = characterLibraryService.deleteCharacter(db, log, req.params.id, {
+          force: req.query.force === '1',
+        });
         if (!out.ok) {
           if (out.error === 'character not found') return response.notFound(res, '角色不存在');
+          if (out.conflict) {
+            return response.error(
+              res,
+              409,
+              'CHARACTER_DEPENDENCY_CONFLICT',
+              '角色仍被分集、分镜或造型绑定使用',
+              out.dependencies
+            );
+          }
           return response.badRequest(res, out.error);
         }
         response.success(res, { message: '删除成功' });
@@ -188,6 +214,7 @@ function routes(db, cfg, log, uploadService) {
             ...extraParams, new Date().toISOString(), Number(req.params.id)
           );
         }
+        characterLookService.syncDefaultLookFromCharacter(db, charIdNum);
         response.success(res, { message: '保存成功' });
       } catch (err) {
         log.error('characters put image', { error: err.message });
@@ -303,6 +330,7 @@ function routes(db, cfg, log, uploadService) {
           if (out.error === 'character not found') return response.notFound(res, '角色不存在');
           return response.badRequest(res, out.error);
         }
+        characterLookService.syncDefaultLookFromCharacter(db, req.params.id, ['seedance2_asset']);
         response.success(res, { message: 'SD2 素材认证已更新', seedance2_asset: out.seedance2_asset });
       } catch (err) {
         log.error('characters sd2-certify', { error: err.message });
@@ -316,6 +344,7 @@ function routes(db, cfg, log, uploadService) {
           if (out.error === 'character not found') return response.notFound(res, '角色不存在');
           return response.badRequest(res, out.error);
         }
+        characterLookService.syncDefaultLookFromCharacter(db, req.params.id, ['seedance2_asset']);
         response.success(res, { message: '认证状态已刷新', seedance2_asset: out.seedance2_asset });
       } catch (err) {
         log.error('characters sd2-certify-refresh', { error: err.message });

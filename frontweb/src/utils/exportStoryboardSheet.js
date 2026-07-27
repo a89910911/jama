@@ -47,7 +47,13 @@ function escapeCsvCell(s) {
 
 function charBlock(char) {
   const name = cellText(char.name) || '未命名'
+  const look = char.effective_look || null
+  const lookRef = look?.local_path || look?.image_url || look?.ref_image || ''
   const parts = [
+    look?.name && `本镜造型：${look.name}${char.look_source_label ? `（${char.look_source_label}）` : ''}`,
+    look?.appearance && `造型描述：${look.appearance}`,
+    look?.polished_prompt && `造型提示词：${look.polished_prompt}`,
+    lookRef && `造型参考图：${lookRef}`,
     char.appearance && `外貌：${char.appearance}`,
     char.personality && `性格：${char.personality}`,
     char.description && `描述：${char.description}`,

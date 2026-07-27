@@ -98,6 +98,39 @@
           <el-input-number v-model="form.duration" :min="1" :max="120" controls-position="right" @change="saveMeta" />
         </el-form-item>
       </div>
+      <div v-if="selectedCharacters.length" class="look-bindings">
+        <div
+          v-for="character in selectedCharacters"
+          :key="`look-${character.id}`"
+          class="look-binding-row"
+        >
+          <span>{{ character.name || '未命名' }}</span>
+          <el-select
+            :model-value="effectiveLook(character.id)?.look?.id || null"
+            clearable
+            placeholder="继承上级造型"
+            teleported
+            popper-class="canvas-panel-popper"
+            @visible-change="(open) => open && loadCharacterLooks(character.id)"
+            @change="(lookId) => changeLook(character.id, lookId)"
+          >
+            <el-option
+              v-for="look in looksByCharacter[character.id] || []"
+              :key="look.id"
+              :label="`${look.name}${look.is_default ? '（默认）' : ''}`"
+              :value="look.id"
+            />
+          </el-select>
+          <small>{{ lookSourceLabel(effectiveLook(character.id)?.binding_source) }}</small>
+          <el-input
+            v-if="effectiveLook(character.id)?.binding_source === 'storyboard'"
+            class="look-transition-note"
+            :model-value="effectiveLook(character.id)?.binding?.transition_note || ''"
+            placeholder="换装说明（同场切换时必填）"
+            @change="(note) => changeLookTransitionNote(character.id, note)"
+          />
+        </div>
+      </div>
       <div class="storyboard-mode-row">
         <span>本镜配置优先全局</span>
         <el-checkbox
@@ -205,6 +238,7 @@ import { findStoryboardInDrama, getDramaGenerationOptions } from '@/utils/canvas
 import { resolveGenerationProgress } from '@/utils/generationProgress'
 import { dramaUsesFirstLastFrame } from '@/utils/storyboardMedia'
 import { saveStoryboardWorkspace } from '@/utils/storyboardWorkspaceSave'
+import { characterLookAPI } from '@/api/characterLooks'
 
 const props = defineProps({
   storyboard: { type: Object, required: true },
@@ -219,6 +253,8 @@ const busyStep = ref('')
 const characterIds = ref([])
 const sceneId = ref(null)
 const propIds = ref([])
+const visualContext = ref(null)
+const looksByCharacter = reactive({})
 const form = reactive({
   title: '',
   action: '',
@@ -238,6 +274,10 @@ const isUniversal = computed(() => form.creation_mode === 'universal')
 const characters = computed(() => ctx?.drama?.value?.characters || [])
 const scenes = computed(() => ctx?.drama?.value?.scenes || [])
 const propsList = computed(() => ctx?.drama?.value?.props || [])
+const selectedCharacters = computed(() => {
+  const selected = new Set(characterIds.value.map(Number))
+  return characters.value.filter((item) => selected.has(Number(item.id)))
+})
 
 const busyLabel = computed(() => {
   const map = ctx?.nodeStatus?.map
@@ -263,11 +303,94 @@ function syncForm(sb) {
   propIds.value = parseStoryboardPropIds(sb)
 }
 
-watch(() => props.storyboard, (sb) => syncForm(sb), { immediate: true, deep: true })
+watch(() => props.storyboard, (sb) => {
+  syncForm(sb)
+  loadVisualContext()
+}, { immediate: true, deep: true })
+
+async function loadVisualContext() {
+  if (!props.storyboard?.id) return
+  try {
+    visualContext.value = await characterLookAPI.storyboardContext(props.storyboard.id)
+    for (const item of visualContext.value?.characters || []) {
+      if (!item.look) continue
+      const list = looksByCharacter[item.character_id] || []
+      if (!list.some((look) => Number(look.id) === Number(item.look.id))) {
+        looksByCharacter[item.character_id] = [...list, item.look]
+      }
+    }
+  } catch (error) {
+    console.warn('加载分镜造型上下文失败', error)
+  }
+}
+
+async function loadCharacterLooks(characterId) {
+  if (looksByCharacter[characterId]) return
+  const data = await characterLookAPI.list(characterId)
+  looksByCharacter[characterId] = data?.items || []
+}
+
+function effectiveLook(characterId) {
+  return visualContext.value?.characters?.find(
+    (item) => Number(item.character_id) === Number(characterId)
+  ) || null
+}
+
+function lookSourceLabel(source) {
+  return {
+    storyboard: '本镜覆盖',
+    scene_block: '场次继承',
+    episode: '本集继承',
+    default: '角色默认',
+    default_fallback: '默认回退',
+  }[source] || '上级继承'
+}
+
+async function changeLook(characterId, lookId) {
+  try {
+    const current = effectiveLook(characterId)
+    if (lookId == null || lookId === '') {
+      if (current?.binding_source === 'storyboard') {
+        await characterLookAPI.unbind('storyboard', props.storyboard.id, characterId)
+      }
+    } else {
+      await characterLookAPI.bind({
+        scope_type: 'storyboard',
+        scope_id: props.storyboard.id,
+        character_id: characterId,
+        look_id: lookId,
+        source: 'manual',
+      })
+    }
+    await loadVisualContext()
+    ElMessage.success('分镜造型已更新')
+  } catch (error) {
+    ElMessage.error(error?.message || '造型绑定失败')
+  }
+}
 
 function onSelectVisibleChange(open) {
   if (open) ctx?.suppressPaneClick?.()
   else ctx?.suppressPaneClick?.(400)
+}
+
+async function changeLookTransitionNote(characterId, note) {
+  const current = effectiveLook(characterId)
+  if (current?.binding_source !== 'storyboard' || !current.look?.id) return
+  try {
+    await characterLookAPI.bind({
+      scope_type: 'storyboard',
+      scope_id: props.storyboard.id,
+      character_id: characterId,
+      look_id: current.look.id,
+      source: 'manual',
+      transition_note: String(note || '').trim() || null,
+    })
+    await loadVisualContext()
+    ElMessage.success('换装说明已保存')
+  } catch (error) {
+    ElMessage.error(error?.message || '保存换装说明失败')
+  }
 }
 
 function onUniversalModeChange(enabled) {
@@ -302,6 +425,7 @@ async function onRelationChange() {
       prop_ids: propIds.value,
     })
     await ctx?.refreshDrama?.(true)
+    await loadVisualContext()
   } catch (e) {
     ElMessage.error(e?.message || '关联保存失败')
   }
@@ -539,6 +663,33 @@ async function runStep(step) {
   display: flex;
   gap: 10px;
   margin: 0 0 8px 36px;
+}
+.look-bindings {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px 36px;
+  padding: 7px;
+  border: 1px solid rgba(129, 140, 248, 0.22);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.06);
+}
+.look-binding-row {
+  display: grid;
+  grid-template-columns: 72px minmax(150px, 1fr) 58px;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.look-binding-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.look-binding-row small {
+  color: var(--canvas-text-muted, #8b8fa3);
+}
+.look-transition-note {
+  grid-column: 2 / -1;
 }
 .meta-row {
   display: flex;

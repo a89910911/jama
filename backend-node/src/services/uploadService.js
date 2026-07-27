@@ -4,6 +4,11 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const { randomUUID } = require('crypto');
+const {
+  existingLocalMedia,
+  persistDataUrlToLocal,
+  resolveStorageRoot,
+} = require('./localMediaService');
 
 /**
  * 用 Node.js 原生 http/https 模块下载 URL 到 Buffer。
@@ -90,7 +95,28 @@ function uploadFile(storagePath, baseUrl, log, fileBuffer, originalName, mimeTyp
  */
 async function downloadImageToLocal(storagePath, imageUrl, category, log, prefix = '', projectSubdir = null) {
   if (!imageUrl || typeof imageUrl !== 'string') return null;
-  const { dir: categoryPath, relPrefix } = resolveCategoryPaths(storagePath, category, projectSubdir);
+  const storageRoot = resolveStorageRoot(storagePath);
+  const existing = existingLocalMedia(storageRoot, imageUrl);
+  if (existing) return existing.local_path;
+  if (imageUrl.startsWith('data:')) {
+    try {
+      const saved = persistDataUrlToLocal(imageUrl, {
+        storagePath: storageRoot,
+        category,
+        projectSubdir,
+        prefix: prefix || 'image',
+        log,
+      });
+      return saved?.local_path || null;
+    } catch (error) {
+      log.warn('downloadImageToLocal: invalid Base64 image', {
+        category,
+        error: error.message,
+      });
+      return null;
+    }
+  }
+  const { dir: categoryPath, relPrefix } = resolveCategoryPaths(storageRoot, category, projectSubdir);
   try {
     ensureDir(categoryPath);
     let buffer;

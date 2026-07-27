@@ -10,6 +10,7 @@ const jimengMaterialHubService = require('./jimengMaterialHubService');
 const modelArkAssetConfigService = require('./modelArkAssetConfigService');
 const uploadService = require('./uploadService');
 const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
+const characterLookService = require('./characterLookService');
 const {
   appendSourceIdFilters,
   findExistingLibraryItem,
@@ -48,6 +49,10 @@ function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
     'SELECT id, drama_id, name, appearance, description, negative_prompt FROM characters WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
+  const defaultLook = characterLookService.ensureDefaultLook(db, charRow.id);
+  const lookRow = defaultLook
+    ? characterLookService.getLookRow(db, defaultLook.id)
+    : null;
   const drama = db.prepare('SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!drama) return { ok: false, error: 'unauthorized' };
 
@@ -62,7 +67,11 @@ function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
   effectiveCfg = applyStyleOverrideToCfg(effectiveCfg, style);
 
   let prompt = '';
-  if (charRow.appearance && String(charRow.appearance).trim()) {
+  if (lookRow?.polished_prompt && String(lookRow.polished_prompt).trim()) {
+    prompt = String(lookRow.polished_prompt);
+  } else if (lookRow?.appearance && String(lookRow.appearance).trim()) {
+    prompt = String(lookRow.appearance);
+  } else if (charRow.appearance && String(charRow.appearance).trim()) {
     prompt = String(charRow.appearance);
   } else if (charRow.description && String(charRow.description).trim()) {
     prompt = String(charRow.description);
@@ -89,6 +98,8 @@ function generateCharacterImage(db, log, cfg, characterId, modelName, style) {
   const imageGen = imageClient.createAndGenerateImage(db, log, {
     drama_id: charRow.drama_id,
     character_id: charRow.id,
+    character_look_id: lookRow?.id || null,
+    character_look_revision: lookRow?.visual_revision || null,
     prompt,
     model: modelName || undefined,
     size: imageSize,
@@ -206,6 +217,7 @@ function applyLibraryItemToCharacter(db, log, characterId, libraryItemId) {
     now,
     Number(characterId)
   );
+  characterLookService.syncDefaultLookFromCharacter(db, characterId, ['image_url', 'local_path']);
   log.info('Library item applied to character', { character_id: characterId, library_item_id: libraryItemId });
   return { ok: true };
 }
@@ -222,6 +234,7 @@ function uploadCharacterImage(db, log, characterId, imageUrl, opts = {}) {
   }
   const now = new Date().toISOString();
   db.prepare('UPDATE characters SET image_url = ?, updated_at = ? WHERE id = ?').run(imageUrl || null, now, Number(characterId));
+  characterLookService.syncDefaultLookFromCharacter(db, characterId, ['image_url']);
   log.info('Character image uploaded', { character_id: characterId });
   return { ok: true };
 }
@@ -332,19 +345,77 @@ function updateCharacter(db, log, characterId, req) {
   }
   params.push(new Date().toISOString(), characterId);
   db.prepare('UPDATE characters SET ' + updates.join(', ') + ', updated_at = ? WHERE id = ?').run(...params);
+  const visualFields = [
+    'appearance',
+    'image_url',
+    'local_path',
+    'polished_prompt',
+    'negative_prompt',
+  ].filter((field) => req[field] !== undefined);
+  if (visualFields.length) {
+    characterLookService.syncDefaultLookFromCharacter(db, characterId, visualFields);
+  }
   log.info('Character updated', { character_id: characterId });
   return { ok: true };
 }
 
-function deleteCharacter(db, log, characterId) {
+function deleteCharacter(db, log, characterId, options = {}) {
   const charRow = db.prepare('SELECT id, drama_id FROM characters WHERE id = ? AND deleted_at IS NULL').get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
   const drama = db.prepare('SELECT id FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!drama) return { ok: false, error: 'unauthorized' };
+  const dependencies = characterLookService.characterDependencyReport(db, characterId);
+  const hasActiveProductionRefs =
+    Number(dependencies?.storyboard_count || 0) > 0
+    || Number(dependencies?.look_binding_count || 0) > 0;
+  if (hasActiveProductionRefs && options.force !== true) {
+    return {
+      ok: false,
+      conflict: true,
+      error: 'character has dependencies',
+      dependencies,
+    };
+  }
   const now = new Date().toISOString();
-  db.prepare('UPDATE characters SET deleted_at = ? WHERE id = ?').run(now, Number(characterId));
+  const tx = db.transaction(() => {
+    if (options.force === true && Array.isArray(dependencies?.storyboards)) {
+      for (const storyboard of dependencies.storyboards) {
+        const row = db.prepare(
+          'SELECT characters FROM storyboards WHERE id = ? AND deleted_at IS NULL'
+        ).get(storyboard.id);
+        let ids = [];
+        try {
+          ids = row?.characters ? JSON.parse(row.characters) : [];
+        } catch (_) {}
+        if (!Array.isArray(ids)) ids = [];
+        const next = ids.filter((item) =>
+          Number(typeof item === 'object' && item != null ? item.id : item) !== Number(characterId)
+        );
+        db.prepare(
+          `UPDATE storyboards
+              SET characters = ?, visual_context_stale = 1, updated_at = ?
+            WHERE id = ?`
+        ).run(JSON.stringify(next), now, storyboard.id);
+      }
+    }
+    try {
+      db.prepare(
+        'UPDATE character_look_bindings SET deleted_at = ?, updated_at = ? WHERE character_id = ? AND deleted_at IS NULL'
+      ).run(now, now, Number(characterId));
+      db.prepare(
+        "UPDATE character_looks SET status = 'archived', deleted_at = ?, updated_at = ? WHERE character_id = ? AND deleted_at IS NULL"
+      ).run(now, now, Number(characterId));
+    } catch (_) {}
+    db.prepare('DELETE FROM episode_characters WHERE character_id = ?').run(Number(characterId));
+    db.prepare('UPDATE characters SET deleted_at = ?, updated_at = ? WHERE id = ?').run(
+      now,
+      now,
+      Number(characterId)
+    );
+  });
+  tx();
   log.info('Character deleted', { id: characterId });
-  return { ok: true };
+  return { ok: true, dependencies };
 }
 
 /**
@@ -464,6 +535,57 @@ function buildFourViewImagePrompt(db, characterId, fourViewDescription, styleEn,
   });
 }
 
+function generateCharacterLookImage(db, log, cfg, lookId, modelName, style) {
+  const look = characterLookService.getLookRow(db, lookId);
+  if (!look) return { ok: false, error: 'look not found' };
+  const character = db.prepare(
+    'SELECT id, drama_id, name, description, identity_appearance FROM characters WHERE id = ? AND deleted_at IS NULL'
+  ).get(look.character_id);
+  if (!character) return { ok: false, error: 'character not found' };
+  const drama = db.prepare(
+    'SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL'
+  ).get(character.drama_id);
+  if (!drama) return { ok: false, error: 'unauthorized' };
+
+  let effectiveCfg = mergeCfgStyleWithDrama(cfg, drama);
+  effectiveCfg = applyStyleOverrideToCfg(effectiveCfg, style);
+  const identity = String(character.identity_appearance || character.description || character.name || '').trim();
+  const lookPrompt = String(look.polished_prompt || look.appearance || look.name || '').trim();
+  let prompt = [identity, lookPrompt].filter(Boolean).join(', ');
+  prompt = appendPrompt(
+    prompt,
+    effectiveCfg?.style?.default_style_en || effectiveCfg?.style?.default_style || ''
+  );
+  prompt = appendPrompt(
+    prompt,
+    effectiveCfg?.style?.default_role_ratio
+      || (effectiveCfg?.style?.default_image_ratio
+        ? `image ratio: ${effectiveCfg.style.default_image_ratio}`
+        : '')
+  );
+  let imageSize = '1920x1920';
+  try {
+    const metadata = typeof drama.metadata === 'string'
+      ? JSON.parse(drama.metadata)
+      : drama.metadata;
+    if (metadata?.aspect_ratio) imageSize = aspectRatioToSize(metadata.aspect_ratio);
+  } catch (_) {}
+  const userNeg = imageClient.resolveAssetUserNegativeForApi(modelName, look.negative_prompt);
+  const imageGeneration = imageClient.createAndGenerateImage(db, log, {
+    drama_id: character.drama_id,
+    character_id: character.id,
+    character_look_id: look.id,
+    character_look_revision: look.visual_revision,
+    prompt,
+    model: modelName || undefined,
+    size: imageSize,
+    quality: 'standard',
+    provider: 'openai',
+    user_negative_prompt: userNeg || undefined,
+  });
+  return { ok: true, image_generation: imageGeneration };
+}
+
 /**
  * 仅生成（并保存）角色四视图提示词，不触发图片生成。
  * 供前端「生成提示词」按钮调用，或提取角色后后台异步调用。
@@ -517,6 +639,7 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
   db.prepare('UPDATE characters SET polished_prompt = ?, updated_at = ? WHERE id = ?').run(
     polishedPrompt, new Date().toISOString(), Number(characterId)
   );
+  characterLookService.syncDefaultLookFromCharacter(db, characterId, ['polished_prompt']);
 
   log.info('[四视图提示词] 生成并保存完成', { character_id: characterId, length: polishedPrompt.length });
   return { ok: true, polished_prompt: polishedPrompt };
@@ -527,6 +650,10 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
     'SELECT id, drama_id, name, appearance, description, polished_prompt, negative_prompt FROM characters WHERE id = ? AND deleted_at IS NULL'
   ).get(Number(characterId));
   if (!charRow) return { ok: false, error: 'character not found' };
+  const defaultLook = characterLookService.ensureDefaultLook(db, charRow.id);
+  const lookRow = defaultLook
+    ? characterLookService.getLookRow(db, defaultLook.id)
+    : null;
   const dramaFull = db.prepare('SELECT id, style, metadata FROM dramas WHERE id = ? AND deleted_at IS NULL').get(charRow.drama_id);
   if (!dramaFull) return { ok: false, error: 'unauthorized' };
 
@@ -579,6 +706,7 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
       db.prepare('UPDATE characters SET polished_prompt = ?, updated_at = ? WHERE id = ?').run(
         imagePrompt, new Date().toISOString(), Number(characterId)
       );
+      characterLookService.syncDefaultLookFromCharacter(db, characterId, ['polished_prompt']);
     } catch (_) {}
 
     log.info('[四视图] Step1 完成，开始Step2生图', { character_id: characterId });
@@ -588,6 +716,8 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
   const imageGen = imageClient.createAndGenerateImage(db, log, {
     drama_id: charRow.drama_id,
     character_id: charRow.id,
+    character_look_id: lookRow?.id || null,
+    character_look_revision: lookRow?.visual_revision || null,
     prompt: imagePrompt,
     model: modelName || undefined,
     size: '1792x1024',
@@ -645,6 +775,7 @@ async function extractAppearanceFromImage(db, log, cfg, characterId) {
 
   db.prepare('UPDATE characters SET appearance = ?, updated_at = ? WHERE id = ?')
     .run(appearance, new Date().toISOString(), Number(characterId));
+  characterLookService.syncDefaultLookFromCharacter(db, characterId, ['appearance']);
 
   log.info('[extractAppearanceFromImage] 外貌提取成功', { characterId, appearance_len: appearance.length });
   return { ok: true, appearance };
@@ -1062,6 +1193,7 @@ module.exports = {
   updateCharacter,
   deleteCharacter,
   generateCharacterImage,
+  generateCharacterLookImage,
   batchGenerateCharacterImages,
   generateCharacterFourViewImage,
   generateCharacterPromptOnly,

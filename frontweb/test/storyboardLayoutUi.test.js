@@ -109,7 +109,7 @@ test('compact storyboard columns follow the asset, image, and video editing layo
   assert.ok(imageActions > imageHistory)
   assert.ok(polishedPrompt > imageActions)
   assert.match(source, />历史分镜图片</)
-  assert.match(source, /label:\s*currentLabel \|\| `历史\$\{\+\+historyIndex\}`/)
+  assert.match(source, /label:\s*img\.superseded \? '已过期' : currentLabel \|\| `历史\$\{\+\+historyIndex\}`/)
   assert.match(source, />图片优化提示词</)
   assert.doesNotMatch(source, /通用优化提示词/)
   assert.match(source, /@click="onSaveSbPolishedPrompt\(sb\)"/)
@@ -172,7 +172,7 @@ test('image and video columns use matching media block heights', () => {
   assert.ok(videoPrompt > videoActions)
   assert.match(source, />历史分镜视频</)
   assert.match(source, />暂无历史分镜视频</)
-  assert.match(source, /:class="\{ 'is-current': item\.isCurrent \}"/)
+  assert.match(source, /:class="\{ 'is-current': item\.isCurrent, 'is-superseded': item\.isSuperseded \}"/)
   assert.doesNotMatch(source, /\.filter\(\(v\) => !current \|\| v\.id !== current\.id\)/)
 
   const fixedPromptRows = source.match(/:rows="8"/g) || []

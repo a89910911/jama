@@ -8,6 +8,8 @@ const {
 } = require('./redrawPromptService');
 const { makeStructureReference } = require('./redrawStructureService');
 const { inspectResult, fileInfo } = require('./redrawQualityService');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 
 function nowIso() {
   return new Date().toISOString();
@@ -83,7 +85,64 @@ function rowToCard(row) {
     timeline: parseMaybeJson(row.timeline, []),
     preflight_report: parseMaybeJson(row.preflight_report, null),
     quality_report: parseMaybeJson(row.quality_report, null),
+    appearance_context: parseMaybeJson(row.appearance_context_json, null),
+    context_stale: !!row.context_stale,
   };
+}
+
+function redrawRefsFromVisualContext(context) {
+  return {
+    character_refs: context.characters.map((item) => ({
+      character_id: item.character_id,
+      character_name: item.character_name,
+      look_id: item.look?.id || null,
+      look_name: item.look?.name || '',
+      look_revision: item.look?.visual_revision || null,
+      appearance: item.look?.appearance || '',
+      image_url: item.reference_url || '',
+    })),
+    scene_ref: context.scene
+      ? {
+        id: context.scene.id,
+        name: context.scene.name,
+        description: context.scene.prompt || '',
+        image_url: context.scene.reference_url || '',
+      }
+      : null,
+    prop_refs: context.props.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description || item.prompt || '',
+      image_url: item.reference_url || '',
+    })),
+  };
+}
+
+function syncCardVisualContext(db, cardId) {
+  const card = getCardRow(db, cardId);
+  if (!card?.storyboard_id || !characterLookService.hasWardrobeTables(db)) return card;
+  const context = visualContextResolver.resolveStoryboardVisualContext(
+    db,
+    card.storyboard_id
+  );
+  if (!context) return card;
+  const refs = redrawRefsFromVisualContext(context);
+  db.prepare(
+    `UPDATE redraw_cards
+        SET character_refs = ?, scene_ref = ?, prop_refs = ?,
+            appearance_context_json = ?, appearance_context_hash = ?,
+            context_stale = 0, updated_at = ?
+      WHERE id = ?`
+  ).run(
+    stringify(refs.character_refs),
+    stringify(refs.scene_ref),
+    stringify(refs.prop_refs),
+    JSON.stringify(context),
+    context.appearance_context_hash,
+    nowIso(),
+    card.id
+  );
+  return getCardRow(db, card.id);
 }
 
 function rowToResult(row) {
@@ -239,13 +298,25 @@ function createCardsFromEpisode(db, jobId) {
   ).all(Number(job.episode_id));
   const created = [];
   rows.forEach((sb, index) => {
-    const sceneRef = sb.scene_id ? {
+    let sceneRef = sb.scene_id ? {
       id: sb.scene_id,
       name: sb.scene_location || sb.location || '场景',
       description: sb.scene_prompt || sb.location || '',
       image_url: sb.scene_image_url || '',
       local_path: sb.scene_local_path || '',
     } : null;
+    let characterRefs = [];
+    let propRefs = [];
+    let appearanceContext = null;
+    if (characterLookService.hasWardrobeTables(db)) {
+      appearanceContext = visualContextResolver.resolveStoryboardVisualContext(db, sb.id);
+      if (appearanceContext) {
+        const resolvedRefs = redrawRefsFromVisualContext(appearanceContext);
+        characterRefs = resolvedRefs.character_refs;
+        sceneRef = resolvedRefs.scene_ref;
+        propRefs = resolvedRefs.prop_refs;
+      }
+    }
     created.push(addCard(db, jobId, {
       storyboard_id: sb.id,
       card_key: `sb_${sb.id}`,
@@ -255,6 +326,9 @@ function createCardsFromEpisode(db, jobId) {
       prompt: sb.video_prompt || sb.description || sb.action || '',
       duration: sb.duration || null,
       scene_ref: sceneRef,
+      character_refs: characterRefs,
+      prop_refs: propRefs,
+      appearance_context: appearanceContext,
       timeline: [{
         range: `0-${Math.round(Number(sb.duration) || 5)}s`,
         text: [sb.shot_type, sb.angle, sb.movement, sb.action, sb.dialogue].filter(Boolean).join('，'),
@@ -273,8 +347,9 @@ function addCard(db, jobId, body = {}) {
     `INSERT INTO redraw_cards
       (job_id, storyboard_id, card_key, title, sort_order, source_video_path, structure_video_path,
        structure_strength, prompt, negative_prompt, timeline, character_refs, scene_ref, prop_refs,
-       asset_bindings, duration, aspect_ratio, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
+       asset_bindings, duration, aspect_ratio, appearance_context_json,
+       appearance_context_hash, context_stale, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'draft', ?, ?)`
   ).run(
     Number(jobId),
     body.storyboard_id ? Number(body.storyboard_id) : null,
@@ -293,6 +368,8 @@ function addCard(db, jobId, body = {}) {
     stringify(body.asset_bindings || {}),
     body.duration != null && body.duration !== '' ? Number(body.duration) : null,
     body.aspect_ratio || job.aspect_ratio || '9:16',
+    body.appearance_context ? JSON.stringify(body.appearance_context) : null,
+    body.appearance_context?.appearance_context_hash || null,
     now,
     now
   );
@@ -330,7 +407,7 @@ function updateCard(db, cardId, body = {}) {
 }
 
 function preflightCard(db, cfg, cardId) {
-  const card = getCardRow(db, cardId);
+  const card = syncCardVisualContext(db, cardId);
   if (!card) return null;
   const issues = [];
   const source = fileInfo(cfg, card.source_video_path);
@@ -338,6 +415,7 @@ function preflightCard(db, cfg, cardId) {
   const characters = parseMaybeJson(card.character_refs, []);
   const props = parseMaybeJson(card.prop_refs, []);
   const scene = parseMaybeJson(card.scene_ref, null);
+  const appearanceContext = parseMaybeJson(card.appearance_context_json, null);
   const hasRemoteSource = /^https?:\/\//i.test(String(card.source_video_path || ''));
   const hasRemoteStructure = /^https?:\/\//i.test(String(card.structure_video_path || ''));
 
@@ -346,6 +424,13 @@ function preflightCard(db, cfg, cardId) {
   if (!card.structure_video_path) issues.push({ level: 'error', code: 'missing_structure', message: '缺少低细节结构视频' });
   else if (!structure.exists && !hasRemoteStructure) issues.push({ level: 'error', code: 'structure_missing', message: '结构视频文件不存在' });
   if (!Array.isArray(characters) || characters.length === 0) issues.push({ level: 'warning', code: 'missing_character_refs', message: '未绑定角色参考图，多人或近景容易身份漂移' });
+  for (const warning of appearanceContext?.warnings || []) {
+    issues.push({
+      level: warning.level || 'warning',
+      code: warning.code || 'visual_context_issue',
+      message: warning.message || '角色造型上下文不完整',
+    });
+  }
   if (!scene) issues.push({ level: 'warning', code: 'missing_scene_ref', message: '未绑定场景参考图，可能保留源场景' });
   if (Array.isArray(props) && props.some((p) => !p.image_url && !p.url && !p.local_path && !p.ref_image)) {
     issues.push({ level: 'warning', code: 'prop_ref_incomplete', message: '部分道具缺少参考图' });
@@ -390,8 +475,10 @@ function insertVideoGeneration(db, card, config, prompt, negativePrompt, refs) {
   const info = db.prepare(
     `INSERT INTO video_generations
       (drama_id, storyboard_id, provider, prompt, model, duration, aspect_ratio, resolution,
-       watermark, reference_image_urls, source_video_url, status, task_id, redraw_card_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'processing', ?, ?, ?, ?)`
+       watermark, reference_image_urls, source_video_url, status, task_id, redraw_card_id,
+       appearance_context_json, appearance_context_hash, generation_context_hash,
+       created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     card.job_drama_id || null,
     card.storyboard_id || null,
@@ -405,6 +492,18 @@ function insertVideoGeneration(db, card, config, prompt, negativePrompt, refs) {
     publicUrlFromLocalPath(card.structure_video_path),
     task.id,
     card.id,
+    card.appearance_context_json || null,
+    card.appearance_context_hash || null,
+    card.appearance_context_hash
+      ? visualContextResolver.generationContextHash(card.appearance_context_hash, {
+        prompt,
+        negative_prompt: negativePrompt,
+        model,
+        duration: card.duration,
+        aspect_ratio: card.aspect_ratio,
+        reference_urls: refs,
+      })
+      : null,
     now,
     now
   );
@@ -497,6 +596,36 @@ function syncVideoGenerationResult(db, log, videoGenId, cfg = null) {
   const now = nowIso();
   if (video.status === 'completed') {
     const quality = cfg ? inspectResult(cfg, video) : null;
+    if (video.superseded) {
+      db.prepare(
+        `UPDATE redraw_card_results
+            SET status = 'completed', is_current = 0, video_url = ?, local_path = ?,
+                error_code = 'superseded_context',
+                error_msg = '生成期间角色造型已变化，结果仅保留在历史记录',
+                quality_report = COALESCE(?, quality_report),
+                completed_at = COALESCE(?, completed_at)
+          WHERE id = ?`
+      ).run(
+        video.video_url || null,
+        video.local_path || null,
+        quality ? JSON.stringify(quality) : null,
+        video.completed_at || now,
+        result?.id || card.current_result_id
+      );
+      db.prepare(
+        `UPDATE redraw_cards
+            SET status = 'ready', current_video_generation_id = NULL,
+                current_result_id = NULL, context_stale = 1,
+                error_code = 'superseded_context',
+                error_msg = '角色造型已变化，请按当前造型重新生成', updated_at = ?
+          WHERE id = ?`
+      ).run(now, card.id);
+      event(db, card.job_id, card.id, 'generation_superseded', '角色造型变化，旧结果未设为当前版本', {
+        video_generation_id: video.id,
+      });
+      updateJobStatus(db, card.job_id);
+      return rowToCard(getCardRow(db, card.id));
+    }
     db.prepare(
       `UPDATE redraw_card_results
           SET status = 'completed', video_url = ?, local_path = ?, error_code = NULL, error_msg = NULL,

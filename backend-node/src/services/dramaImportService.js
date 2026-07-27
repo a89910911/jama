@@ -5,6 +5,8 @@ const AdmZip = require('adm-zip');
 const { randomUUID } = require('crypto');
 const storageLayout = require('./storageLayout');
 const { insertIgnoreSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
+const characterLookBindingService = require('./characterLookBindingService');
 
 function getStoragePath(cfg) {
   const raw = cfg?.storage?.local_path || './data/storage';
@@ -179,16 +181,100 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
 
   // ---- 导入角色 ----
   const charNewIds = []; // 按导出顺序保存新角色 id，用于恢复分镜 character_indices
+  const charLookNewIds = [];
   for (let i = 0; i < (data.characters || []).length; i++) {
     const c = data.characters[i];
     if (!c.name) { charNewIds.push(null); continue; }
     const localPath = saveMediaFile(storagePath, projectDir, 'characters', files, c.image_file, 'char_imp');
     const extraImagesJson = saveExtraImages(storagePath, projectDir, 'characters', files, c.extra_image_files, 'char_extra_imp');
     const info = db.prepare(
-      `INSERT INTO characters (drama_id, name, role, description, personality, appearance, voice_style, polished_prompt, local_path, extra_images, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(dramaId, c.name, c.role || null, c.description || null, c.personality || null, c.appearance || null, c.voice_style || null, c.polished_prompt || null, localPath, extraImagesJson, i, now, now);
-    charNewIds.push(info.lastInsertRowid);
+      `INSERT INTO characters (
+         drama_id, name, role, description, personality, appearance,
+         identity_appearance, identity_anchors, voice_style, polished_prompt,
+         local_path, extra_images, seedance2_voice_asset, sort_order, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      dramaId,
+      c.name,
+      c.role || null,
+      c.description || null,
+      c.personality || null,
+      c.appearance || null,
+      c.identity_appearance || null,
+      c.identity_anchors ? JSON.stringify(c.identity_anchors) : null,
+      c.voice_style || null,
+      c.polished_prompt || null,
+      localPath,
+      extraImagesJson,
+      c.seedance2_voice_asset ? JSON.stringify(c.seedance2_voice_asset) : null,
+      i,
+      now,
+      now
+    );
+    const characterId = Number(info.lastInsertRowid);
+    charNewIds.push(characterId);
+    const defaultLook = characterLookService.ensureDefaultLook(db, characterId);
+    const exportedLooks = Array.isArray(c.looks) ? c.looks : [];
+    const newLookIds = [];
+    if (exportedLooks.length) {
+      let defaultIndex = exportedLooks.findIndex((look) => look?.is_default);
+      if (defaultIndex < 0) defaultIndex = 0;
+      for (let lookIndex = 0; lookIndex < exportedLooks.length; lookIndex += 1) {
+        const sourceLook = exportedLooks[lookIndex] || {};
+        const lookLocalPath = saveMediaFile(
+          storagePath,
+          projectDir,
+          'character_looks',
+          files,
+          sourceLook.image_file,
+          'look_imp'
+        );
+        const lookExtraImages = saveExtraImages(
+          storagePath,
+          projectDir,
+          'character_looks',
+          files,
+          sourceLook.extra_image_files,
+          'look_extra_imp'
+        );
+        const lookPayload = {
+          name: sourceLook.name || `造型 ${lookIndex + 1}`,
+          category: sourceLook.category || 'custom',
+          appearance: sourceLook.appearance || null,
+          polished_prompt: sourceLook.polished_prompt || null,
+          negative_prompt: sourceLook.negative_prompt || null,
+          image_url: lookLocalPath ? `/static/${lookLocalPath}` : sourceLook.image_url || null,
+          local_path: lookLocalPath,
+          ref_image: sourceLook.ref_image || null,
+          extra_images: lookExtraImages ? JSON.parse(lookExtraImages) : [],
+          reference_images: sourceLook.reference_images || [],
+          style_tokens: sourceLook.style_tokens || null,
+          color_palette: sourceLook.color_palette || null,
+          seedance2_asset: sourceLook.seedance2_asset || null,
+        };
+        let newLookId;
+        if (lookIndex === defaultIndex) {
+          const updated = characterLookService.updateLook(db, defaultLook.id, lookPayload);
+          if (!updated.ok) throw new Error(updated.error || '导入默认造型失败');
+          newLookId = Number(defaultLook.id);
+        } else {
+          const created = characterLookService.createLook(db, characterId, lookPayload);
+          if (!created.ok) throw new Error(created.error || '导入角色造型失败');
+          newLookId = Number(created.look.id);
+        }
+        if (Number(sourceLook.visual_revision) > 0) {
+          db.prepare(
+            'UPDATE character_looks SET visual_revision = ? WHERE id = ?'
+          ).run(Number(sourceLook.visual_revision), newLookId);
+        }
+        newLookIds[lookIndex] = newLookId;
+      }
+      characterLookService.setDefaultLook(db, characterId, newLookIds[defaultIndex]);
+    } else {
+      newLookIds.push(Number(defaultLook.id));
+    }
+    charLookNewIds.push(newLookIds);
   }
 
   // ---- 导入剧集（先建好所有集，再关联角色/场景/道具） ----
@@ -258,12 +344,15 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
   }
 
   // ---- 导入分镜 ----
+  const storyboardNewIdsByEpisode = [];
   for (let epIdx = 0; epIdx < (data.episodes || []).length; epIdx++) {
     const ep = data.episodes[epIdx];
     const episodeId = episodeIdList[epIdx];
     if (!episodeId) continue;
 
-    for (const sb of (ep.storyboards || [])) {
+    storyboardNewIdsByEpisode[epIdx] = [];
+    for (let sbIndex = 0; sbIndex < (ep.storyboards || []).length; sbIndex++) {
+      const sb = ep.storyboards[sbIndex];
       const sbAudioPath = saveMediaFile(storagePath, projectDir, 'audio', files, sb.audio_file, 'sb_audio_imp');
       const sbNarrationAudioPath = saveMediaFile(storagePath, projectDir, 'audio', files, sb.narration_audio_file, 'sb_narr_audio_imp');
 
@@ -350,6 +439,7 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
          VALUES (${sbCols.map(() => '?').join(', ')})`
       ).run(...sbVals);
       const sbId = sbInfo.lastInsertRowid;
+      storyboardNewIdsByEpisode[epIdx][sbIndex] = Number(sbId);
 
       // 还原 storyboard_props（分镜与道具的关联）
       if (sbPropNewIds.length > 0) {
@@ -376,8 +466,11 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
           const genLocalPath = saveMediaFile(storagePath, projectDir, 'images', files, gen.zip_file || gen.file, 'sb_imp_gen');
           if (genLocalPath) {
             const genInfo = db.prepare(
-              `INSERT INTO image_generations (drama_id, storyboard_id, provider, prompt, negative_prompt, model, frame_type, size, quality, status, error_msg, local_path, created_at, updated_at, completed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              `INSERT INTO image_generations
+                (drama_id, storyboard_id, provider, prompt, negative_prompt, model,
+                 frame_type, size, quality, status, error_msg, local_path, superseded,
+                 created_at, updated_at, completed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             ).run(
               dramaId,
               sbId,
@@ -391,6 +484,7 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
               gen.status || 'completed',
               gen.error_msg || null,
               genLocalPath,
+              gen.superseded ? 1 : 0,
               gen.created_at || now,
               now,
               gen.completed_at || now
@@ -416,10 +510,20 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
       if (sb.video_file) {
         const videoLocalPath = saveMediaFile(storagePath, projectDir, 'videos', files, sb.video_file, 'vid_imp');
         if (videoLocalPath) {
-          db.prepare(
+          const videoInfo = db.prepare(
             `INSERT INTO video_generations (drama_id, storyboard_id, provider, prompt, status, local_path, created_at, updated_at)
              VALUES (?, ?, 'imported', ?, 'completed', ?, ?, ?)`
           ).run(dramaId, sbId, sb.video_prompt || '', videoLocalPath, now, now);
+          db.prepare(
+            `UPDATE storyboards
+                SET current_video_generation_id = ?, video_url = ?, updated_at = ?
+              WHERE id = ?`
+          ).run(
+            videoInfo.lastInsertRowid,
+            `/static/${String(videoLocalPath).replace(/^[/\\]+/, '').replace(/\\/g, '/')}`,
+            now,
+            sbId
+          );
         }
       }
 
@@ -457,6 +561,41 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
 
       // 兼容老工程：ZIP 无 frame_prompts 时，用已导入的首/尾帧图生 prompt 回填
       restoreFramePromptsFromImageGens(db, sbId, now2, log);
+    }
+  }
+
+  // ---- 恢复角色造型绑定（v1.5+） ----
+  for (let epIdx = 0; epIdx < episodeIdList.length; epIdx += 1) {
+    characterLookBindingService.ensureSceneBlocksForEpisode(db, episodeIdList[epIdx]);
+  }
+  for (const binding of Array.isArray(data.look_bindings) ? data.look_bindings : []) {
+    const characterId = charNewIds[Number(binding.character_index)];
+    const lookId = charLookNewIds[Number(binding.character_index)]?.[Number(binding.look_index)];
+    const episodeId = episodeIdList[Number(binding.episode_index)];
+    if (!characterId || !lookId || !episodeId) continue;
+    let scopeId = null;
+    if (binding.scope_type === 'episode') {
+      scopeId = episodeIdList[Number(binding.scope_episode_index)];
+    } else if (binding.scope_type === 'storyboard') {
+      scopeId = storyboardNewIdsByEpisode[Number(binding.scope_episode_index)]
+        ?.[Number(binding.scope_storyboard_index)];
+    } else if (binding.scope_type === 'scene_block' && binding.scope_scene_block_key) {
+      scopeId = db.prepare(
+        `SELECT id FROM scene_blocks
+          WHERE episode_id = ? AND stable_key = ? AND deleted_at IS NULL`
+      ).get(episodeId, binding.scope_scene_block_key)?.id;
+    }
+    if (!scopeId) continue;
+    const restored = characterLookBindingService.upsertBinding(db, {
+      scope_type: binding.scope_type,
+      scope_id: scopeId,
+      character_id: characterId,
+      look_id: lookId,
+      source: binding.source || 'imported',
+      transition_note: binding.transition_note || null,
+    });
+    if (!restored.ok) {
+      log.warn('导入角色造型绑定失败', { binding, error: restored.error });
     }
   }
 

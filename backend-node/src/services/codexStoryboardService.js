@@ -2,6 +2,8 @@ const { safeParseAIJSON } = require('../utils/safeJson');
 const promptTemplates = require('./promptTemplateService');
 const episodeStoryboardService = require('./episodeStoryboardService');
 const { insertIgnoreSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
+const visualContextResolver = require('./visualContextResolver');
 const {
   STORYBOARD_MIN_DURATION,
   STORYBOARD_MAX_DURATION,
@@ -474,7 +476,7 @@ function listStoryboardImageTargets(db, session, options = {}) {
     const characterIds = parseJsonArray(row.characters)
       .map(Number)
       .filter(Number.isFinite);
-    const characters = characterIds.length
+    let characters = characterIds.length
       ? db.prepare(
         `SELECT id, name, appearance, description, polished_prompt, image_url, local_path
            FROM characters
@@ -482,6 +484,23 @@ function listStoryboardImageTargets(db, session, options = {}) {
             AND drama_id = ? AND deleted_at IS NULL`
       ).all(...characterIds, Number(session.drama_id))
       : [];
+    let appearanceContext = null;
+    if (characterLookService.hasWardrobeTables(db)) {
+      appearanceContext = visualContextResolver.resolveStoryboardVisualContext(db, row.id);
+      if (appearanceContext) {
+        characters = appearanceContext.characters.map((item) => ({
+          id: item.character_id,
+          name: item.character_name,
+          appearance: item.look?.appearance || '',
+          description: `当前造型：${item.look?.name || '默认造型'}`,
+          polished_prompt: item.look?.polished_prompt || '',
+          image_url: item.reference_url || '',
+          local_path: item.look?.local_path || '',
+          look_id: item.look?.id || null,
+          look_revision: item.look?.visual_revision || null,
+        }));
+      }
+    }
     const props = db.prepare(
       `SELECT p.id, p.name, p.description, p.prompt, p.image_url, p.local_path
          FROM storyboard_props sp
@@ -514,6 +533,8 @@ function listStoryboardImageTargets(db, session, options = {}) {
       shotType: row.shot_type || '',
       angle: row.angle || '',
       characters,
+      appearanceContext,
+      appearanceContextHash: appearanceContext?.appearance_context_hash || null,
       props,
       scene,
       imageUrl: row.image_url || '',

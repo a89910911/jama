@@ -3,7 +3,8 @@
 const storageLayout = require('./storageLayout');
 const { resolveStylePreset } = require('../constants/generationStylePresets');
 const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
-const { insertIgnoreSql } = require('../db/portableSql');
+const { insertIgnoreSql, tableExists } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
 
 /**
  * 清理 image_url：如果数据库中存储的是 base64 data URL，则返回 null。
@@ -25,6 +26,26 @@ function parseJsonColumn(value) {
   }
 }
 
+function attachCharacterLookCounts(db, characters) {
+  if (!Array.isArray(characters) || !characters.length || !tableExists(db, 'character_looks')) {
+    return characters;
+  }
+  const ids = characters.map((item) => Number(item.id)).filter(Boolean);
+  if (!ids.length) return characters;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT character_id, COUNT(*) AS look_count
+       FROM character_looks
+      WHERE deleted_at IS NULL AND character_id IN (${placeholders})
+      GROUP BY character_id`
+  ).all(...ids);
+  const counts = new Map(rows.map((row) => [Number(row.character_id), Number(row.look_count)]));
+  for (const character of characters) {
+    character.look_count = counts.get(Number(character.id)) || 1;
+  }
+  return characters;
+}
+
 const CHARACTER_RESULT_COLUMNS = [
   'id',
   'drama_id',
@@ -38,6 +59,12 @@ const CHARACTER_RESULT_COLUMNS = [
   'local_path',
   'extra_images',
   'ref_image',
+  'identity_appearance',
+  'identity_anchors',
+  'style_tokens',
+  'color_palette',
+  'stages',
+  'default_look_id',
   'sort_order',
   'error_msg',
   'polished_prompt',
@@ -191,9 +218,9 @@ function getDrama(db, dramaId, baseUrl) {
         'SELECT character_id FROM episode_characters WHERE episode_id = ?'
       ).all(ep.id);
       const characterIds = new Set(charLinks.map((row) => Number(row.character_id)));
-      ep.characters = characterRows
+      ep.characters = attachCharacterLookCounts(db, characterRows
         .filter((character) => characterIds.has(Number(character.id)))
-        .map((character) => rowToCharacter(character));
+        .map((character) => rowToCharacter(character)));
     } catch (_) {
       ep.characters = [];
     }
@@ -233,7 +260,7 @@ function getDrama(db, dramaId, baseUrl) {
       ep.props = [];
     }
   }
-  drama.characters = characterRows.map((c) => rowToCharacter(c));
+  drama.characters = attachCharacterLookCounts(db, characterRows.map((c) => rowToCharacter(c)));
   drama.scenes = sceneRows.map((s) => rowToScene(s));
   drama.props = propRows.map((p) => rowToProp(p));
   return drama;
@@ -499,6 +526,12 @@ function rowToCharacter(r) {
     local_path: r.local_path,
     extra_images: r.extra_images || null,
     ref_image: r.ref_image || null,
+    identity_appearance: r.identity_appearance || null,
+    identity_anchors: parseJsonColumn(r.identity_anchors),
+    style_tokens: parseJsonColumn(r.style_tokens),
+    color_palette: parseJsonColumn(r.color_palette),
+    stages: parseJsonColumn(r.stages),
+    default_look_id: r.default_look_id != null ? Number(r.default_look_id) : null,
     reference_images: r.reference_images,
     seed_value: r.seed_value,
     sort_order: r.sort_order ?? 0,
@@ -632,11 +665,14 @@ function getCharacters(db, dramaId, episodeId) {
        FROM characters WHERE drama_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC`
     ).all(did);
   }
-  const characters = rows.map((r) => rowToCharacter(r));
+  const characters = attachCharacterLookCounts(db, rows.map((r) => rowToCharacter(r)));
   for (const c of characters) {
     const img = db.prepare(
-      'SELECT status, error_msg FROM image_generations WHERE character_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(c.id);
+      `SELECT status, error_msg FROM image_generations
+        WHERE character_id = ?
+          AND (character_look_id IS NULL OR character_look_id = ?)
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).get(c.id, c.default_look_id || 0);
     if (img && ['pending', 'processing', 'failed'].includes(img.status)) {
       c.image_generation_status = img.status;
       if (img.error_msg) c.image_generation_error = img.error_msg;
@@ -686,6 +722,7 @@ function saveCharacters(db, log, dramaId, req) {
         db.prepare(
           `UPDATE characters SET ${setCore}${imgSql}, updated_at = ? WHERE id = ?`
         ).run(...coreParams, ...imgParams, new Date().toISOString(), char.id);
+        characterLookService.syncDefaultLookFromCharacter(db, char.id);
         continue;
       }
     }
@@ -718,6 +755,7 @@ function saveCharacters(db, log, dramaId, req) {
       db.prepare(
         `UPDATE characters SET ${setCoreN}${imgSqlN}, updated_at = ?, deleted_at = NULL WHERE id = ?`
       ).run(...coreParamsN, ...imgParamsN, new Date().toISOString(), byName.id);
+      characterLookService.syncDefaultLookFromCharacter(db, byName.id);
       continue;
     }
     const now = new Date().toISOString();
@@ -726,6 +764,7 @@ function saveCharacters(db, log, dramaId, req) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     ).run(did, char.name, char.role ?? null, char.description ?? null, char.personality ?? null, char.appearance ?? null, char.image_url ?? null, char.local_path ?? null, char.negative_prompt ?? null, now, now);
     characterIds.push(info.lastInsertRowid);
+    characterLookService.ensureDefaultLook(db, info.lastInsertRowid);
   }
   if (req.episode_id && characterIds.length > 0) {
     db.prepare('DELETE FROM episode_characters WHERE episode_id = ?').run(req.episode_id);
@@ -872,13 +911,41 @@ function saveCanvasLayout(db, log, dramaId, req) {
  * 取某分镜的视频地址：优先使用用户手动选定的 storyboard.video_url，否则取最新完成的 video_generations 记录
  */
 function getVideoUrlForStoryboard(db, storyboardId, baseUrl) {
-  // 1. 获取 storyboard 表中的视频信息（代表用户选定或上次同步的结果）
-  const sb = db.prepare('SELECT video_url, local_path, updated_at FROM storyboards WHERE id = ? AND deleted_at IS NULL').get(storyboardId);
-  
-  // 2. 获取 video_generations 表中最新完成的记录
-  const vg = db.prepare(
-    "SELECT video_url, local_path, completed_at, updated_at, created_at FROM video_generations WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
-  ).get(storyboardId);
+  let sb;
+  let vg;
+  try {
+    sb = db.prepare(
+      `SELECT video_url, current_video_generation_id, updated_at
+         FROM storyboards WHERE id = ? AND deleted_at IS NULL`
+    ).get(storyboardId);
+    if (sb?.current_video_generation_id) {
+      vg = db.prepare(
+        `SELECT id, video_url, local_path, completed_at, updated_at, created_at
+           FROM video_generations
+          WHERE id = ? AND storyboard_id = ? AND status = 'completed'
+            AND superseded = 0 AND deleted_at IS NULL`
+      ).get(sb.current_video_generation_id, storyboardId);
+    }
+    if (!vg) {
+      vg = db.prepare(
+        `SELECT id, video_url, local_path, completed_at, updated_at, created_at
+           FROM video_generations
+          WHERE storyboard_id = ? AND status = 'completed'
+            AND superseded = 0 AND deleted_at IS NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`
+      ).get(storyboardId);
+    }
+  } catch (_) {
+    sb = db.prepare(
+      'SELECT video_url, updated_at FROM storyboards WHERE id = ? AND deleted_at IS NULL'
+    ).get(storyboardId);
+    vg = db.prepare(
+      `SELECT video_url, local_path, completed_at, updated_at, created_at
+         FROM video_generations
+        WHERE storyboard_id = ? AND status = 'completed' AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`
+    ).get(storyboardId);
+  }
 
   // 辅助函数：构造完整 URL，优先使用本地路径（避免远程URL过期导致无法合并）
   const buildUrl = (videoUrl, localPath) => {
@@ -891,8 +958,11 @@ function getVideoUrlForStoryboard(db, storyboardId, baseUrl) {
     return null;
   };
 
-  const sbUrl = sb ? buildUrl(sb.video_url, sb.local_path) : null;
+  const sbUrl = sb ? buildUrl(sb.video_url, null) : null;
   const vgUrl = vg ? buildUrl(vg.video_url, vg.local_path) : null;
+
+  // 新数据以显式主版本为准；避免重新生成中的旧/过期结果被合入成片。
+  if (sb?.current_video_generation_id && vgUrl) return vgUrl;
 
   // 策略：比较时间，取最新的
   // 如果只有其中一个有 URL，直接用那个

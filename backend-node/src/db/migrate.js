@@ -187,6 +187,41 @@ function ensureColumns(database, table, columns) {
   }
 }
 
+const CHARACTER_LOOK_LONGTEXT_COLUMNS = [
+  'appearance',
+  'polished_prompt',
+  'negative_prompt',
+  'image_url',
+  'local_path',
+  'ref_image',
+  'extra_images',
+  'four_view_image_url',
+  'reference_images',
+  'style_tokens',
+  'color_palette',
+  'seedance2_asset',
+  'error_msg',
+];
+
+function ensureCharacterLookMysqlTextCapacity(database) {
+  if (String(database?.dialect || '').toLowerCase() !== 'mysql') return [];
+  const existing = tableColumns(database, 'character_looks');
+  const byName = new Map(existing.map((column) => [
+    String(column.name || '').toLowerCase(),
+    String(column.type || '').toLowerCase(),
+  ]));
+  const widened = [];
+  for (const column of CHARACTER_LOOK_LONGTEXT_COLUMNS) {
+    const type = byName.get(column);
+    if (!type || type.startsWith('longtext')) continue;
+    database.exec(
+      `ALTER TABLE \`character_looks\` MODIFY COLUMN \`${column}\` LONGTEXT NULL`
+    );
+    widened.push(column);
+  }
+  return widened;
+}
+
 /**
  * 全量兜底补列：覆盖所有表的所有业务列。
  * 对于旧数据库（用更早版本的 init 脚本创建、缺少部分列），
@@ -286,6 +321,10 @@ function ensureAllColumns(database) {
     { name: 'last_frame_image_id',  type: 'INTEGER' },
     { name: 'last_frame_image_url', type: 'TEXT' },
     { name: 'last_frame_local_path', type: 'TEXT' },
+    { name: 'scene_block_id',        type: 'INTEGER' },
+    { name: 'current_video_generation_id', type: 'INTEGER' },
+    { name: 'appearance_context_hash', type: 'TEXT' },
+    { name: 'visual_context_stale',  type: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'status',            type: 'TEXT DEFAULT \'draft\'' },
     { name: 'created_at',        type: 'TEXT' },
     { name: 'updated_at',        type: 'TEXT' },
@@ -316,6 +355,8 @@ function ensureAllColumns(database) {
     { name: 'seedance2_asset', type: 'TEXT' },   // JSON: 即梦/Seedance2 素材库认证 hub_asset_id / asset_url 等
     { name: 'seedance2_voice_asset', type: 'TEXT' }, // JSON: Seedance 2.0 音色参考音频（仅 SD2 模型有效）
     { name: 'negative_prompt', type: 'TEXT' },
+    { name: 'default_look_id',   type: 'INTEGER' },
+    { name: 'identity_appearance', type: 'TEXT' },
     { name: 'created_at',        type: 'TEXT' },
     { name: 'updated_at',        type: 'TEXT' },
     { name: 'deleted_at',        type: 'TEXT' },
@@ -446,6 +487,9 @@ function ensureAllColumns(database) {
     { name: 'episode_id',       type: 'INTEGER' },
     { name: 'scene_id',         type: 'INTEGER' },
     { name: 'character_id',     type: 'INTEGER' },
+    { name: 'character_look_id', type: 'INTEGER' },
+    { name: 'character_look_revision', type: 'INTEGER' },
+    { name: 'parent_generation_id', type: 'INTEGER' },
     { name: 'provider',         type: 'TEXT' },
     { name: 'prompt',           type: 'TEXT' },
     { name: 'negative_prompt',  type: 'TEXT' },
@@ -463,6 +507,10 @@ function ensureAllColumns(database) {
     { name: 'task_id',          type: 'TEXT' },
     { name: 'completed_at',     type: 'TEXT' },
     { name: 'error_msg',        type: 'TEXT' },
+    { name: 'appearance_context_json', type: 'TEXT' },
+    { name: 'appearance_context_hash', type: 'TEXT' },
+    { name: 'generation_context_hash', type: 'TEXT' },
+    { name: 'superseded',       type: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'created_at',       type: 'TEXT' },
     { name: 'updated_at',       type: 'TEXT' },
     { name: 'deleted_at',       type: 'TEXT' },
@@ -495,6 +543,11 @@ function ensureAllColumns(database) {
     { name: 'scene_id',             type: 'INTEGER' },
     { name: 'completed_at',         type: 'TEXT' },
     { name: 'error_msg',            type: 'TEXT' },
+    { name: 'appearance_context_json', type: 'TEXT' },
+    { name: 'appearance_context_hash', type: 'TEXT' },
+    { name: 'generation_context_hash', type: 'TEXT' },
+    { name: 'superseded',           type: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'voice_character_id',   type: 'INTEGER' },
     { name: 'created_at',           type: 'TEXT' },
     { name: 'updated_at',           type: 'TEXT' },
     { name: 'deleted_at',           type: 'TEXT' },
@@ -780,6 +833,13 @@ function ensureAllColumns(database) {
 function runMigrationsAndEnsure(database) {
   runMigrations(database);
   ensureAllColumns(database);
+  ensureCharacterLookMysqlTextCapacity(database);
+  try {
+    const characterLookService = require('../services/characterLookService');
+    characterLookService.backfillAllCharacters(database, console);
+  } catch (error) {
+    console.warn('character wardrobe backfill failed:', error.message);
+  }
 }
 
 function main() {
@@ -798,6 +858,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  ensureCharacterLookMysqlTextCapacity,
   splitSqlStatements,
   runMigrations,
   runMigrationsAndEnsure,

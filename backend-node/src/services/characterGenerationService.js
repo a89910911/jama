@@ -6,6 +6,7 @@ const { safeParseAIJSON, extractFirstArray } = require('../utils/safeJson');
 const characterLibraryService = require('./characterLibraryService');
 const { mergeCfgStyleWithDrama } = require('../utils/dramaStyleMerge');
 const { insertIgnoreSql } = require('../db/portableSql');
+const characterLookService = require('./characterLookService');
 
 /**
  * 从角色外貌描述中提炼 6层视觉锚点，写入 characters.identity_anchors
@@ -121,20 +122,8 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
   // 再次「从剧本提取角色」时先清空本集已关联角色，避免与旧数据累加；仅软删除不再被任何分集引用的角色行
   if (req.episode_id) {
     const episodeId = Number(req.episode_id);
-    const linkedRows = db.prepare('SELECT character_id FROM episode_characters WHERE episode_id = ?').all(episodeId);
-    for (const row of linkedRows) {
-      const cid = Number(row.character_id);
-      const other = db
-        .prepare('SELECT COUNT(*) AS n FROM episode_characters WHERE character_id = ? AND episode_id != ?')
-        .get(cid, episodeId);
-      if (other && other.n === 0) {
-        db.prepare('UPDATE characters SET deleted_at = ? WHERE id = ? AND drama_id = ? AND deleted_at IS NULL').run(
-          now,
-          cid,
-          dramaId
-        );
-      }
-    }
+    // Re-extraction refreshes episode membership only. A character and its
+    // wardrobe are project assets and must not be deleted as a side effect.
     db.prepare('DELETE FROM episode_characters WHERE episode_id = ?').run(episodeId);
   }
 
@@ -145,6 +134,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
     if (!name) continue;
     const existing = db.prepare('SELECT id, name FROM characters WHERE drama_id = ? AND name = ? AND deleted_at IS NULL').get(dramaId, name);
     if (existing) {
+      characterLookService.ensureDefaultLook(db, existing.id);
       characters.push({
         id: existing.id,
         drama_id: dramaId,
@@ -172,6 +162,7 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
       now
     );
     const newCharId = info.lastInsertRowid;
+    characterLookService.ensureDefaultLook(db, newCharId);
     // 异步后台提炼视觉锚点 + 预生成图片提示词，不阻塞主流程
     if (char.appearance) {
       setImmediate(() => {
