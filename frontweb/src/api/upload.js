@@ -22,11 +22,12 @@ export const uploadAPI = {
    * entityType: 'character' | 'scene' | 'prop'
    * imageUrl: data:image/xxx;base64,... 或 http URL
    */
-  extractDescriptionFromImage(entityType, imageUrl, entityName) {
+  extractDescriptionFromImage(entityType, imageUrl, entityName, dramaId = null) {
     return request.post('/extract-description-from-image', {
       entity_type: entityType,
       image_url: imageUrl,
       entity_name: entityName || undefined,
+      drama_id: dramaId || undefined,
     })
   }
 }

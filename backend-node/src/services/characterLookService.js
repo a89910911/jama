@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { insertIgnoreSql, tableExists } = require('../db/portableSql');
+const wardrobeAvailabilityByDb = new WeakMap();
 
 const LOOK_VISUAL_FIELDS = new Set([
   'appearance',
@@ -138,9 +139,14 @@ function serializeLook(row, defaultLookId = null) {
 }
 
 function hasWardrobeTables(db) {
+  if (wardrobeAvailabilityByDb.has(db)) {
+    return wardrobeAvailabilityByDb.get(db);
+  }
   try {
-    return tableExists(db, 'character_looks')
+    const available = tableExists(db, 'character_looks')
       && tableExists(db, 'character_look_bindings');
+    wardrobeAvailabilityByDb.set(db, available);
+    return available;
   } catch (_) {
     return false;
   }
@@ -179,18 +185,16 @@ function listLookSummaryRowsForDrama(db, dramaId) {
 
 function listLooks(db, characterId, options = {}) {
   if (!hasWardrobeTables(db)) return [];
-  const character = db.prepare(
-    'SELECT id, default_look_id FROM characters WHERE id = ? AND deleted_at IS NULL'
-  ).get(positiveId(characterId));
-  if (!character) return [];
   const includeArchived = options.includeArchived === true;
   const rows = db.prepare(
-    `SELECT ${LOOK_SUMMARY_COLUMNS} FROM character_looks
-      WHERE character_id = ?
-        ${includeArchived ? '' : "AND deleted_at IS NULL AND status = 'active'"}
-      ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, id ASC`
-  ).all(character.id, character.default_look_id || 0);
-  return rows.map((row) => serializeLook(row, character.default_look_id));
+    `SELECT l.*, c.default_look_id AS resolved_default_look_id
+       FROM character_looks l
+       JOIN characters c ON c.id = l.character_id AND c.deleted_at IS NULL
+      WHERE l.character_id = ?
+        ${includeArchived ? '' : "AND l.deleted_at IS NULL AND l.status = 'active'"}
+      ORDER BY CASE WHEN l.id = c.default_look_id THEN 0 ELSE 1 END, l.id ASC`
+  ).all(positiveId(characterId));
+  return rows.map((row) => serializeLook(row, row.resolved_default_look_id));
 }
 
 function insertLookFromCharacter(db, character, options = {}) {

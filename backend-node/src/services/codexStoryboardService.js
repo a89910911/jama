@@ -282,7 +282,6 @@ function buildStoryboardGenerationPrompt(db, cfg, session, episode, body, taskId
   promptTemplates.attachTaskPromptSnapshot(db, taskId, {
     prompt_key: 'codex.storyboard.generation.composed',
     scope: 'effective',
-    version: 1,
     content: prompt,
     captured_at: new Date().toISOString(),
   });

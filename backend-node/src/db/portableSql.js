@@ -76,9 +76,36 @@ function tableExists(database, table) {
   ).get(safeTable);
 }
 
+function readBatch(database, statements) {
+  const requests = (Array.isArray(statements) ? statements : []).map((statement) => ({
+    sql: String(statement?.sql || ''),
+    values: Array.isArray(statement?.values) ? statement.values : [],
+    mode: statement?.mode === 'get' ? 'get' : 'all',
+  }));
+  if (!requests.length) return [];
+
+  if (typeof database?.readBatch === 'function') {
+    const results = database.readBatch(
+      requests.map(({ sql, values }) => ({ sql, values }))
+    );
+    return requests.map((request, index) => {
+      const rows = Array.isArray(results?.[index]) ? results[index] : [];
+      return request.mode === 'get' ? rows[0] : rows;
+    });
+  }
+
+  return requests.map((request) => {
+    const statement = database.prepare(request.sql);
+    return request.mode === 'get'
+      ? statement.get(...request.values)
+      : statement.all(...request.values);
+  });
+}
+
 module.exports = {
   insertIgnoreSql,
   isMysql,
+  readBatch,
   replaceIntoSql,
   tableColumns,
   tableExists,

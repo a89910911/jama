@@ -4,6 +4,7 @@ const Database = require('better-sqlite3');
 
 const {
   insertIgnoreSql,
+  readBatch,
   replaceIntoSql,
   tableColumns,
   tableExists,
@@ -55,6 +56,13 @@ test('portable schema helpers and conflict statements work with SQLite', () => {
 
   db.prepare(upsertSql(db, insert, ['code'], ['value'])).run('one', 'updated');
   assert.equal(db.prepare('SELECT value FROM demo WHERE code = ?').get('one').value, 'updated');
+  assert.deepEqual(
+    readBatch(db, [
+      { mode: 'get', sql: 'SELECT value FROM demo WHERE code = ?', values: ['one'] },
+      { sql: 'SELECT code FROM demo ORDER BY code' },
+    ]),
+    [{ value: 'updated' }, [{ code: 'one' }]]
+  );
   db.close();
 });
 

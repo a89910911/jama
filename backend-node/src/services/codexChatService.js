@@ -2286,22 +2286,20 @@ async function processMessage(db, cfg, log, details) {
       dramaId: session.drama_id,
       taskId,
     };
-    const chatSystemPrompt = promptTemplates.resolvePromptContent(
-      db,
+    const resolvedChatPrompts = promptTemplates.resolvePrompts(db, [
       'assistant.chat.system',
-      chatPromptOptions
-    );
-    const chatUserPrompt = promptTemplates.resolvePromptContent(
-      db,
       'assistant.chat.user',
-      {
-        ...chatPromptOptions,
-        variables: {
+    ], {
+      ...chatPromptOptions,
+      variablesByKey: {
+        'assistant.chat.user': {
           conversation_context: context,
           user_message: body.content,
         },
-      }
-    );
+      },
+    });
+    const chatSystemPrompt = resolvedChatPrompts.get('assistant.chat.system').content;
+    const chatUserPrompt = resolvedChatPrompts.get('assistant.chat.user').content;
     const prompt = `${chatSystemPrompt}\n\n${chatUserPrompt}`;
     taskService.updateTaskStatus(db, taskId, 'processing', 30, `${selectedEngineLabel}正在回复...`);
     const turn = await runtime.runTurn({

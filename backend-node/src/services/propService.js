@@ -148,15 +148,21 @@ async function generatePropPromptOnly(db, log, cfg, propId, modelName, style) {
   }
 
   const promptContext = { cfg: polishCfg, propId };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'prop.image_polish.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'prop.image_polish.system',
+    'prop.image_polish.user',
+  ], {
     ...promptContext,
-    variables: {
-      entity_name: prop.name || '',
-      entity_type: prop.type || '',
-      entity_description: prop.description || '',
+    variablesByKey: {
+      'prop.image_polish.user': {
+        entity_name: prop.name || '',
+        entity_type: prop.type || '',
+        entity_description: prop.description || '',
+      },
     },
   });
+  const systemPrompt = resolvedPrompts.get('prop.image_polish.system').content;
+  const userPrompt = resolvedPrompts.get('prop.image_polish.user').content;
 
   log.info('[道具提示词] 开始生成', { prop_id: propId, name: prop.name });
 
@@ -197,13 +203,17 @@ async function extractPropFromImage(db, log, cfg, propId) {
   if (!imgSrc) return { ok: false, error: '该道具暂无参考图片，请先上传图片' };
 
   const propLabel = prop.name || '道具';
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.system', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'vision.prop.extract.system',
+    'vision.prop.extract.user',
+  ], {
     propId,
+    variablesByKey: {
+      'vision.prop.extract.user': { entity_name: propLabel },
+    },
   });
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.prop.extract.user', {
-    propId,
-    variables: { entity_name: propLabel },
-  });
+  const systemPrompt = resolvedPrompts.get('vision.prop.extract.system').content;
+  const userPrompt = resolvedPrompts.get('vision.prop.extract.user').content;
 
   let description;
   try {

@@ -76,5 +76,16 @@ test('a valid standard-user session is authenticated but rejected by the super-a
   assert.equal(adminNextCalled, false);
   assert.equal(res.statusCode, 403);
   assert.equal(res.body.error.code, 'FORBIDDEN');
+
+  auth.setAccountActive(db, created.id, false);
+  authenticated = false;
+  res.statusCode = 200;
+  res.body = null;
+  auth.authenticate(db)(req, res, () => {
+    authenticated = true;
+  });
+  assert.equal(authenticated, false);
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.error.code, 'UNAUTHORIZED');
   db.close();
 });

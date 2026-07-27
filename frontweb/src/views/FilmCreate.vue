@@ -4466,7 +4466,7 @@ async function doExtractFromRef(type) {
     extractingCharAppearance.value = true
     try {
       const name = editCharacterForm.value?.name || ''
-      const res = await uploadAPI.extractDescriptionFromImage('character', refImage.dataUrl, name)
+      const res = await uploadAPI.extractDescriptionFromImage('character', refImage.dataUrl, name, dramaId.value)
       if (res?.description && editCharacterForm.value) {
         editCharacterForm.value.appearance = res.description
         ElMessage.success('已从参考图提取外貌描述')
@@ -4482,7 +4482,7 @@ async function doExtractFromRef(type) {
     extractingPropDesc.value = true
     try {
       const name = editPropForm.value?.name || ''
-      const res = await uploadAPI.extractDescriptionFromImage('prop', refImage.dataUrl, name)
+      const res = await uploadAPI.extractDescriptionFromImage('prop', refImage.dataUrl, name, dramaId.value)
       if (res?.description && editPropForm.value) {
         editPropForm.value.description = res.description
         ElMessage.success('已从参考图提取特征描述')
@@ -4498,7 +4498,7 @@ async function doExtractFromRef(type) {
     extractingSceneDesc.value = true
     try {
       const name = editSceneForm.value?.name || ''
-      const res = await uploadAPI.extractDescriptionFromImage('scene', refImage.dataUrl, name)
+      const res = await uploadAPI.extractDescriptionFromImage('scene', refImage.dataUrl, name, dramaId.value)
       if (res?.description && editSceneForm.value) {
         editSceneForm.value.description = res.description
         ElMessage.success('已从参考图提取场景描述')

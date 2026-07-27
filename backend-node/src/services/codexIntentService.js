@@ -448,62 +448,17 @@ function buildIntentPlanningPrompt(db, session, episode, content, options = {}) 
       : 0,
   };
 
-  const legacyPrompt = [
-    '你是 LocalMiniDrama 的对话意图规划器，只判断用户要调用哪一种宿主项目能力，不执行创作，也不生成图片。',
-    '用户不需要说固定口令。请结合当前项目、剧集、最近对话和代词指代，理解自然中文表达。',
-    '只有用户明确要求创建、生成、改写、续写、提取、保存、补齐或重做内容时，才选择会修改数据库的能力。',
-    '询问原因、用法、建议、评价、状态、已有内容，或者只讨论创意时必须选择 chat。',
-    '支持的能力：',
-    '- chat：咨询、讨论、问答，不写数据库。',
-    '- generate_story：生成当前集或项目剧本并写入数据库。',
-    '- rewrite_current_episode：覆盖改写当前剧集。',
-    '- continue_current_episode：在当前剧本末尾续写。',
-    '- extract_resources：从剧本提取角色、道具、场景的说明和图片提示词并入库。',
-    '- generate_resource_images：给角色、道具、场景逐项生成独立图片并绑定入库。',
-    '- generate_storyboards：把当前剧本完整拆成结构化分镜并入库。',
-    '- generate_storyboard_images：给分镜逐项生成独立首帧并绑定入库。',
-    '- generate_image：只生成一张普通素材图片并入库；不能用于批量资源图或分镜图。',
-    '- optimize_resource_prompt：只优化角色、道具或场景的图片生成提示词并入库，不生成图片。',
-    '- update_storyboard_details：补充或优化分镜标题、说明、布局、动作、结果、氛围并入库，不生成图片。',
-    '- optimize_storyboard_prompt：生成或优化分镜编辑区中的原始提示词、通用优化提示词、视频提示词并入库，不生成图片。',
-    '如果用户同时要求“先准备资源/分镜文字，再生成对应图片”，选择最终图片能力，并将 prepare_source 设为 true。',
-    '如果用户要求重新生成、覆盖或替换已有结果，将 force_regenerate 设为 true。',
-    'resource_scopes 只填写用户明确要求的 character、prop、scene；未限定时返回空数组。',
-    'resource_names 填写用户点名的资源名称，并结合最近对话解析“它、这个角色、重新来一张”等指代；未点名时返回空数组。',
-    'storyboard_numbers 只填写用户明确指定的分镜编号；“第二镜”“第2条分镜”都返回 [2]，未指定时返回空数组。',
-    'prompt_fields 用于 optimize_storyboard_prompt：原始提示词=image_prompt，通用优化/图生提示词=polished_prompt，视频提示词=video_prompt；“提示词编辑/全部提示词”返回三项。',
-    'detail_fields 用于 update_storyboard_details，可选 title、description、layout_description、action、result、atmosphere；“分镜说明”至少返回 description。',
-    'target_all 只有用户明确说全部、所有、每个、整集、批量、补齐缺失项时才为 true；指定名称或编号时必须为 false。',
-    'normalized_request 要保留用户指定的名称、编号、数量、风格和范围，把代词补全成可执行的简洁中文要求，不能添加用户没有提出的目标。',
-    'confidence 低于 0.65 时应选择 chat，避免误写数据库。',
-    '只返回符合宿主 JSON Schema 的数据，不要输出 Markdown。',
-    `【项目】${drama?.title || session.drama_id}`,
-    drama?.description ? `【项目简介】${clean(drama.description, 1200)}` : '',
-    episode
-      ? `【当前剧集】第${episode.episode_number}集《${episode.title || ''}》；剧本${episode.script_content ? '已存在' : '为空'}`
-      : '【当前范围】整个项目，未选择具体剧集',
-    `【项目状态】${JSON.stringify(projectState)}`,
-    metadata.aspect_ratio ? `【画幅】${metadata.aspect_ratio}` : '',
-    recentMessages ? `【最近对话】\n${recentMessages}` : '',
-    `【本次用户消息】\n${intentMessageExcerpt(content)}`,
-  ].filter(Boolean).join('\n\n');
-
-  try {
-    const promptOptions = {
-      dramaId: session.drama_id,
-      taskId: options.taskId,
-    };
-    const systemPrompt = promptTemplates.resolvePromptContent(
-      db,
-      'assistant.intent.system',
-      promptOptions
-    );
-    const userPrompt = promptTemplates.resolvePromptContent(
-      db,
-      'assistant.intent.user',
-      {
-        ...promptOptions,
-        variables: {
+  const promptOptions = {
+    dramaId: session.drama_id,
+    taskId: options.taskId,
+  };
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'assistant.intent.system',
+    'assistant.intent.user',
+  ], {
+    ...promptOptions,
+    variablesByKey: {
+      'assistant.intent.user': {
           project_context: JSON.stringify({
             project_id: Number(session.drama_id),
             project_title: drama?.title || '',
@@ -526,24 +481,15 @@ function buildIntentPlanningPrompt(db, session, episode, content, options = {}) 
             rule_note: '这些字段只是证据；本轮消息中的明确自然语言要求优先级最高。',
           }),
           user_message: intentMessageExcerpt(content),
-        },
-      }
-    );
-    return [
-      '【Jama 意图识别系统规则】',
-      systemPrompt,
-      '【Jama 意图识别输入】',
-      userPrompt,
-    ].join('\n\n');
-  } catch (error) {
-    if (![
-      'PROMPT_DEFINITION_NOT_FOUND',
-      'PROMPT_TEMPLATE_NOT_FOUND',
-    ].includes(error?.code)) {
-      throw error;
-    }
-    return legacyPrompt;
-  }
+      },
+    },
+  });
+  return [
+    '【Jama 意图识别系统规则】',
+    resolvedPrompts.get('assistant.intent.system').content,
+    '【Jama 意图识别输入】',
+    resolvedPrompts.get('assistant.intent.user').content,
+  ].join('\n\n');
 }
 
 function contentTypeForIntent(intent) {

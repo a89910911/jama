@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const characterLookService = require('./characterLookService');
 const bindingService = require('./characterLookBindingService');
+const { readBatch } = require('../db/portableSql');
 
 function positiveId(value) {
   const id = Number(value);
@@ -231,10 +232,18 @@ function resolveProps(db, storyboard, cache = null) {
   }));
 }
 
-function createEpisodeResolutionCache(db, episode, storyboards, bindings = null) {
+function createEpisodeResolutionCache(
+  db,
+  episode,
+  storyboards,
+  bindings = null,
+  preloaded = {}
+) {
   const dramaId = Number(episode.drama_id);
   const episodeId = Number(episode.id);
-  const characterRows = db.prepare(
+  const characterRows = Array.isArray(preloaded.characters)
+    ? preloaded.characters
+    : db.prepare(
     `SELECT id, drama_id, name, identity_appearance, identity_anchors,
             default_look_id,
             CASE
@@ -247,8 +256,12 @@ function createEpisodeResolutionCache(db, episode, storyboards, bindings = null)
        FROM characters
       WHERE drama_id = ? AND deleted_at IS NULL`
   ).all(dramaId);
-  const lookRows = characterLookService.listLookSummaryRowsForDrama(db, dramaId);
-  const sceneRows = db.prepare(
+  const lookRows = Array.isArray(preloaded.looks)
+    ? preloaded.looks
+    : characterLookService.listLookSummaryRowsForDrama(db, dramaId);
+  const sceneRows = Array.isArray(preloaded.scenes)
+    ? preloaded.scenes
+    : db.prepare(
     `SELECT id, drama_id, location, time, prompt, polished_prompt,
             CASE
               WHEN NULLIF(TRIM(local_path), '') IS NOT NULL
@@ -260,7 +273,9 @@ function createEpisodeResolutionCache(db, episode, storyboards, bindings = null)
        FROM scenes
       WHERE drama_id = ? AND deleted_at IS NULL`
   ).all(dramaId);
-  const propRows = db.prepare(
+  const propRows = Array.isArray(preloaded.props)
+    ? preloaded.props
+    : db.prepare(
     `SELECT sp.storyboard_id, p.id, p.name, p.type, p.description, p.prompt,
             CASE
               WHEN NULLIF(TRIM(p.local_path), '') IS NOT NULL
@@ -458,25 +473,180 @@ function isAppearanceContextCurrent(db, contextValue, expectedHash = null) {
   return true;
 }
 
+function sceneBlockSignature(row) {
+  return [
+    row?.scene_id == null ? '' : Number(row.scene_id),
+    String(row?.location || '').trim().toLowerCase(),
+    String(row?.time || '').trim().toLowerCase(),
+  ].join('|');
+}
+
+function sceneBlocksNeedRefresh(storyboards, sceneBlocks) {
+  const groups = [];
+  for (const storyboard of storyboards) {
+    const signature = sceneBlockSignature(storyboard);
+    const previous = groups.at(-1);
+    if (previous?.signature === signature) {
+      previous.storyboards.push(storyboard);
+    } else {
+      groups.push({ signature, storyboards: [storyboard] });
+    }
+  }
+  if (groups.length !== sceneBlocks.length) return true;
+  return groups.some((group, index) => {
+    const block = sceneBlocks[index];
+    return !block
+      || Number(block.sort_order) !== index
+      || String(block.signature || '') !== group.signature
+      || group.storyboards.some(
+        (storyboard) => Number(storyboard.scene_block_id) !== Number(block.id)
+      );
+  });
+}
+
+function loadEpisodeContextBundle(db, episodeId, allowSceneBlockRefresh = true) {
+  const id = positiveId(episodeId);
+  if (!id) return null;
+  const [
+    episode,
+    sceneBlocks,
+    bindings,
+    storyboards,
+    characters,
+    looks,
+    scenes,
+    props,
+  ] = readBatch(db, [
+    {
+      mode: 'get',
+      sql: 'SELECT id, drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL',
+      values: [id],
+    },
+    {
+      sql: `SELECT * FROM scene_blocks
+             WHERE episode_id = ? AND deleted_at IS NULL
+             ORDER BY sort_order ASC, id ASC`,
+      values: [id],
+    },
+    {
+      sql: `SELECT b.*, l.name AS look_name, l.category AS look_category,
+                   l.visual_revision, c.name AS character_name
+              FROM character_look_bindings b
+              JOIN character_looks l ON l.id = b.look_id
+              JOIN characters c ON c.id = b.character_id
+             WHERE b.episode_id = ? AND b.deleted_at IS NULL
+               AND l.deleted_at IS NULL AND c.deleted_at IS NULL
+             ORDER BY b.character_id, b.scope_type, b.scope_id`,
+      values: [id],
+    },
+    {
+      sql: `SELECT s.id, s.episode_id, s.scene_id, s.scene_block_id, s.characters,
+                   s.location, s.time, s.storyboard_number, s.appearance_context_hash,
+                   s.visual_context_stale, e.drama_id, e.episode_number,
+                   e.title AS episode_title
+              FROM storyboards s
+              JOIN episodes e ON e.id = s.episode_id
+             WHERE s.episode_id = ? AND s.deleted_at IS NULL AND e.deleted_at IS NULL
+             ORDER BY s.storyboard_number ASC, s.id ASC`,
+      values: [id],
+    },
+    {
+      sql: `SELECT id, drama_id, name, identity_appearance, identity_anchors,
+                   default_look_id,
+                   CASE
+                     WHEN NULLIF(TRIM(local_path), '') IS NOT NULL
+                       AND LOWER(COALESCE(image_url, '')) LIKE 'data:%'
+                     THEN NULL
+                     ELSE image_url
+                   END AS image_url,
+                   local_path, ref_image, four_view_image_url
+              FROM characters
+             WHERE drama_id = (
+               SELECT drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL
+             ) AND deleted_at IS NULL`,
+      values: [id],
+    },
+    {
+      sql: `SELECT * FROM character_looks
+             WHERE drama_id = (
+               SELECT drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL
+             ) AND deleted_at IS NULL AND status = 'active'
+             ORDER BY character_id ASC, id ASC`,
+      values: [id],
+    },
+    {
+      sql: `SELECT id, drama_id, location, time, prompt, polished_prompt,
+                   CASE
+                     WHEN NULLIF(TRIM(local_path), '') IS NOT NULL
+                       AND LOWER(COALESCE(image_url, '')) LIKE 'data:%'
+                     THEN NULL
+                     ELSE image_url
+                   END AS image_url,
+                   local_path, ref_image
+              FROM scenes
+             WHERE drama_id = (
+               SELECT drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL
+             ) AND deleted_at IS NULL`,
+      values: [id],
+    },
+    {
+      sql: `SELECT sp.storyboard_id, p.id, p.name, p.type, p.description, p.prompt,
+                   CASE
+                     WHEN NULLIF(TRIM(p.local_path), '') IS NOT NULL
+                       AND LOWER(COALESCE(p.image_url, '')) LIKE 'data:%'
+                     THEN NULL
+                     ELSE p.image_url
+                   END AS image_url,
+                   p.local_path, p.ref_image
+              FROM storyboard_props sp
+              JOIN storyboards s ON s.id = sp.storyboard_id AND s.deleted_at IS NULL
+              JOIN episodes e ON e.id = s.episode_id AND e.deleted_at IS NULL
+              JOIN props p ON p.id = sp.prop_id AND p.deleted_at IS NULL
+             WHERE s.episode_id = ? AND p.drama_id = e.drama_id
+             ORDER BY sp.storyboard_id ASC, p.id ASC`,
+      values: [id],
+    },
+  ]);
+  if (!episode) return null;
+  const activeSceneBlocks = storyboards.length ? sceneBlocks : [];
+
+  if (
+    allowSceneBlockRefresh
+    && storyboards.length
+    && sceneBlocksNeedRefresh(storyboards, activeSceneBlocks)
+  ) {
+    bindingService.ensureSceneBlocksForEpisode(db, id);
+    return loadEpisodeContextBundle(db, id, false);
+  }
+
+  return {
+    episode,
+    sceneBlocks: activeSceneBlocks,
+    bindings,
+    storyboards,
+    preloaded: { characters, looks, scenes, props },
+  };
+}
+
 function preflightEpisode(db, episodeId, options = {}) {
-  const episode = db.prepare(
-    'SELECT id, drama_id FROM episodes WHERE id = ? AND deleted_at IS NULL'
-  ).get(positiveId(episodeId));
+  if (!options.episode || !Array.isArray(options.storyboards) || !options.preloaded) {
+    const bundle = loadEpisodeContextBundle(db, episodeId);
+    if (!bundle) return null;
+    return preflightEpisode(db, episodeId, { ...options, ...bundle });
+  }
+  const episode = options.episode;
   if (!episode) return null;
   if (!Array.isArray(options.sceneBlocks)) {
     bindingService.ensureSceneBlocksForEpisode(db, episode.id);
   }
-  const rows = db.prepare(
-    `SELECT s.id, s.episode_id, s.scene_id, s.scene_block_id, s.characters,
-            s.location, s.storyboard_number, s.appearance_context_hash,
-            s.visual_context_stale, e.drama_id, e.episode_number,
-            e.title AS episode_title
-       FROM storyboards s
-       JOIN episodes e ON e.id = s.episode_id
-      WHERE s.episode_id = ? AND s.deleted_at IS NULL AND e.deleted_at IS NULL
-      ORDER BY s.storyboard_number ASC, s.id ASC`
-  ).all(episode.id);
-  const cache = createEpisodeResolutionCache(db, episode, rows, options.bindings);
+  const rows = options.storyboards;
+  const cache = createEpisodeResolutionCache(
+    db,
+    episode,
+    rows,
+    options.bindings,
+    options.preloaded
+  );
   const contexts = rows.map((row) =>
     resolveStoryboardVisualContext(db, row.id, {
       persist: options.persist === true,
@@ -545,6 +715,17 @@ function preflightEpisode(db, episodeId, options = {}) {
   };
 }
 
+function getEpisodeLookContext(db, episodeId) {
+  const bundle = loadEpisodeContextBundle(db, episodeId);
+  if (!bundle) return null;
+  return {
+    episode_id: Number(bundle.episode.id),
+    scene_blocks: bundle.sceneBlocks,
+    bindings: bundle.bindings,
+    preflight: preflightEpisode(db, episodeId, bundle),
+  };
+}
+
 function affectedStoryboardsForLook(db, lookId) {
   const look = characterLookService.getLookSummaryRow(db, lookId, true);
   if (!look) return [];
@@ -563,6 +744,7 @@ function affectedStoryboardsForLook(db, lookId) {
 module.exports = {
   affectedStoryboardsForLook,
   generationContextHash,
+  getEpisodeLookContext,
   hashObject,
   isAppearanceContextCurrent,
   preflightEpisode,

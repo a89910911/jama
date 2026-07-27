@@ -15,13 +15,17 @@ const characterLookService = require('./characterLookService');
 async function enrichIdentityAnchors(db, log, characterId, appearance) {
   if (!appearance || !String(appearance).trim()) return;
   try {
-    const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.system', {
+    const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+      'character.identity_anchors.system',
+      'character.identity_anchors.user',
+    ], {
       characterId,
+      variablesByKey: {
+        'character.identity_anchors.user': { character_appearance: appearance },
+      },
     });
-    const userPrompt = promptTemplates.resolvePromptContent(db, 'character.identity_anchors.user', {
-      characterId,
-      variables: { character_appearance: appearance },
-    });
+    const systemPrompt = resolvedPrompts.get('character.identity_anchors.system').content;
+    const userPrompt = resolvedPrompts.get('character.identity_anchors.user').content;
     const raw = await aiClient.generateText(db, log, 'text', userPrompt, systemPrompt, {
       scene_key: 'identity_anchors',
       max_tokens: 800,
@@ -78,11 +82,17 @@ async function processCharacterGeneration(db, cfg, log, taskID, req) {
     dramaId: req.drama_id,
     taskId: taskID,
   };
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'character.extraction.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'character.extraction.system',
+    'character.extraction.user',
+  ], {
     ...promptContext,
-    variables: { script_content: outlineText },
+    variablesByKey: {
+      'character.extraction.user': { script_content: outlineText },
+    },
   });
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.extraction.system', promptContext);
+  const userPrompt = resolvedPrompts.get('character.extraction.user').content;
+  const systemPrompt = resolvedPrompts.get('character.extraction.system').content;
   const temperature = req.temperature != null ? req.temperature : 0.7;
 
   // 固定 6000 tokens：足够约 10-12 个角色（每角色约 400-500 tokens）

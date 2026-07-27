@@ -12,9 +12,9 @@ function createApp() {
   const db = getDb(config.database);
   const { runMigrationsAndEnsure } = require('./db/migrate.js');
   runMigrationsAndEnsure(db);
-  const { ensurePromptCatalog } = require('./services/promptTemplateService');
-  const promptInit = ensurePromptCatalog(db);
-  console.log('Prompt catalog ready:', promptInit);
+  // Schema availability is stable after migrations; resolve it during startup so
+  // the first wardrobe request does not pay for information_schema round trips.
+  require('./services/characterLookService').hasWardrobeTables(db);
 
   // 厂商锁定模式：在迁移完成后同步 vendor_lock 配置
   const { applyVendorLock } = require('./services/aiConfigService');

@@ -318,12 +318,19 @@ function setupRouter(cfg, db, log) {
 
   // ---------- vision: 从图片提取描述（不依赖已有实体 ID）----------
   r.post('/extract-description-from-image', async (req, res) => {
-    const { image_url, entity_type, entity_name } = req.body || {};
+    const { image_url, entity_type, entity_name, drama_id } = req.body || {};
     if (!image_url) return response.badRequest(res, '缺少 image_url');
     if (!['character', 'scene', 'prop'].includes(entity_type)) return response.badRequest(res, 'entity_type 需为 character/scene/prop');
     try {
       const { extractDescriptionFromImage } = require('../services/aiClient');
-      const out = await extractDescriptionFromImage(db, log, entity_type, image_url, entity_name);
+      const out = await extractDescriptionFromImage(
+        db,
+        log,
+        entity_type,
+        image_url,
+        entity_name,
+        { dramaId: drama_id }
+      );
       if (!out.ok) return response.badRequest(res, out.error);
       response.success(res, { description: out.description });
     } catch (err) {
@@ -485,10 +492,7 @@ function setupRouter(cfg, db, log) {
   r.get('/settings/prompts', authService.requireSuperAdmin, prompts.listSystem);
   r.get('/settings/prompts/:key', authService.requireSuperAdmin, prompts.getSystem);
   r.put('/settings/prompts/:key', authService.requireSuperAdmin, prompts.updateSystem);
-  r.post('/settings/prompts/:key/reset-seed', authService.requireSuperAdmin, prompts.resetSystem);
   r.post('/settings/prompts/:key/preview', authService.requireSuperAdmin, prompts.previewSystem);
-  // 兼容旧前端：DELETE 等价于恢复系统出厂默认
-  r.delete('/settings/prompts/:key', authService.requireSuperAdmin, prompts.resetSystem);
 
   // ---------- scene model map ----------
   r.get('/scene-model-map', authService.requireSuperAdmin, sceneModelMap.list);

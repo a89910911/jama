@@ -100,25 +100,27 @@ function buildResourceExtractionPrompt(db, cfg, session, episode, body, taskId) 
   const script = clean(episode?.script_content || dramaService.getDramaById(db, session.drama_id)?.description);
   if (!script) throw new Error('当前项目没有可用于提取资源的剧本内容');
   const context = { cfg, dramaId: session.drama_id, taskId };
-  const characterSystem = promptTemplates.resolvePromptContent(
-    db,
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
     'character.extraction.system',
-    context
-  );
-  const characterUser = promptTemplates.resolvePromptContent(db, 'character.extraction.user', {
+    'character.extraction.user',
+    'prop.extraction.system',
+    'prop.extraction.user',
+    'scene.extraction.system',
+    'scene.extraction.user',
+  ], {
     ...context,
-    variables: { script_content: script },
+    variablesByKey: {
+      'character.extraction.user': { script_content: script },
+      'prop.extraction.user': { script_content: script },
+      'scene.extraction.user': { script_content: script },
+    },
   });
-  const propSystem = promptTemplates.resolvePromptContent(db, 'prop.extraction.system', context);
-  const propUser = promptTemplates.resolvePromptContent(db, 'prop.extraction.user', {
-    ...context,
-    variables: { script_content: script },
-  });
-  const sceneSystem = promptTemplates.resolvePromptContent(db, 'scene.extraction.system', context);
-  const sceneUser = promptTemplates.resolvePromptContent(db, 'scene.extraction.user', {
-    ...context,
-    variables: { script_content: script },
-  });
+  const characterSystem = resolvedPrompts.get('character.extraction.system').content;
+  const characterUser = resolvedPrompts.get('character.extraction.user').content;
+  const propSystem = resolvedPrompts.get('prop.extraction.system').content;
+  const propUser = resolvedPrompts.get('prop.extraction.user').content;
+  const sceneSystem = resolvedPrompts.get('scene.extraction.system').content;
+  const sceneUser = resolvedPrompts.get('scene.extraction.user').content;
   const scopes = detectResourceScopes(body.content);
   return [
     '请从剧本中提取可复用的角色、道具和场景资源，并严格按宿主提供的 JSON Schema 输出。',

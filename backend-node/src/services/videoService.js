@@ -55,13 +55,25 @@ function list(db, query) {
     sql += ' AND status = ?';
     params.push(query.status);
   }
-  const countRow = db.prepare('SELECT COUNT(*) as total ' + sql).get(...params);
-  const total = countRow.total || 0;
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(query.page_size, 10) || 20));
   const offset = (page - 1) * pageSize;
-  const rows = db.prepare('SELECT * ' + sql + ' ORDER BY created_at DESC LIMIT ? OFFSET ?').all(...params, pageSize, offset);
-  return { items: rows.map(rowToItem), total, page, pageSize };
+  const rows = db.prepare(`
+    SELECT page_rows.*, totals.total AS __total
+      FROM (SELECT COUNT(*) AS total ${sql}) totals
+      LEFT JOIN (
+        SELECT * ${sql}
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+      ) page_rows ON 1 = 1
+  `).all(...params, ...params, pageSize, offset);
+  const total = Number(rows[0]?.__total || 0);
+  return {
+    items: rows.filter((row) => row.id != null).map(rowToItem),
+    total,
+    page,
+    pageSize,
+  };
 }
 
 function rowToItem(r) {

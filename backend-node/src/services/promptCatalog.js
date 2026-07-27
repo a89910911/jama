@@ -1,10 +1,36 @@
 const promptI18n = require('./promptI18n');
-const { EXTRACT_PROMPTS } = require('./aiClient');
 const {
   getBusinessScene,
   getPromptBusinessSceneBinding,
   listBusinessScenes,
 } = require('./businessSceneRegistry');
+
+const VISION_EXTRACT_PROMPTS = {
+  character: {
+    system: `你是一位专业的影视/动漫角色美术设计师，正在处理一批角色造型参考素材。
+你收到的图片是用于角色设计的造型参考图（cosplay 造型图、服装搭配参考图或角色概念图），图中展示的是虚构角色的视觉造型，不涉及任何真实人物身份。
+
+你的任务：从视觉设计角度，提取图中可见的造型要素，撰写一份角色设定文案，供 AI 图像生成使用。
+
+请描述以下内容（只描述人物本身，忽略背景）：
+- 发型：发色（如深棕、黑色、浅金等）、发质感、发型款式（长短、层次、刘海、发尾走向）
+- 五官：脸型轮廓（瓜子/方/圆/椭圆）、眉形、眼型与眼距、鼻型、唇型与唇色、整体肤色
+- 体型：身形比例（高挑/中等/娇小）、体型特征（纤细/匀称/壮实）
+- 服装：款式、颜色、材质、层次搭配
+
+注意：如果你无法看清某些细节，请根据可见信息做合理推断，不要拒绝或道歉。
+输出要求：150-250字，直接输出描述，不加标题序号，像一份角色设定稿。`,
+    user: '这是角色"{{entity_name}}"的造型参考图，请提取图中的造型视觉要素，生成角色外貌设定文案（忽略背景）。',
+  },
+  scene: {
+    system: '你是一位专业的影视场景美术设计师，擅长将参考图转化为 AI 图像生成所需的场景描述。请用中文描述图中的视觉元素：地点类型、光线色调、时间氛围、环境细节、空间构成。80-150字，直接输出描述，不要加标题或前缀。',
+    user: '这是场景"{{entity_name}}"的参考图，请提取图中的场景视觉特征，生成可用于 AI 图生的场景描述文字。',
+  },
+  prop: {
+    system: '你是一位专业的道具/产品视觉描述师，擅长将参考图转化为 AI 图像生成所需的道具描述。请用中文描述图中物品的视觉特征：类型、形状、颜色、材质质感、细节特征。80-150字，直接输出描述，不要加标题或前缀。',
+    user: '这是道具"{{entity_name}}"的参考图，请提取图中物品的视觉特征，生成可用于 AI 图生的道具描述文字。',
+  },
+};
 
 const SENTINELS = {
   style: '__PROMPT_STYLE__',
@@ -646,10 +672,8 @@ function definition({
   variables = [],
   required = [],
   risk = 'normal',
-  project = true,
   description = '',
   source = '',
-  seedVersion = 1,
 }) {
   const canonicalContent =
     contents.default ??
@@ -669,12 +693,10 @@ function definition({
     scene_key: sceneKey,
     variable_schema: variableSchema(variables, required),
     risk_level: risk,
-    allow_project_override: project ? 1 : 0,
     source_ref: source,
     contents: [{
       locale: 'default',
       content: placeholders(canonicalContent),
-      seed_version: seedVersion,
     }],
   };
 }
@@ -778,7 +800,6 @@ function buildCatalog() {
     ].join('\n')),
     risk: 'high',
     source: 'codexIntentService.buildIntentPlanningPrompt',
-    seedVersion: 1,
   }));
   add(definition({
     key: 'assistant.intent.user',
@@ -802,7 +823,6 @@ function buildCatalog() {
     required: ['project_context', 'recent_messages', 'routing_evidence', 'user_message'],
     risk: 'high',
     source: 'codexIntentService.buildIntentPlanningPrompt',
-    seedVersion: 1,
   }));
   add(definition({
     key: 'assistant.chat.system',
@@ -818,7 +838,6 @@ function buildCatalog() {
       '如果用户想执行创作，说明需要明确的目标、范围或当前剧集；不要替用户假定覆盖操作。',
     ].join('\n')),
     source: 'codexChatService chat response',
-    seedVersion: 1,
   }));
   add(definition({
     key: 'assistant.chat.user',
@@ -830,7 +849,6 @@ function buildCatalog() {
     variables: ['conversation_context', 'user_message'],
     required: ['conversation_context', 'user_message'],
     source: 'codexChatService chat response',
-    seedVersion: 1,
   }));
 
   add(definition({
@@ -982,8 +1000,8 @@ function buildCatalog() {
       category: '参考图视觉识别',
       role: 'system',
       sceneKey,
-      contents: universal(EXTRACT_PROMPTS[kind].system),
-      source: `aiClient.EXTRACT_PROMPTS.${kind}.system`,
+      contents: universal(VISION_EXTRACT_PROMPTS[kind].system),
+      source: `promptCatalog.VISION_EXTRACT_PROMPTS.${kind}.system`,
     }));
     add(definition({
       key: `vision.${kind}.extract.user`,
@@ -991,9 +1009,9 @@ function buildCatalog() {
       category: '参考图视觉识别',
       role: 'user_template',
       sceneKey,
-      contents: universal(EXTRACT_PROMPTS[kind].user('{{entity_name}}')),
+      contents: universal(VISION_EXTRACT_PROMPTS[kind].user),
       variables: ['entity_name'],
-      source: `aiClient.EXTRACT_PROMPTS.${kind}.user`,
+      source: `promptCatalog.VISION_EXTRACT_PROMPTS.${kind}.user`,
     }));
   }
   add(definition({
@@ -1005,7 +1023,6 @@ function buildCatalog() {
     contents: universal(promptI18n.getIdentityAnchorsPrompt()),
     risk: 'high',
     source: 'promptI18n.getIdentityAnchorsPrompt',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'character.identity_anchors.user',
@@ -1017,7 +1034,6 @@ function buildCatalog() {
     variables: ['character_appearance'],
     required: ['character_appearance'],
     source: 'characterGenerationService.enrichIdentityAnchors',
-    seedVersion: 2,
   }));
 
   const storyboardRequirements = promptI18n.getStoryboardUserPromptSuffix(
@@ -1041,7 +1057,6 @@ function buildCatalog() {
     risk: 'high',
     source:
       'promptI18n.getStoryboardSystemPrompt + getStoryboardUserPromptSuffix + output contract',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.generation.user',
@@ -1108,7 +1123,6 @@ Break the script into storyboard shots by independent action units.
     variables: ['characters', 'scenes', 'props', 'script_content', 'extra_constraints'],
     required: ['script_content'],
     source: 'episodeStoryboardService.generateEpisodeStoryboards',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.generation.continuation',
@@ -1175,7 +1189,6 @@ Original script and task:
     ],
     risk: 'high',
     source: 'episodeStoryboardService.buildContinuationPrompt',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.generation.continuation_narration',
@@ -1251,7 +1264,6 @@ This overrides default rules such as one action per shot and no merging.
     required: ['storyboard_count', 'min_storyboard_count', 'max_storyboard_count'],
     risk: 'high',
     source: 'promptI18n.formatUserPrompt(storyboard_count_constraint)',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.generation.duration_constraint',
@@ -1513,7 +1525,6 @@ Follow the system instructions and return only the optimized layout_description 
     ],
     required: ['storyboard_number'],
     source: 'framePromptService.regenerateLayoutDescription',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.continuity_snapshot.system',
@@ -1524,7 +1535,6 @@ Follow the system instructions and return only the optimized layout_description 
     contents: universal(promptI18n.getContinuitySnapshotPrompt()),
     risk: 'high',
     source: 'promptI18n.getContinuitySnapshotPrompt',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.continuity_snapshot.user',
@@ -1536,7 +1546,6 @@ Follow the system instructions and return only the optimized layout_description 
     variables: ['image_prompt', 'assets'],
     required: ['image_prompt'],
     source: 'imageService/storyboards continuity snapshot',
-    seedVersion: 2,
   }));
 
   const characterImageLayout = promptI18n.getRoleGenerateImagePrompt();
@@ -1579,7 +1588,6 @@ Reiterate the same art style in every panel: {{style_en}} {{style_zh}}.`),
     required: ['generated_description'],
     source:
       'characterLibraryService.buildFourViewImagePrompt + promptI18n.getRoleGenerateImagePrompt',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'scene.image_four_view.final',
@@ -1651,7 +1659,6 @@ Reiterate the same art style: {{style_en}} {{style_zh}}. No people, no text.`),
       variables,
       required,
       source: 'asset prompt service user prompt',
-      seedVersion: 2,
     }));
   }
   add(definition({
@@ -1704,7 +1711,6 @@ REMINDER: Output one static, continuous, single-frame image prompt only. No came
     ],
     required: ['image_prompt'],
     source: 'imageService/storyboards image polish input',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'omni.segment.system',
@@ -1775,7 +1781,6 @@ CONTEXT_NEXT_SHORT: {{next_context}}
     ],
     required: ['duration_seconds', 'shot_pacing', 'line3_required', 'reference_rule', 'storyboard_fields'],
     source: 'universalSegmentPromptBundle',
-    seedVersion: 2,
   }));
   const omniFragmentDefs = [
     {
@@ -1920,7 +1925,6 @@ CURRENT_OMNI_DRAFT（必须在此基础上增强）:
     ],
     required: ['polish_pass_stamp', 'current_draft', 'base_omni_contract'],
     source: 'storyboards.polishUniversalSegmentStream',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'video.classic_polish.system',
@@ -1987,7 +1991,6 @@ STYLE_EN: {{style_en}}`),
     ],
     required: ['polish_pass_stamp', 'shot_sequence', 'video_ratio', 'auto_composed_prompt'],
     source: 'storyboards.polishClassicVideoPromptStream',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.image_prompt.compose',
@@ -1997,7 +2000,6 @@ STYLE_EN: {{style_en}}`),
     contents: universal('{{location}}，{{time}}，{{angle}}，{{initial_action}}，{{emotion}}，{{style_prompt}}，首帧静止画面'),
     variables: ['location', 'time', 'angle', 'initial_action', 'emotion', 'style_prompt'],
     source: 'episodeStoryboardService.generateImagePrompt',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'storyboard.video_prompt.compose',
@@ -2028,7 +2030,6 @@ STYLE_EN: {{style_en}}`),
     ],
     required: ['duration_seconds'],
     source: 'episodeStoryboardService.generateVideoPrompt',
-    seedVersion: 2,
   }));
 
   const technicalDefs = [
@@ -2084,12 +2085,6 @@ The output must visibly contain exactly nine equal cells.`, 'imageService.buildN
       required,
       risk: 'high',
       source,
-      seedVersion: key === 'image.reference_context.system'
-        ? 3
-        : key === 'image.quad_grid.layout'
-        || key === 'image.nine_grid.layout'
-        ? 2
-        : 1,
     }));
   }
   add(definition({
@@ -2180,7 +2175,6 @@ GENERATE ONE CONTINUOUS SINGLE-FRAME SCENE — NO GRID, SPLIT PANELS OR COLLAGE:
     ],
     required: ['character_name'],
     source: 'framePromptService.buildCharacterAnchorText',
-    seedVersion: 2,
   }));
   add(definition({
     key: 'frame.character_anchor.fallback',
@@ -2209,7 +2203,6 @@ GENERATE ONE CONTINUOUS SINGLE-FRAME SCENE — NO GRID, SPLIT PANELS OR COLLAGE:
       contents: universal(scaleContract),
       risk: 'high',
       source: `promptI18n.getRealisticPhysicalScaleContract (${frameKind} frame)`,
-      seedVersion: 2,
     }));
   }
 

@@ -28,8 +28,6 @@ const REQUIRED_TABLES = [
   'image_generations',
   'image_proxy_cache',
   'prompt_definitions',
-  'prompt_overrides',
-  'prompt_templates',
   'prop_libraries',
   'props',
   'scene_libraries',
@@ -215,6 +213,23 @@ class MysqlDatabase {
     Atomics.store(this.control, 0, 0);
     this.port.postMessage({ type: 'query', sql, values });
     return this.receive('query');
+  }
+
+  readBatch(statements) {
+    const requests = (Array.isArray(statements) ? statements : []).map((statement) => {
+      const sql = translateSqliteSqlToMysql(String(statement?.sql || '')).trim();
+      if (!sql || sql.includes(';')) {
+        throw new Error('MySQL read batch statements must be single, non-empty statements');
+      }
+      return {
+        sql,
+        values: normalizeValues(Array.isArray(statement?.values) ? statement.values : []),
+      };
+    });
+    if (!requests.length) return [];
+    Atomics.store(this.control, 0, 0);
+    this.port.postMessage({ type: 'readBatch', statements: requests });
+    return this.receive('read batch');
   }
 
   prepare(sql) {

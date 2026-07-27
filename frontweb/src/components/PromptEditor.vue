@@ -118,10 +118,10 @@
                         </el-tag>
                         <el-tag
                           v-else
-                          :type="item.system_content === item.seed_content ? 'info' : 'warning'"
+                          type="info"
                           size="small"
                         >
-                          {{ item.system_content === item.seed_content ? '出厂默认' : '已修改' }}
+                          系统提示词
                         </el-tag>
                       </span>
                       <i v-if="dirtyRows[rowKey(item)]" class="dirty-dot" />
@@ -197,7 +197,10 @@
             <span>当前来源</span>
             {{ isProjectMode ? (currentPrompt.effective_source === 'project' ? '项目覆盖' : '系统继承') : '系统' }}
           </div>
-          <div><span>版本</span>{{ activeVersion }}</div>
+          <div>
+            <span>更新时间</span>
+            {{ currentPrompt.project_updated_at || currentPrompt.system_updated_at || '-' }}
+          </div>
           <div><span>注入位置</span>{{ currentPrompt.injection_channel || roleLabel(currentPrompt.message_role) }}</div>
           <div><span>组合关系</span>{{ relationshipLabel }}</div>
         </div>
@@ -231,11 +234,12 @@
         <div class="actions">
           <el-button @click="preview">预览最终内容</el-button>
           <el-button
-            :disabled="isProjectMode ? currentPrompt.effective_source !== 'project' : currentPrompt.system_content === currentPrompt.seed_content"
+            v-if="isProjectMode"
+            :disabled="currentPrompt.effective_source !== 'project'"
             :loading="resetting"
             @click="resetPrompt"
           >
-            {{ isProjectMode ? '恢复继承系统' : '恢复出厂默认' }}
+            恢复继承系统
           </el-button>
           <el-button
             type="primary"
@@ -252,7 +256,7 @@
 
     <el-dialog v-model="previewVisible" title="最终提示词预览" width="70%">
       <div class="preview-meta">
-        来源：{{ previewData.scope || '-' }} · 版本：{{ previewData.version || '-' }}
+        来源：{{ previewData.scope || '-' }} · 更新时间：{{ previewData.updated_at || '-' }}
       </div>
       <pre class="preview-content">{{ previewData.content }}</pre>
     </el-dialog>
@@ -308,11 +312,6 @@ const parentPrompt = computed(() => {
 })
 const isHighRisk = computed(() => currentPrompt.value?.risk_level === 'high')
 const variables = computed(() => currentPrompt.value?.variable_schema?.variables || [])
-const activeVersion = computed(() => {
-  if (!currentPrompt.value) return '-'
-  if (isProjectMode.value && currentPrompt.value.project_version != null) return currentPrompt.value.project_version
-  return currentPrompt.value.system_version
-})
 const categoryOptions = computed(() => [...new Set(prompts.value.map((item) => item.category).filter(Boolean))])
 const subcategoryOptions = computed(() => {
   const scoped = filters.category
@@ -504,12 +503,10 @@ async function savePrompt() {
     if (isProjectMode.value) {
       await promptsAPI.updateProject(props.dramaId, item.prompt_key, {
         content: editContent.value,
-        version: item.project_version,
       })
     } else {
       await promptsAPI.update(item.prompt_key, {
         content: editContent.value,
-        version: item.system_version,
       })
     }
     ElMessage.success(isProjectMode.value ? '项目提示词已保存' : '系统提示词已保存')
@@ -521,20 +518,11 @@ async function savePrompt() {
 
 async function resetPrompt() {
   const item = currentPrompt.value
-  if (!item) return
-  const label = isProjectMode.value ? '删除项目覆盖并恢复继承系统提示词' : '恢复为出厂默认内容'
-  await ElMessageBox.confirm(`确认${label}？`, '恢复提示词', { type: 'warning' })
+  if (!item || !isProjectMode.value) return
+  await ElMessageBox.confirm('确认删除项目覆盖并恢复继承系统提示词？', '恢复提示词', { type: 'warning' })
   resetting.value = true
   try {
-    if (isProjectMode.value) {
-      await promptsAPI.deleteProject(props.dramaId, item.prompt_key, {
-        version: item.project_version,
-      })
-    } else {
-      await promptsAPI.reset(item.prompt_key, {
-        version: item.system_version,
-      })
-    }
+    await promptsAPI.deleteProject(props.dramaId, item.prompt_key)
     ElMessage.success('已恢复')
     await load()
   } finally {

@@ -48,6 +48,7 @@ async function openConnection() {
     dateStrings: true,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
+    multipleStatements: true,
   });
   next.on?.('error', markConnectionFault);
   await next.query("SET SESSION time_zone = '+00:00'");
@@ -112,6 +113,35 @@ async function executeQuery(sql, values) {
   }
 }
 
+async function executeReadBatch(statements) {
+  const requests = Array.isArray(statements) ? statements : [];
+  if (!requests.length) return [];
+  for (const request of requests) {
+    if (!isReadOnlySql(request?.sql) || String(request.sql).includes(';')) {
+      throw new Error('MySQL read batch only accepts single read-only statements');
+    }
+  }
+  const sql = requests.map((request) => request.sql).join(';\n');
+  const values = requests.flatMap((request) =>
+    Array.isArray(request.values) ? request.values : []
+  );
+
+  const run = async () => {
+    const [result] = await connection.query(sql, values);
+    lastActivityAt = Date.now();
+    return requests.length === 1 ? [result] : result;
+  };
+
+  await ensureLiveConnection();
+  try {
+    return await run();
+  } catch (error) {
+    if (!isRecoverableConnectionError(error)) throw error;
+    await reconnect();
+    return run();
+  }
+}
+
 async function initialize() {
   try {
     await openConnection();
@@ -125,6 +155,11 @@ async function initialize() {
     try {
       if (message.type === 'query') {
         const result = await executeQuery(message.sql, message.values);
+        respond({ ok: true, result });
+        return;
+      }
+      if (message.type === 'readBatch') {
+        const result = await executeReadBatch(message.statements);
         respond({ ok: true, result });
         return;
       }

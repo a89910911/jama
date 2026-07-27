@@ -65,17 +65,27 @@ function routes(db, cfg, log) {
   return {
     list: (req, res) => {
       try {
+        const characterId = Number(req.params.character_id);
+        const listOptions = {
+          includeArchived: req.query.include_archived === '1',
+        };
+        const currentLooks = characterLookService.listLooks(
+          db,
+          characterId,
+          listOptions
+        );
+        if (currentLooks.length) {
+          return response.success(res, { items: currentLooks });
+        }
         const character = db.prepare(
           'SELECT id, default_look_id FROM characters WHERE id = ? AND deleted_at IS NULL'
-        ).get(Number(req.params.character_id));
+        ).get(characterId);
         if (!character) return response.notFound(res, '角色不存在');
         if (!character.default_look_id) {
           characterLookService.ensureDefaultLook(db, character.id);
         }
         response.success(res, {
-          items: characterLookService.listLooks(db, character.id, {
-            includeArchived: req.query.include_archived === '1',
-          }),
+          items: characterLookService.listLooks(db, character.id, listOptions),
         });
       } catch (error) {
         log.error('character looks list', { error: error.message });
@@ -225,16 +235,11 @@ function routes(db, cfg, log) {
     episodeContext: (req, res) => {
       try {
         const episodeId = Number(req.params.episode_id);
-        const episode = db.prepare(
-          'SELECT id FROM episodes WHERE id = ? AND deleted_at IS NULL'
-        ).get(episodeId);
+        const episode = visualContextResolver.getEpisodeLookContext(db, episodeId);
         if (!episode) return response.notFound(res, '分集不存在');
-        const sceneBlocks = bindingService.listSceneBlocks(db, episodeId);
-        const bindings = bindingService.listBindingsForEpisode(db, episodeId);
-        const preflight = visualContextResolver.preflightEpisode(db, episodeId, {
-          sceneBlocks,
-          bindings,
-        });
+        const sceneBlocks = episode.scene_blocks;
+        const bindings = episode.bindings;
+        const preflight = episode.preflight;
         response.success(res, {
           episode_id: episodeId,
           scene_blocks: sceneBlocks,

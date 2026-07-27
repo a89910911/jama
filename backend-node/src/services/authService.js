@@ -7,6 +7,40 @@ const SUPER_ADMIN_ROLE = 'super_admin';
 const PASSWORD_ITERATIONS = 210000;
 const TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const JWT_SECRET_KEY = 'auth.jwt_secret';
+const SESSION_ACCOUNT_CACHE_TTL_MS = 30 * 1000;
+const authRuntimeByDb = new WeakMap();
+
+function authRuntime(db) {
+  if (!db || (typeof db !== 'object' && typeof db !== 'function')) return null;
+  let runtime = authRuntimeByDb.get(db);
+  if (!runtime) {
+    runtime = { secret: '', accounts: new Map() };
+    authRuntimeByDb.set(db, runtime);
+  }
+  return runtime;
+}
+
+function cacheAccount(db, row) {
+  const runtime = authRuntime(db);
+  if (runtime && row?.id != null) {
+    runtime.accounts.set(Number(row.id), { row, loadedAt: Date.now() });
+  }
+  return row;
+}
+
+function invalidateAccountCache(db, id) {
+  authRuntime(db)?.accounts.delete(Number(id));
+}
+
+function getSessionAccount(db, id) {
+  const accountId = Number(id);
+  const runtime = authRuntime(db);
+  const cached = runtime?.accounts.get(accountId);
+  if (cached && Date.now() - cached.loadedAt < SESSION_ACCOUNT_CACHE_TTL_MS) {
+    return cached.row;
+  }
+  return cacheAccount(db, getAccount(db, accountId));
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -115,9 +149,18 @@ function ensureAuthSystem(db) {
       VALUES (?, ?, ?)
     `, ['key'], ['value', 'updated_at'])).run(JWT_SECRET_KEY, secret, now);
   }
+  const runtime = authRuntime(db);
+  if (runtime) {
+    runtime.secret = secret;
+    runtime.accounts.clear();
+    const accounts = db.prepare('SELECT * FROM user_accounts').all();
+    for (const account of accounts) cacheAccount(db, account);
+  }
 }
 
 function getJwtSecret(db) {
+  const runtime = authRuntime(db);
+  if (runtime?.secret) return runtime.secret;
   let secret;
   try {
     secret = db
@@ -132,6 +175,7 @@ function getJwtSecret(db) {
       .prepare('SELECT value FROM global_settings WHERE key = ?')
       .get(JWT_SECRET_KEY).value;
   }
+  if (runtime) runtime.secret = secret;
   return secret;
 }
 
@@ -189,9 +233,7 @@ function createAccount(db, username, password) {
       (username, password_hash, role, is_active, token_version, created_at, updated_at)
     VALUES (?, ?, 'user', 1, 0, ?, ?)
   `).run(cleanUsername, hashPassword(cleanPassword), now, now);
-  return publicUser(
-    db.prepare('SELECT * FROM user_accounts WHERE id = ?').get(result.lastInsertRowid)
-  );
+  return publicUser(getAccount(db, result.lastInsertRowid));
 }
 
 function listAccounts(db) {
@@ -203,7 +245,10 @@ function listAccounts(db) {
 }
 
 function getAccount(db, id) {
-  return db.prepare('SELECT * FROM user_accounts WHERE id = ?').get(Number(id));
+  return cacheAccount(
+    db,
+    db.prepare('SELECT * FROM user_accounts WHERE id = ?').get(Number(id))
+  );
 }
 
 function assertMutableAccount(row) {
@@ -247,12 +292,14 @@ function changeOwnPassword(db, id, currentPassword, newPassword) {
     SET password_hash = ?, token_version = token_version + 1, updated_at = ?
     WHERE id = ?
   `).run(hashPassword(cleanPassword), nowIso(), row.id);
+  invalidateAccountCache(db, row.id);
 }
 
 function deleteAccount(db, id) {
   const row = getAccount(db, id);
   assertMutableAccount(row);
   db.prepare('DELETE FROM user_accounts WHERE id = ?').run(row.id);
+  invalidateAccountCache(db, row.id);
 }
 
 function tokenFromRequest(req) {
@@ -283,7 +330,7 @@ function authenticate(db) {
         algorithms: ['HS256'],
         issuer: 'local-mini-drama',
       });
-      const row = getAccount(db, payload.sub);
+      const row = getSessionAccount(db, payload.sub);
       if (
         !row ||
         !row.is_active ||

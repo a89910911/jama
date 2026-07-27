@@ -556,7 +556,12 @@ export function useProps(deps) {
     extractingPropAddDesc.value = true
     try {
       const entityName = addPropForm.value?.name || ''
-      const res = await uploadAPI.extractDescriptionFromImage('prop', refImage.dataUrl, entityName)
+      const res = await uploadAPI.extractDescriptionFromImage(
+        'prop',
+        refImage.dataUrl,
+        entityName,
+        dramaId.value
+      )
       if (res?.description) {
         addPropForm.value.description = res.description
         ElMessage.success('已从参考图提取特征描述')

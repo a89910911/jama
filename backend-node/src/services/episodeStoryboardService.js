@@ -1464,14 +1464,12 @@ function generateStoryboard(
   promptTemplates.attachTaskPromptSnapshot(db, task.id, {
     prompt_key: 'storyboard.generation.composed.system',
     scope: 'effective',
-    version: 1,
     content: systemPrompt,
     captured_at: new Date().toISOString(),
   });
   promptTemplates.attachTaskPromptSnapshot(db, task.id, {
     prompt_key: 'storyboard.generation.composed.user',
     scope: 'effective',
-    version: 1,
     content: userPrompt,
     captured_at: new Date().toISOString(),
   });

@@ -21,19 +21,23 @@ async function generateStory(db, log, body) {
     dramaId: body.drama_id,
     taskId: body._task_id,
   };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'story.generation.system', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'story.generation.system',
+    'story.generation.user',
+  ], {
     ...promptContext,
-    variables: { episode_count: episodeCount },
-  });
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'story.generation.user', {
-    ...promptContext,
-    variables: {
-      episode_count: episodeCount,
-      story_premise: premise,
-      story_style: style || '',
-      story_type: type || '',
+    variablesByKey: {
+      'story.generation.system': { episode_count: episodeCount },
+      'story.generation.user': {
+        episode_count: episodeCount,
+        story_premise: premise,
+        story_style: style || '',
+        story_type: type || '',
+      },
     },
   });
+  const systemPrompt = resolvedPrompts.get('story.generation.system').content;
+  const userPrompt = resolvedPrompts.get('story.generation.user').content;
 
   // 每集约 800 字（中文）≈ 1600 token，多留余量作为最低需求；
   // 不使用 max_tokens 硬上限，而是用 min_max_tokens 确保即使用户 AI 配置了小上限也能保证基本输出量。

@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 
 const { runMigrationsAndEnsure } = require('../src/db/migrate');
-const promptTemplates = require('../src/services/promptTemplateService');
 const episodeStoryboardService = require('../src/services/episodeStoryboardService');
 
 test('rebuilding a storyboard video prompt uses the persisted fields without undefined helpers', () => {
@@ -12,7 +11,6 @@ test('rebuilding a storyboard video prompt uses the persisted fields without und
 
   try {
     runMigrationsAndEnsure(db);
-    promptTemplates.ensurePromptCatalog(db);
 
     const now = new Date().toISOString();
     const dramaId = db.prepare(`

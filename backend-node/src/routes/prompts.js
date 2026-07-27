@@ -29,9 +29,6 @@ function sendError(res, err) {
     return response.notFound(res, err.message);
   }
   if (err?.code === 'FORBIDDEN') return response.forbidden(res, err.message);
-  if (err?.code === 'VERSION_CONFLICT') {
-    return response.error(res, 409, 'VERSION_CONFLICT', err.message);
-  }
   if (
     err?.code === 'PROMPT_VALIDATION_FAILED' ||
     err?.code === 'PROMPT_VARIABLE_MISSING' ||
@@ -104,26 +101,11 @@ function routes(db, log) {
         const row = promptTemplates.updateSystemPrompt(
           db,
           req.params.key,
-          req.body?.content,
-          req.body?.version
+          req.body?.content
         );
-        response.success(res, { ok: true, version: row.version });
+        response.success(res, { ok: true, updated_at: row.updated_at });
       } catch (err) {
         log.error('prompt update system', { key: req.params.key, error: err.message });
-        sendError(res, err);
-      }
-    },
-
-    resetSystem(req, res) {
-      try {
-        const row = promptTemplates.resetSystemPrompt(
-          db,
-          req.params.key,
-          req.body?.version
-        );
-        response.success(res, { ok: true, version: row.version, content: row.content });
-      } catch (err) {
-        log.error('prompt reset system', { key: req.params.key, error: err.message });
         sendError(res, err);
       }
     },
@@ -180,10 +162,9 @@ function routes(db, log) {
           db,
           req.params.drama_id,
           req.params.key,
-          req.body?.content,
-          req.body?.version
+          req.body?.content
         );
-        response.success(res, { ok: true, version: row.version });
+        response.success(res, { ok: true, updated_at: row.updated_at });
       } catch (err) {
         log.error('prompt update project', { key: req.params.key, error: err.message });
         sendError(res, err);
@@ -195,8 +176,7 @@ function routes(db, log) {
         const ok = promptTemplates.deleteProjectPrompt(
           db,
           req.params.drama_id,
-          req.params.key,
-          req.body?.version
+          req.params.key
         );
         response.success(res, { ok, effective_source: 'system' });
       } catch (err) {

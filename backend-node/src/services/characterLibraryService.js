@@ -611,11 +611,20 @@ async function generateCharacterPromptOnly(db, log, cfg, characterId, modelName,
   }
 
   const promptContext = { cfg: mergedCfg, characterId };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'character.image_polish.system',
+    'character.image_polish.user',
+  ], {
     ...promptContext,
-    variables: { entity_name: charRow.name || '', entity_description: appearanceText },
+    variablesByKey: {
+      'character.image_polish.user': {
+        entity_name: charRow.name || '',
+        entity_description: appearanceText,
+      },
+    },
   });
+  const systemPrompt = resolvedPrompts.get('character.image_polish.system').content;
+  const userPrompt = resolvedPrompts.get('character.image_polish.user').content;
 
   log.info('[四视图提示词] 开始生成', { character_id: characterId, name: charRow.name });
 
@@ -677,11 +686,20 @@ async function generateCharacterFourViewImage(db, log, cfg, characterId, modelNa
     }
 
     const promptContext = { cfg: mergedCfg, characterId };
-    const systemPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.system', promptContext);
-    const userPrompt = promptTemplates.resolvePromptContent(db, 'character.image_polish.user', {
+    const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+      'character.image_polish.system',
+      'character.image_polish.user',
+    ], {
       ...promptContext,
-      variables: { entity_name: charRow.name || '', entity_description: appearanceText },
+      variablesByKey: {
+        'character.image_polish.user': {
+          entity_name: charRow.name || '',
+          entity_description: appearanceText,
+        },
+      },
     });
+    const systemPrompt = resolvedPrompts.get('character.image_polish.system').content;
+    const userPrompt = resolvedPrompts.get('character.image_polish.user').content;
 
     log.info('[四视图] Step1 开始生成四视图提示词', { character_id: characterId, name: charRow.name });
 
@@ -745,13 +763,17 @@ async function extractAppearanceFromImage(db, log, cfg, characterId) {
   const imgSrc = resolveEntityImageSource(charRow, cfg);
   if (!imgSrc) return { ok: false, error: '该角色暂无参考图片，请先上传图片' };
 
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.system', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'vision.character.extract.system',
+    'vision.character.extract.user',
+  ], {
     characterId,
+    variablesByKey: {
+      'vision.character.extract.user': { entity_name: charRow.name || '' },
+    },
   });
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.character.extract.user', {
-    characterId,
-    variables: { entity_name: charRow.name || '' },
-  });
+  const systemPrompt = resolvedPrompts.get('vision.character.extract.system').content;
+  const userPrompt = resolvedPrompts.get('vision.character.extract.user').content;
 
   const { isRefusalResponse } = require('./aiClient');
   let appearance;

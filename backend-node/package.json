@@ -16,6 +16,7 @@
     "db:verify:mysql:prod": "node --env-file=.env.mysql.prod tools/migrate-sqlite-to-mysql.js --verify-only",
     "media:migrate-base64": "node --env-file=.env.mysql.test tools/migrate-base64-media.js",
     "media:migrate-base64:apply": "node --env-file=.env.mysql.test tools/migrate-base64-media.js --apply",
+    "prompts:verify": "node tools/verify-prompts.js",
     "migrate": "node --env-file=.env.mysql.test src/db/migrate.js",
     "migrate:07": "node scripts/run-migration-07.js"
   },

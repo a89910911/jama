@@ -202,15 +202,21 @@ async function generateScenePromptOnly(db, log, cfg, sceneId, modelName, style) 
   const fourViewCfg = mergedCfg;
 
   const promptContext = { cfg: fourViewCfg, sceneId };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'scene.image_four_view.system',
+    'scene.image.user',
+  ], {
     ...promptContext,
-    variables: {
-      entity_name: location || '未知场景',
-      entity_time: time,
-      entity_description: rawPrompt,
+    variablesByKey: {
+      'scene.image.user': {
+        entity_name: location || '未知场景',
+        entity_time: time,
+        entity_description: rawPrompt,
+      },
     },
   });
+  const systemPrompt = resolvedPrompts.get('scene.image_four_view.system').content;
+  const userPrompt = resolvedPrompts.get('scene.image.user').content;
 
   log.info('[场景提示词] Step1 开始生成四视图描述', { scene_id: sceneId, location, time });
 
@@ -260,15 +266,21 @@ async function generateSceneSinglePromptOnly(db, log, cfg, sceneId, modelName, s
   const rawPrompt = (sceneRow.prompt || '').trim();
 
   const promptContext = { cfg: mergedCfg, sceneId };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'scene.image_single.system',
+    'scene.image.user',
+  ], {
     ...promptContext,
-    variables: {
-      entity_name: location || '未知场景',
-      entity_time: time,
-      entity_description: rawPrompt,
+    variablesByKey: {
+      'scene.image.user': {
+        entity_name: location || '未知场景',
+        entity_time: time,
+        entity_description: rawPrompt,
+      },
     },
   });
+  const systemPrompt = resolvedPrompts.get('scene.image_single.system').content;
+  const userPrompt = resolvedPrompts.get('scene.image.user').content;
 
   log.info('[场景单图提示词] Step1 开始生成单图描述', { scene_id: sceneId, location, time });
 
@@ -327,15 +339,21 @@ async function generateSceneFourViewImage(db, log, cfg, sceneId, modelName, styl
     const inputText = [location, time, rawPrompt].filter(Boolean).join('，') || '未知场景';
 
     const promptContext = { cfg: mergedCfg, sceneId };
-    const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_four_view.system', promptContext);
-    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
+    const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+      'scene.image_four_view.system',
+      'scene.image.user',
+    ], {
       ...promptContext,
-      variables: {
-        entity_name: location || '未知场景',
-        entity_time: time,
-        entity_description: rawPrompt,
+      variablesByKey: {
+        'scene.image.user': {
+          entity_name: location || '未知场景',
+          entity_time: time,
+          entity_description: rawPrompt,
+        },
       },
     });
+    const systemPrompt = resolvedPrompts.get('scene.image_four_view.system').content;
+    const userMsg = resolvedPrompts.get('scene.image.user').content;
 
     log.info('[场景四视图] Step1 开始生成提示词', { scene_id: sceneId, location, time });
 
@@ -409,15 +427,21 @@ async function generateSceneSingleImage(db, log, cfg, sceneId, modelName, style)
     const inputText = [location, time, rawPrompt].filter(Boolean).join('，') || '未知场景';
 
     const promptContext = { cfg: mergedCfg, sceneId };
-    const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.image_single.system', promptContext);
-    const userMsg = promptTemplates.resolvePromptContent(db, 'scene.image.user', {
+    const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+      'scene.image_single.system',
+      'scene.image.user',
+    ], {
       ...promptContext,
-      variables: {
-        entity_name: location || '未知场景',
-        entity_time: time,
-        entity_description: rawPrompt,
+      variablesByKey: {
+        'scene.image.user': {
+          entity_name: location || '未知场景',
+          entity_time: time,
+          entity_description: rawPrompt,
+        },
       },
     });
+    const systemPrompt = resolvedPrompts.get('scene.image_single.system').content;
+    const userMsg = resolvedPrompts.get('scene.image.user').content;
 
     log.info('[场景单图] Step1 开始生成提示词', { scene_id: sceneId, location, time });
 
@@ -476,13 +500,17 @@ async function extractSceneFromImage(db, log, cfg, sceneId) {
   if (!imgSrc) return { ok: false, error: '该场景暂无参考图片，请先上传图片' };
 
   const locationLabel = [sceneRow.location, sceneRow.time].filter(Boolean).join(' · ') || '场景';
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.system', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'vision.scene.extract.system',
+    'vision.scene.extract.user',
+  ], {
     sceneId,
+    variablesByKey: {
+      'vision.scene.extract.user': { entity_name: locationLabel },
+    },
   });
-  const userPrompt = promptTemplates.resolvePromptContent(db, 'vision.scene.extract.user', {
-    sceneId,
-    variables: { entity_name: locationLabel },
-  });
+  const systemPrompt = resolvedPrompts.get('vision.scene.extract.system').content;
+  const userPrompt = resolvedPrompts.get('vision.scene.extract.user').content;
 
   let prompt;
   try {

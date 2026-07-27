@@ -149,6 +149,11 @@ function runMigrations(database, options = {}) {
     } else {
       statements.forEach((stmt, i) => runOne(database, stmt, file, i));
     }
+    if (migration.version === 38) {
+      const promptTemplates = require('../services/promptTemplateService');
+      const installed = promptTemplates.installPromptCatalog(database);
+      console.log('Installed current prompt catalog:', installed);
+    }
     recordMigration(database, migration);
     console.log('Recorded migration:', `${migration.version} ${file}`);
   }
@@ -231,15 +236,6 @@ function ensureCharacterLookMysqlTextCapacity(database) {
  * 所以原 schema 中 NOT NULL 的列在这里用 DEFAULT 兜底。
  */
 function ensureAllColumns(database) {
-  // --- prompt_definitions ---
-  ensureColumns(database, 'prompt_definitions', [
-    { name: 'content_type',   type: 'TEXT NOT NULL DEFAULT \'user_template\'' },
-    { name: 'subcategory',    type: 'TEXT NOT NULL DEFAULT \'\'' },
-    { name: 'detail_category', type: 'TEXT NOT NULL DEFAULT \'\'' },
-    { name: 'workflow_stage', type: 'TEXT NOT NULL DEFAULT \'\'' },
-    { name: 'workflow_order', type: 'INTEGER NOT NULL DEFAULT 0' },
-  ]);
-
   // --- dramas ---
   ensureColumns(database, 'dramas', [
     { name: 'title',          type: 'TEXT NOT NULL DEFAULT \'\'' },

@@ -50,16 +50,24 @@ function modelFromDb(val) {
 
 /** 每种服务类型只保留一个默认：若有多个 is_default=1，只保留优先级最高（同优先级取 id 最小）的那条 */
 function ensureSingleDefaultPerType(db) {
-  const types = ['text', 'image', 'storyboard_image', 'video', 'tts', 'jimeng2_character_auth', 'model_ark_asset'];
-  for (const st of types) {
-    const rows = db.prepare(
-      'SELECT id, priority FROM ai_service_configs WHERE deleted_at IS NULL AND service_type = ? AND is_default = 1 ORDER BY priority DESC, id ASC'
-    ).all(st);
+  const rows = db.prepare(`
+    SELECT id, service_type, priority
+    FROM ai_service_configs
+    WHERE deleted_at IS NULL AND is_default = 1
+    ORDER BY service_type, priority DESC, id ASC
+  `).all();
+  const byType = new Map();
+  for (const row of rows) {
+    if (!byType.has(row.service_type)) byType.set(row.service_type, []);
+    byType.get(row.service_type).push(row);
+  }
+  for (const [serviceType, defaults] of byType) {
+    const rows = defaults;
     if (rows.length <= 1) continue;
     const keepId = rows[0].id;
     db.prepare(
       'UPDATE ai_service_configs SET is_default = 0 WHERE deleted_at IS NULL AND service_type = ? AND id != ?'
-    ).run(st, keepId);
+    ).run(serviceType, keepId);
   }
 }
 

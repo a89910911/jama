@@ -29,6 +29,16 @@ function listCandidateConfigs(db, serviceType) {
   return configs;
 }
 
+function candidateConfigsFromRows(configs, serviceType) {
+  const direct = configs.filter(
+    (config) => config.is_active && config.service_type === serviceType
+  );
+  if (direct.length || serviceType !== 'storyboard_image') return direct;
+  return configs.filter(
+    (config) => config.is_active && config.service_type === 'image'
+  );
+}
+
 function chooseDefaultConfig(configs, preferredModel) {
   if (preferredModel) {
     const matched = configs.find((config) => configModels(config).includes(preferredModel));
@@ -85,8 +95,29 @@ function promptPresentationByKey() {
 
 function buildBusinessSceneOverview(db) {
   const presentation = promptPresentationByKey();
+  let mapRows = [];
+  let configs = [];
+  try {
+    mapRows = db.prepare('SELECT * FROM ai_model_map').all();
+  } catch (_) {}
+  try {
+    configs = aiConfigService.listConfigs(db).filter((config) => config.is_active);
+  } catch (_) {}
+  const mapByKey = new Map(mapRows.map((row) => [row.key, row]));
+  const configById = new Map(configs.map((config) => [Number(config.id), config]));
   return listBusinessScenes().map((scene) => {
-    const selection = resolveSceneModelSelection(db, scene.key);
+    const row = mapByKey.get(scene.key) || null;
+    const candidates = candidateConfigsFromRows(configs, scene.service_type);
+    let config = row?.config_id ? configById.get(Number(row.config_id)) || null : null;
+    if (!configSupportsService(config, scene.service_type)) config = null;
+    if (!config) config = chooseDefaultConfig(candidates, null);
+    const modelOverride = row?.model_override || null;
+    const selection = {
+      row,
+      config,
+      model: effectiveModel(config, null, modelOverride),
+      mapping_source: row && (row.config_id || row.model_override) ? 'scene' : 'default',
+    };
     const components = scene.prompt_keys.map((promptKey, index) => {
       const item = presentation.get(promptKey);
       return {

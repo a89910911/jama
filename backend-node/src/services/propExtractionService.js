@@ -46,11 +46,17 @@ async function processPropExtraction(db, log, taskId, episodeId) {
     dramaId: episode.drama_id,
     taskId,
   };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'prop.extraction.system', promptContext);
-  const prompt = promptTemplates.resolvePromptContent(db, 'prop.extraction.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'prop.extraction.system',
+    'prop.extraction.user',
+  ], {
     ...promptContext,
-    variables: { script_content: String(scriptContent).trim() },
+    variablesByKey: {
+      'prop.extraction.user': { script_content: String(scriptContent).trim() },
+    },
   });
+  const systemPrompt = resolvedPrompts.get('prop.extraction.system').content;
+  const prompt = resolvedPrompts.get('prop.extraction.user').content;
 
   let response;
   try {

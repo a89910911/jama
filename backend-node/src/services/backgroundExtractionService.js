@@ -27,11 +27,17 @@ async function translatePromptToChinese(db, log, model, prompt, dramaId, taskId)
 async function extractBackgroundsFromScript(db, cfg, log, scriptContent, dramaId, model, style, taskId) {
   if (!scriptContent || !scriptContent.trim()) return [];
   const promptContext = { cfg, dramaId, taskId };
-  const systemPrompt = promptTemplates.resolvePromptContent(db, 'scene.extraction.system', promptContext);
-  const prompt = promptTemplates.resolvePromptContent(db, 'scene.extraction.user', {
+  const resolvedPrompts = promptTemplates.resolvePrompts(db, [
+    'scene.extraction.system',
+    'scene.extraction.user',
+  ], {
     ...promptContext,
-    variables: { script_content: scriptContent },
+    variablesByKey: {
+      'scene.extraction.user': { script_content: scriptContent },
+    },
   });
+  const systemPrompt = resolvedPrompts.get('scene.extraction.system').content;
+  const prompt = resolvedPrompts.get('scene.extraction.user').content;
   const text = await aiClient.generateText(db, log, 'text', prompt, systemPrompt, { scene_key: 'scene_extraction', model: model || undefined, temperature: 0.7 });
   let list = [];
   try {
