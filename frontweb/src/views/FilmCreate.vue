@@ -43,7 +43,7 @@
         <div class="header-actions">
           <el-button v-if="dramaId" class="btn-project-prompts" @click="openProjectPrompts">
             <el-icon><Document /></el-icon>
-            项目提示词
+            项目管线
           </el-button>
           <el-button v-if="dramaId" class="btn-ai-records" @click="openAiRecords">
             <el-icon><DataAnalysis /></el-icon>

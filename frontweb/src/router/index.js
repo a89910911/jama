@@ -32,7 +32,7 @@ const router = createRouter({
       path: '/film/:id/prompts',
       name: 'project-prompts',
       component: () => import('@/views/ProjectPrompts.vue'),
-      meta: { title: '项目提示词' }
+      meta: { title: '项目管线' }
     },
     {
       path: '/film/:id/ai-records',

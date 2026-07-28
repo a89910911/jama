@@ -75,7 +75,7 @@
 
 - 创建异步任务时记录提示词 key、来源层级、版本、渲染内容和捕获时间。
 - 分镜异步流程在任务创建阶段固定需要的生成、续写和图片/视频拼装模板。
-- 后续修改系统或项目提示词不会改变已创建任务的提示词快照。
+- 后续修改系统或项目管线不会改变已创建任务的提示词快照。
 
 ### 3.4 业务场景模型路由
 
@@ -94,7 +94,7 @@
 - 支持关键词、分类、场景和角色筛选。
 - 支持系统编辑、草稿预览、恢复出厂默认、变量说明和来源/版本展示。
 - 所有模板均直接允许编辑和保存，并持续显示指定风险警告，不再弹出风险确认。
-- 项目模块增加“项目提示词”入口，展示项目覆盖或系统继承来源。
+- 项目模块增加“项目管线”入口，展示项目覆盖或系统继承来源。
 - 项目可以创建/编辑覆盖，也可以删除覆盖并立即恢复系统继承。
 - 切换提示词或刷新时提示未保存修改；预览使用当前编辑草稿，不会提前写库。
 
@@ -110,7 +110,7 @@
 | 业务场景 API | `backend-node/src/routes/sceneModelMap.js` |
 | 系统/项目编辑器 | `frontweb/src/components/PromptEditor.vue` |
 | 业务场景配置 | `frontweb/src/components/SceneModelMap.vue` |
-| 项目提示词入口 | `frontweb/src/views/FilmCreate.vue` |
+| 项目管线入口 | `frontweb/src/views/FilmCreate.vue` |
 | 后端专项测试 | `backend-node/test/promptTemplateService.test.js` |
 | 前端专项测试 | `frontweb/test/promptTemplateUi.test.js` |
 

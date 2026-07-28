@@ -402,7 +402,7 @@ function buildStoryPrompt(db, session, episode, body, taskId, intent) {
     operation,
     `【识别出的创作参数】标题：${inferred.title || drama?.title || '未指定'}；题材类型：${storyType || '由内容推断'}；故事风格：${storyStyle || '由内容推断'}；生成集数：${episodeCount}`,
     episode?.script_content ? `【当前剧本】\n${String(episode.script_content).slice(0, 20_000)}` : '',
-    '【项目提示词接口生成的用户提示词】',
+    '【项目管线接口生成的用户提示词】',
     userPrompt,
     '【用户原始消息】',
     premise,

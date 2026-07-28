@@ -6,7 +6,7 @@
           <BrandLogo />
         </h1>
         <div class="page-heading">
-          <span class="page-title">项目提示词</span>
+          <span class="page-title">项目管线</span>
           <span v-if="projectTitle" class="project-title">{{ projectTitle }}</span>
         </div>
         <el-button class="btn-back" @click="goBack">

@@ -133,12 +133,12 @@
           <AiRequests scope="system" embedded />
         </div>
       </el-tab-pane>
-      <el-tab-pane label="高级设置（提示词）" name="prompts">
+      <el-tab-pane label="管线设置" name="prompts">
         <div class="tab-content">
           <PromptEditor />
         </div>
       </el-tab-pane>
-      <el-tab-pane label="高级设置（业务场景）" name="sceneModelMap">
+      <el-tab-pane label="业务场景" name="sceneModelMap">
         <div class="tab-content">
           <SceneModelMap />
         </div>

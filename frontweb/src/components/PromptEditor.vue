@@ -1,7 +1,7 @@
 <template>
   <div class="prompt-editor">
     <el-alert
-      :title="isProjectMode ? '项目提示词优先于系统提示词；删除项目覆盖后会自动恢复使用系统提示词。' : '这里展示系统内全部提示词，包括图片、视频、负向提示词和技术模板。'"
+      :title="isProjectMode ? '项目管线优先于系统提示词；删除项目覆盖后会自动恢复使用系统提示词。' : '这里展示系统内全部提示词，包括图片、视频、负向提示词和技术模板。'"
       type="info"
       :closable="false"
       show-icon
@@ -509,7 +509,7 @@ async function savePrompt() {
         content: editContent.value,
       })
     }
-    ElMessage.success(isProjectMode.value ? '项目提示词已保存' : '系统提示词已保存')
+    ElMessage.success(isProjectMode.value ? '项目管线已保存' : '系统提示词已保存')
     await load()
   } finally {
     saving.value = false
