@@ -67,14 +67,14 @@ watch(projectId, async (id) => {
   min-height: 100vh;
   background: #0f0f12;
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(120, 60, 220, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(201, 106, 58, 0.18) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 80% 110%, rgba(60, 100, 220, 0.12) 0%, transparent 60%);
 }
 html.light .project-prompts {
-  background: #f5f3ff;
+  background: #faf9f6;
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(139, 92, 246, 0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
+    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(201, 106, 58, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(90, 107, 184, 0.08) 0%, transparent 60%);
 }
 .header {
   position: sticky;
@@ -83,13 +83,13 @@ html.light .project-prompts {
   background: rgba(18, 18, 22, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+  border-bottom: 1px solid rgba(201, 106, 58, 0.18);
   box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
 }
 html.light .header {
   background: rgba(255, 255, 255, 0.85);
-  border-bottom-color: rgba(139, 92, 246, 0.2);
-  box-shadow: 0 2px 16px rgba(139, 92, 246, 0.08);
+  border-bottom-color: rgba(201, 106, 58, 0.2);
+  box-shadow: 0 2px 16px rgba(201, 106, 58, 0.08);
 }
 .header-inner {
   max-width: 1600px;
@@ -109,12 +109,12 @@ html.light .header {
   transition: filter 0.3s;
 }
 .logo:hover {
-  filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+  filter: drop-shadow(0 0 10px rgba(201, 106, 58, 0.5));
 }
 .logo-main {
   font-size: 1.1rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #c4b5fd 0%, #818cf8 50%, #a78bfa 100%);
+  background: linear-gradient(135deg, #f1c2a8 0%, #6f7fc2 50%, #e8a07a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -127,7 +127,7 @@ html.light .header {
   -webkit-text-fill-color: #6d6d7a;
 }
 html.light .logo-main {
-  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  background: linear-gradient(135deg, #c96a3a, #5a6bb8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -177,8 +177,8 @@ html.light .project-title { color: #9ca3af; }
 }
 html.light .main {
   background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(139, 92, 246, 0.15);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.08);
+  border-color: rgba(201, 106, 58, 0.15);
+  box-shadow: 0 4px 20px rgba(201, 106, 58, 0.08);
 }
 @media (max-width: 720px) {
   .header-inner { padding: 10px 14px; }

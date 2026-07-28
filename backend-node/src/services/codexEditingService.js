@@ -146,7 +146,7 @@ function buildResourcePromptOptimizationPrompt(db, session, episode, targets, re
     rules: rules[target.targetType],
   }));
   return [
-    '你正在优化 LocalMiniDrama 项目资源的最终图片生成提示词，只生成文字，不生成图片。',
+    '你正在优化 JamaAI 项目资源的最终图片生成提示词，只生成文字，不生成图片。',
     '每个 target_id 必须原样返回一次，不得遗漏、重复或增加目标。',
     'optimized_prompt 必须可直接交给图片模型，具体、无歧义，并严格保持现有角色外貌、道具结构或场景设定。',
     '每个提示词只能描述一个独立资源，禁止拼贴、宫格、设定表、文字、标题、水印、logo 和品牌标志。',
@@ -323,7 +323,7 @@ function buildStoryboardDetailsPrompt(db, session, episode, targets, fields, req
   const drama = dramaService.getDramaById(db, session.drama_id);
   const payload = targets.map(serializeStoryboardTarget);
   return [
-    '你正在补充或优化 LocalMiniDrama 的结构化分镜字段，只生成文字，不生成图片。',
+    '你正在补充或优化 JamaAI 的结构化分镜字段，只生成文字，不生成图片。',
     `本次只更新字段：${fields.join(', ')}。每个 target_id 必须原样返回一次。`,
     '必须忠于当前剧本和已有分镜事实，不得新增未出现的角色、道具、地点或剧情。',
     'description 要具体说明单一画面；layout_description 要明确主体位置、朝向、前中后景和关键道具位置。',
@@ -345,7 +345,7 @@ function buildStoryboardPromptOptimizationPrompt(db, session, episode, targets, 
     : parseJson(drama?.metadata, {});
   const payload = targets.map(serializeStoryboardTarget);
   return [
-    '你正在生成或优化 LocalMiniDrama 分镜编辑区的提示词，只生成文字，不生成图片。',
+    '你正在生成或优化 JamaAI 分镜编辑区的提示词，只生成文字，不生成图片。',
     `本次只更新字段：${fields.join(', ')}。每个 target_id 必须原样返回一次。`,
     'image_prompt：中文原始画面提示词，描述单一首帧的主体、环境、构图、光线和风格，不写连续动作。',
     'polished_prompt：可直接用于图片生成的完整通用优化提示词，保持角色、场景、道具设定一致，只生成一张独立影视首帧，禁止拼贴、宫格、文字、水印和 logo。',

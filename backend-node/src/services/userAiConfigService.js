@@ -1,7 +1,6 @@
 'use strict';
 
 const { forceVideoAudioSettings } = require('./videoAudioPolicy');
-const { normalizeMaterialHubToken } = require('./jimengMaterialHubService');
 const { insertIgnoreSql, upsertSql } = require('../db/portableSql');
 
 const SERVICE_TYPES = new Set([
@@ -10,8 +9,6 @@ const SERVICE_TYPES = new Set([
   'storyboard_image',
   'video',
   'tts',
-  'jimeng2_character_auth',
-  'model_ark_asset',
 ]);
 
 const SECRET_SETTING_KEYS = new Set([
@@ -173,13 +170,15 @@ function baseSelect() {
 
 function rowToRuntimeConfig(row) {
   if (!row) return null;
+  const serviceType = String(row.service_type || '').trim().toLowerCase();
+  if (!SERVICE_TYPES.has(serviceType)) return null;
   const credentials = parseJsonObject(row.credentials_json);
   const publicSettings = parseJsonObject(row.settings_json);
   const runtimeSettings = { ...publicSettings, ...credentials };
   return {
     id: Number(row.id),
     user_id: Number(row.user_id),
-    service_type: row.service_type,
+    service_type: serviceType,
     name: row.name || '',
     provider: row.provider || '',
     api_protocol: row.api_protocol || '',
@@ -195,7 +194,7 @@ function rowToRuntimeConfig(row) {
     is_active: row.is_active == null ? true : !!row.is_active,
     template_key: row.template_key || null,
     settings: forceVideoAudioSettings(
-      row.service_type,
+      serviceType,
       Object.keys(runtimeSettings).length ? JSON.stringify(runtimeSettings) : null
     ),
     public_settings: Object.keys(publicSettings).length ? JSON.stringify(publicSettings) : null,
@@ -235,7 +234,7 @@ function listRuntimeConfigs(db, userIdValue, serviceTypeValue) {
     `${baseSelect()}${where}
      ORDER BY is_default DESC, c.priority DESC, c.created_at DESC, c.id ASC`
   ).all(...params);
-  return rows.map(rowToRuntimeConfig);
+  return rows.map(rowToRuntimeConfig).filter(Boolean);
 }
 
 function listConfigs(db, userId, serviceType) {
@@ -318,9 +317,6 @@ function chooseReplacementDefault(db, userId, serviceType, excludedId, now) {
 }
 
 function normalizeApiKey(serviceType, value) {
-  if (serviceType === 'jimeng2_character_auth') {
-    return normalizeMaterialHubToken(value || '');
-  }
   return value == null ? '' : String(value);
 }
 
@@ -583,7 +579,7 @@ function migrateLegacyConfigs(db, log, userIdValue) {
   try {
     rows = db.prepare(
       'SELECT * FROM ai_service_configs WHERE deleted_at IS NULL ORDER BY id ASC'
-    ).all();
+    ).all().filter((row) => SERVICE_TYPES.has(String(row.service_type || '').trim().toLowerCase()));
   } catch (_) {
     return { migrated: 0, scene_maps: 0, skipped: true };
   }

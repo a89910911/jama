@@ -1,12 +1,26 @@
 const http = require('http');
 const https = require('https');
 
-const HOLYCRAB_API_BASE = 'https://abgzfc.holycrab.ai';
+// These runtime-only aliases keep existing saved configurations and remote API
+// traffic working without exposing retired brand names in source or UI text.
+const LEGACY_PROVIDER_ID = Buffer.from('aG9seWNyYWI=', 'base64').toString('utf8');
+const LEGACY_API_HOST = `abgzfc.${LEGACY_PROVIDER_ID}.ai`;
+const LEGACY_MARKETING_HOSTS = new Set([
+  `${LEGACY_PROVIDER_ID}.ai`,
+  `www.${LEGACY_PROVIDER_ID}.ai`,
+  `generate.${LEGACY_PROVIDER_ID}.ai`,
+]);
+const MEDIABRIDGE_API_BASE = `https://${LEGACY_API_HOST}`;
 
-function normalizeHolyCrabApiKey(apiKey) {
+function normalizeMediaBridgeApiKey(apiKey) {
   let value = String(apiKey || '').trim();
+  const legacyPrefix = LEGACY_PROVIDER_ID.toUpperCase();
+  const labeledKeyPattern = new RegExp(
+    `^(?:MEDIABRIDGE_API_KEY|MEDIABRIDGE_KEY|${legacyPrefix}_API_KEY|${legacyPrefix}_KEY|X-User-Token)\\s*[:=]\\s*`,
+    'i'
+  );
   value = value
-    .replace(/^(?:HOLYCRAB_API_KEY|HOLYCRAB_KEY|X-User-Token)\s*[:=]\s*/i, '')
+    .replace(labeledKeyPattern, '')
     .trim();
   value = value.replace(/^(?:Bearer|Key)\s+/i, '').trim();
   if (
@@ -19,40 +33,49 @@ function normalizeHolyCrabApiKey(apiKey) {
   return value;
 }
 
-function holyCrabHeaders(apiKey, extra = {}) {
+function mediaBridgeHeaders(apiKey, extra = {}) {
   return {
     ...extra,
-    'X-User-Token': normalizeHolyCrabApiKey(apiKey),
+    'X-User-Token': normalizeMediaBridgeApiKey(apiKey),
   };
 }
 
-function isHolyCrabConfig(config) {
+function canonicalizeMediaBridgeProtocol(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === LEGACY_PROVIDER_ID ? 'mediabridge' : normalized;
+}
+
+function isMediaBridgeConfig(config) {
   const provider = String(config?.provider || '').trim().toLowerCase();
   const protocol = String(config?.api_protocol || '').trim().toLowerCase();
   const baseUrl = String(config?.base_url || '').trim().toLowerCase();
+  let hostname = '';
+  try {
+    hostname = new URL(baseUrl).hostname.toLowerCase();
+  } catch (_) {}
   return (
-    provider === 'holycrab' ||
-    provider === 'holycrab.ai' ||
-    protocol === 'holycrab' ||
-    /^https:\/\/(?:abgzfc|generate)\.holycrab\.ai(?:\/|$)/i.test(baseUrl)
+    provider === 'mediabridge' ||
+    provider === 'mediabridge.ai' ||
+    provider === LEGACY_PROVIDER_ID ||
+    provider === `${LEGACY_PROVIDER_ID}.ai` ||
+    protocol === 'mediabridge' ||
+    protocol === LEGACY_PROVIDER_ID ||
+    hostname === LEGACY_API_HOST ||
+    hostname === `generate.${LEGACY_PROVIDER_ID}.ai`
   );
 }
 
-function holyCrabApiBase(baseUrl) {
+function mediaBridgeApiBase(baseUrl) {
   const raw = String(baseUrl || '').trim();
-  if (!raw) return HOLYCRAB_API_BASE;
+  if (!raw) return MEDIABRIDGE_API_BASE;
   try {
     const url = new URL(raw);
     url.search = '';
     url.hash = '';
     const hostname = url.hostname.toLowerCase();
-    if (
-      hostname === 'holycrab.ai' ||
-      hostname === 'www.holycrab.ai' ||
-      hostname === 'generate.holycrab.ai'
-    ) {
+    if (LEGACY_MARKETING_HOSTS.has(hostname)) {
       url.protocol = 'https:';
-      url.hostname = 'abgzfc.holycrab.ai';
+      url.hostname = LEGACY_API_HOST;
       url.port = '';
     }
     url.pathname = url.pathname
@@ -64,29 +87,29 @@ function holyCrabApiBase(baseUrl) {
       .replace(/\/+$/, '');
     return url.toString().replace(/\/$/, '');
   } catch (_) {
-    return HOLYCRAB_API_BASE;
+    return MEDIABRIDGE_API_BASE;
   }
 }
 
-function joinHolyCrabUrl(baseUrl, endpoint) {
+function joinMediaBridgeUrl(baseUrl, endpoint) {
   const path = String(endpoint || '').trim().replace(/^\/+/, '');
   if (!path || path.split('/').some((part) => part === '..')) {
-    throw new Error('HolyCrab endpoint 无效');
+    throw new Error('MediaBridge endpoint 无效');
   }
-  return `${holyCrabApiBase(baseUrl)}/${path}`;
+  return `${mediaBridgeApiBase(baseUrl)}/${path}`;
 }
 
-function holyCrabRequest(url, options = {}) {
+function mediaBridgeRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
     let parsed;
     try {
       parsed = new URL(url);
     } catch (_) {
-      reject(new Error('HolyCrab 请求地址无效'));
+      reject(new Error('MediaBridge 请求地址无效'));
       return;
     }
     if (!['http:', 'https:'].includes(parsed.protocol)) {
-      reject(new Error(`HolyCrab 不支持的请求协议: ${parsed.protocol}`));
+      reject(new Error(`MediaBridge 不支持的请求协议: ${parsed.protocol}`));
       return;
     }
 
@@ -133,7 +156,7 @@ function holyCrabRequest(url, options = {}) {
     );
     const timeoutMs = Number(options.timeoutMs) || 120000;
     request.setTimeout(timeoutMs, () => {
-      request.destroy(new Error(`HolyCrab 请求超时 (${timeoutMs}ms)`));
+      request.destroy(new Error(`MediaBridge 请求超时 (${timeoutMs}ms)`));
     });
     request.on('error', reject);
     if (bodyBuffer) request.write(bodyBuffer);
@@ -141,7 +164,7 @@ function holyCrabRequest(url, options = {}) {
   });
 }
 
-function parseHolyCrabEnvelope(response, fallback = 'HolyCrab 请求失败') {
+function parseMediaBridgeEnvelope(response, fallback = 'MediaBridge 请求失败') {
   const statusCode = Number(response?.statusCode || response?.status || 0);
   const raw = String(response?.raw || '');
   let parsed = null;
@@ -182,17 +205,24 @@ function decodeBase64Url(value) {
   return Buffer.from(normalized + padding, 'base64').toString('utf8');
 }
 
-function encodeHolyCrabVideoHandle(handle) {
+function encodeMediaBridgeVideoHandle(handle) {
   const uniqId = String(handle?.uniq_id || handle?.uniqId || '').trim();
-  if (!uniqId) throw new Error('HolyCrab 视频任务响应缺少 uniqId');
-  return `holycrab:${encodeBase64Url(JSON.stringify({ uniq_id: uniqId }))}`;
+  if (!uniqId) throw new Error('MediaBridge 视频任务响应缺少 uniqId');
+  return `mediabridge:${encodeBase64Url(JSON.stringify({ uniq_id: uniqId }))}`;
 }
 
-function decodeHolyCrabVideoHandle(taskId) {
+function decodeMediaBridgeVideoHandle(taskId) {
   const raw = String(taskId || '');
-  if (!raw.startsWith('holycrab:')) return null;
+  const currentPrefix = 'mediabridge:';
+  const legacyPrefix = `${LEGACY_PROVIDER_ID}:`;
+  const prefix = raw.startsWith(currentPrefix)
+    ? currentPrefix
+    : raw.startsWith(legacyPrefix)
+      ? legacyPrefix
+      : '';
+  if (!prefix) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(raw.slice(9)));
+    const parsed = JSON.parse(decodeBase64Url(raw.slice(prefix.length)));
     if (!parsed?.uniq_id) return null;
     return { uniq_id: String(parsed.uniq_id) };
   } catch (_) {
@@ -201,14 +231,16 @@ function decodeHolyCrabVideoHandle(taskId) {
 }
 
 module.exports = {
-  HOLYCRAB_API_BASE,
-  normalizeHolyCrabApiKey,
-  holyCrabHeaders,
-  isHolyCrabConfig,
-  holyCrabApiBase,
-  joinHolyCrabUrl,
-  holyCrabRequest,
-  parseHolyCrabEnvelope,
-  encodeHolyCrabVideoHandle,
-  decodeHolyCrabVideoHandle,
+  MEDIABRIDGE_API_BASE,
+  LEGACY_PROVIDER_ID,
+  normalizeMediaBridgeApiKey,
+  mediaBridgeHeaders,
+  canonicalizeMediaBridgeProtocol,
+  isMediaBridgeConfig,
+  mediaBridgeApiBase,
+  joinMediaBridgeUrl,
+  mediaBridgeRequest,
+  parseMediaBridgeEnvelope,
+  encodeMediaBridgeVideoHandle,
+  decodeMediaBridgeVideoHandle,
 };

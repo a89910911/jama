@@ -1,13 +1,23 @@
 <template>
-  <div v-if="authState.user" class="account-session">
+  <div
+    v-if="authState.user"
+    class="account-session"
+    :class="{ 'account-session--compact': compact }"
+  >
     <el-dropdown trigger="click" placement="bottom-end" @command="handleAccountCommand">
-      <button class="account-trigger" type="button" aria-label="账号菜单">
+      <button
+        class="account-trigger"
+        type="button"
+        aria-label="账号菜单"
+        :title="compact ? `${authState.user.username} · 账号菜单` : undefined"
+      >
         <span class="account-avatar">{{ authState.user.username.slice(0, 1).toUpperCase() }}</span>
-        <span class="account-copy">
+        <span v-if="!compact" class="account-copy">
           <strong>{{ authState.user.username }}</strong>
           <small>{{ authState.user.is_super_admin ? '最高权限' : '普通账号' }}</small>
         </span>
-        <el-icon><ArrowDown /></el-icon>
+        <el-icon v-if="!compact"><ArrowDown /></el-icon>
+        <span v-else class="account-compact-label">账号</span>
       </button>
       <template #dropdown>
         <el-dropdown-menu>
@@ -50,6 +60,13 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, Key, SwitchButton, UserFilled } from '@element-plus/icons-vue'
 import { authState, changePassword, logout } from '@/stores/auth'
+
+defineProps({
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 const router = useRouter()
 const passwordVisible = ref(false)
@@ -98,6 +115,10 @@ async function submitPassword() {
   align-items: center;
   flex: 0 0 auto;
 }
+.account-session--compact {
+  width: 100%;
+  justify-content: center;
+}
 .account-trigger {
   display: flex;
   align-items: center;
@@ -113,11 +134,30 @@ async function submitPassword() {
   backdrop-filter: blur(14px);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
+.account-session--compact .account-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
 .account-trigger:hover,
 .account-trigger:focus-visible {
   border-color: #d99a48;
   box-shadow: 0 0 0 2px rgba(217, 154, 72, 0.14);
   outline: none;
+}
+.account-session--compact .account-trigger:hover,
+.account-session--compact .account-trigger:focus-visible {
+  border-color: transparent;
+  background: var(--bg-hover);
+  box-shadow: none;
 }
 .account-avatar {
   display: grid;
@@ -129,6 +169,17 @@ async function submitPassword() {
   color: #4d3008;
   background: linear-gradient(135deg, #f5c171, #d99035);
   font-weight: 800;
+}
+.account-session--compact .account-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.account-compact-label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1;
 }
 .account-copy {
   display: flex;

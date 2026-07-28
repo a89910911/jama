@@ -70,7 +70,7 @@ describe('aiConfigService required video audio policy', () => {
     const log = { info() {} };
     const created = aiConfigService.createConfig(db, log, {
       service_type: 'video',
-      provider: 'holycrab',
+      provider: 'mediabridge',
       name: 'video',
       base_url: 'https://example.com',
       model: ['seedance-2-0'],

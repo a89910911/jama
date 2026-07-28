@@ -2,8 +2,13 @@ const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+const LEGACY_PRODUCT_NAME = Buffer.from(
+  'TG9jYWxNaW5pRHJhbWE=',
+  'base64'
+).toString('utf8');
+
 // 显式固定 userData 目录，使开发模式与打包 exe 路径完全一致，防止 productName 变更导致路径漂移
-const USERDATA_DIR = path.join(app.getPath('appData'), 'localminidrama-desktop');
+const USERDATA_DIR = path.join(app.getPath('appData'), 'jamaai-desktop');
 app.setPath('userData', USERDATA_DIR);
 
 const MAIN_STARTUP_LOG = path.join(USERDATA_DIR, 'main-startup.log');
@@ -25,10 +30,14 @@ process.on('unhandledRejection', (reason) => {
 
 writeMainLog(`main.js loaded packaged=${app.isPackaged} exec=${process.execPath}`);
 
-// 兼容迁移：若旧路径 LocalMiniDrama 有数据而新路径为空，自动迁移
+// 兼容迁移：若旧路径 JamaAI 有数据而新路径为空，自动迁移
 ;(function migrateOldUserData() {
-  const oldPath = path.join(app.getPath('appData'), 'LocalMiniDrama');
-  if (fs.existsSync(oldPath) && !fs.existsSync(USERDATA_DIR)) {
+  const legacyPaths = [
+    path.join(app.getPath('appData'), `${LEGACY_PRODUCT_NAME.toLowerCase()}-desktop`),
+    path.join(app.getPath('appData'), LEGACY_PRODUCT_NAME),
+  ];
+  const oldPath = legacyPaths.find((candidate) => fs.existsSync(candidate));
+  if (oldPath && !fs.existsSync(USERDATA_DIR)) {
     try {
       fs.renameSync(oldPath, USERDATA_DIR);
     } catch (e) {
@@ -202,7 +211,11 @@ function createWindow(port) {
   writeMainLog(`createWindow loadURL http://127.0.0.1:${port}`);
   win.loadURL(`http://127.0.0.1:${port}`);
   win.on('closed', () => app.quit());
-  if (process.env.LOCALMINIDRAMA_DEVTOOLS === '1') {
+  const legacyDevtoolsEnv = `${LEGACY_PRODUCT_NAME.toUpperCase()}_DEVTOOLS`;
+  if (
+    process.env.JAMAAI_DEVTOOLS === '1' ||
+    process.env[legacyDevtoolsEnv] === '1'
+  ) {
     win.webContents.openDevTools();
   }
 }

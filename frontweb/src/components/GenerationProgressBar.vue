@@ -61,7 +61,7 @@ const safePercentage = computed(() => clampGenerationProgress(props.percentage))
 }
 .generation-progress-number {
   flex: none;
-  color: var(--el-color-primary, #6366f1);
+  color: var(--el-color-primary, #5a6bb8);
   font-variant-numeric: tabular-nums;
 }
 .generation-progress-track {
@@ -75,16 +75,16 @@ const safePercentage = computed(() => clampGenerationProgress(props.percentage))
   min-width: 3px;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  background: linear-gradient(90deg, #5a6bb8, #df8051);
   transition: width 0.45s ease;
 }
 .generation-progress-fill.estimated {
   background-image: repeating-linear-gradient(
     120deg,
-    #6366f1 0,
-    #6366f1 10px,
-    #818cf8 10px,
-    #818cf8 20px
+    #5a6bb8 0,
+    #5a6bb8 10px,
+    #6f7fc2 10px,
+    #6f7fc2 20px
   );
   background-size: 40px 100%;
   animation: generation-progress-stripes 1s linear infinite;

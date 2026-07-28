@@ -1281,7 +1281,7 @@ onMounted(() => {
   min-height: 100vh;
   background: #0f0f12;
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(120, 60, 220, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(201, 106, 58, 0.18) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 80% 110%, rgba(60, 100, 220, 0.12) 0%, transparent 60%);
   color: #e4e4e7;
 }
@@ -1289,7 +1289,7 @@ onMounted(() => {
   background: rgba(18, 18, 22, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+  border-bottom: 1px solid rgba(201, 106, 58, 0.18);
   padding: 12px 24px;
   position: sticky;
   top: 0;
@@ -1297,15 +1297,15 @@ onMounted(() => {
   box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
 }
 html.light .drama-detail {
-  background: #f5f3ff;
+  background: #faf9f6;
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(139, 92, 246, 0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
+    radial-gradient(ellipse 80% 50% at 20% -20%, rgba(201, 106, 58, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(90, 107, 184, 0.08) 0%, transparent 60%);
 }
 html.light .drama-detail .header {
   background: rgba(255, 255, 255, 0.85) !important;
-  border-bottom-color: rgba(139, 92, 246, 0.2) !important;
-  box-shadow: 0 2px 16px rgba(139, 92, 246, 0.08) !important;
+  border-bottom-color: rgba(201, 106, 58, 0.2) !important;
+  box-shadow: 0 2px 16px rgba(201, 106, 58, 0.08) !important;
 }
 .logo {
   margin: 0;
@@ -1316,11 +1316,11 @@ html.light .drama-detail .header {
   line-height: 1;
   transition: filter 0.3s;
 }
-.logo:hover { filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5)); }
+.logo:hover { filter: drop-shadow(0 0 10px rgba(201, 106, 58, 0.5)); }
 .logo-main {
   font-size: 1.1rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #c4b5fd 0%, #818cf8 50%, #a78bfa 100%);
+  background: linear-gradient(135deg, #f1c2a8 0%, #6f7fc2 50%, #e8a07a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1333,7 +1333,7 @@ html.light .drama-detail .header {
   -webkit-text-fill-color: #6d6d7a;
 }
 html.light .drama-detail .logo-main {
-  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  background: linear-gradient(135deg, #c96a3a, #5a6bb8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1366,8 +1366,8 @@ html.light .breadcrumb-sep { color: #d1d5db; }
 }
 html.light .page-title {
   color: #6b7280;
-  background: rgba(99, 102, 241, 0.06);
-  border-color: rgba(99, 102, 241, 0.15);
+  background: rgba(90, 107, 184, 0.06);
+  border-color: rgba(90, 107, 184, 0.15);
 }
 .btn-back-list {
   flex-shrink: 0;
@@ -1385,17 +1385,17 @@ html.light .page-title {
   transition: box-shadow 0.3s, border-color 0.3s;
 }
 .section.card:hover {
-  border-color: rgba(139, 92, 246, 0.25);
-  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.08);
+  border-color: rgba(201, 106, 58, 0.25);
+  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(201, 106, 58, 0.08);
 }
 html.light .section.card {
   background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(139, 92, 246, 0.15);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.06);
+  border-color: rgba(201, 106, 58, 0.15);
+  box-shadow: 0 4px 20px rgba(201, 106, 58, 0.06);
 }
 html.light .section.card:hover {
-  border-color: rgba(139, 92, 246, 0.3);
-  box-shadow: 0 6px 28px rgba(139, 92, 246, 0.1);
+  border-color: rgba(201, 106, 58, 0.3);
+  box-shadow: 0 6px 28px rgba(201, 106, 58, 0.1);
 }
 .section-title { font-size: 1rem; font-weight: 600; color: #fafafa; margin-bottom: 16px; }
 html.light .section-title { color: #18181b; }
@@ -1423,15 +1423,15 @@ html.light .section-title { color: #18181b; }
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), transparent 60%);
+  background: linear-gradient(135deg, rgba(201, 106, 58, 0.06), transparent 60%);
   opacity: 0;
   transition: opacity 0.25s;
 }
 .episode-card:hover {
-  border-color: rgba(139, 92, 246, 0.5);
+  border-color: rgba(201, 106, 58, 0.5);
   background: rgba(35, 35, 38, 0.9);
   transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.15);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(201, 106, 58, 0.15);
 }
 .episode-card:hover::before { opacity: 1; }
 .episode-card:hover .episode-enter {
@@ -1509,7 +1509,7 @@ html.light .section-title { color: #18181b; }
   letter-spacing: 0.03em;
   align-self: center;
 }
-.res-tab-group-label--prod { color: #a78bfa; }
+.res-tab-group-label--prod { color: #e8a07a; }
 .res-tab-spacer {
   flex: 1;
   min-width: 40px;
@@ -1545,20 +1545,20 @@ html.light .section-title { color: #18181b; }
 .res-tab--lib.active { color: #60a5fa; font-size: 14px; font-weight: 600; }
 .res-tab--lib.active::after { background: #60a5fa; }
 /* 制作资源激活 */
-.res-tab--drama.active { color: #a78bfa; font-size: 14px; font-weight: 600; }
-.res-tab--drama.active::after { background: #a78bfa; }
+.res-tab--drama.active { color: #e8a07a; font-size: 14px; font-weight: 600; }
+.res-tab--drama.active::after { background: #e8a07a; }
 
-html.light .episode-card { background: rgba(255, 255, 255, 0.85); border-color: rgba(139, 92, 246, 0.12); }
-html.light .episode-card:hover { background: rgba(245, 243, 255, 0.95); border-color: rgba(139, 92, 246, 0.4); box-shadow: 0 8px 24px rgba(139, 92, 246, 0.12); }
-html.light .episode-card::before { background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent 60%); }
+html.light .episode-card { background: rgba(255, 255, 255, 0.85); border-color: rgba(201, 106, 58, 0.12); }
+html.light .episode-card:hover { background: rgba(246, 246, 243, 0.95); border-color: rgba(201, 106, 58, 0.4); box-shadow: 0 8px 24px rgba(201, 106, 58, 0.12); }
+html.light .episode-card::before { background: linear-gradient(135deg, rgba(201, 106, 58, 0.05), transparent 60%); }
 html.light .episode-enter { border-top-color: #e4e4e7; color: #a1a1aa; }
 html.light .episode-card:hover .episode-enter { color: var(--el-color-primary); }
 html.light .episode-title { color: #18181b; }
 html.light .res-tab:hover { background: rgba(0,0,0,0.04); }
 html.light .res-tab--lib.active { color: #2563eb; }
 html.light .res-tab--lib.active::after { background: #2563eb; }
-html.light .res-tab--drama.active { color: #7c3aed; }
-html.light .res-tab--drama.active::after { background: #7c3aed; }
+html.light .res-tab--drama.active { color: #c96a3a; }
+html.light .res-tab--drama.active::after { background: #c96a3a; }
 
 /* 本剧制作资源列表 */
 .drama-res-list { display: flex; flex-wrap: wrap; gap: 12px; padding: 4px 0 8px; }
@@ -1594,11 +1594,11 @@ html.light .res-tab--drama.active::after { background: #7c3aed; }
   transition: all 0.2s;
 }
 html.light .btn-theme {
-  --el-button-bg-color: rgba(99, 102, 241, 0.08);
-  --el-button-border-color: rgba(99, 102, 241, 0.3);
-  --el-button-text-color: #6366f1;
-  --el-button-hover-bg-color: rgba(99, 102, 241, 0.15);
-  --el-button-hover-border-color: rgba(99, 102, 241, 0.5);
-  --el-button-hover-text-color: #4f46e5;
+  --el-button-bg-color: rgba(90, 107, 184, 0.08);
+  --el-button-border-color: rgba(90, 107, 184, 0.3);
+  --el-button-text-color: #5a6bb8;
+  --el-button-hover-bg-color: rgba(90, 107, 184, 0.15);
+  --el-button-hover-border-color: rgba(90, 107, 184, 0.5);
+  --el-button-hover-text-color: #435ee5;
 }
 </style>

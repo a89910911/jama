@@ -1,7 +1,6 @@
 // AI 配置 CRUD，与 Go application/services/ai_service.go 对齐
 const fs = require('fs');
 const path = require('path');
-const { normalizeMaterialHubToken } = require('./jimengMaterialHubService');
 const {
   FAL_PLATFORM_BASE,
   isFalConfig,
@@ -16,20 +15,14 @@ const {
   veniceRequest,
 } = require('./veniceClient');
 const {
-  isHolyCrabConfig,
-  joinHolyCrabUrl,
-  holyCrabHeaders,
-  holyCrabRequest,
-  parseHolyCrabEnvelope,
-} = require('./holyCrabClient');
+  isMediaBridgeConfig,
+  joinMediaBridgeUrl,
+  mediaBridgeHeaders,
+  mediaBridgeRequest,
+  parseMediaBridgeEnvelope,
+} = require('./mediaBridgeClient');
 const { forceVideoAudioSettings } = require('./videoAudioPolicy');
 
-function normalizeApiKeyForService(serviceType, apiKey) {
-  if (serviceType === 'jimeng2_character_auth' && apiKey != null) {
-    return normalizeMaterialHubToken(apiKey);
-  }
-  return apiKey;
-}
 const { applyDeepSeekConnectivityOptions } = require('./deepseekConfig');
 function modelToDb(model) {
   if (model == null) return null;
@@ -151,7 +144,7 @@ function createConfig(db, log, req) {
     req.api_protocol || '',
     req.name || '',
     req.base_url || '',
-    normalizeApiKeyForService(req.service_type, req.api_key || ''),
+    req.api_key || '',
     model,
     defaultModel,
     endpoint,
@@ -191,8 +184,7 @@ function updateConfig(db, log, id, req) {
   }
   if (req.api_key != null) {
     updates.push('api_key = ?');
-    const st = req.service_type != null ? req.service_type : existing.service_type;
-    params.push(normalizeApiKeyForService(st, req.api_key));
+    params.push(req.api_key);
   }
   if (req.model != null) {
     updates.push('model = ?');
@@ -415,20 +407,20 @@ async function testConnection(opts) {
     return;
   }
 
-  // --- HolyCrab：只读查询任务列表验证 X-User-Token，不触发生成费用 ---
-  if (isHolyCrabConfig(opts)) {
+  // --- MediaBridge：只读查询任务列表验证 X-User-Token，不触发生成费用 ---
+  if (isMediaBridgeConfig(opts)) {
     const requestImpl = typeof opts.request_impl === 'function'
       ? opts.request_impl
-      : holyCrabRequest;
+      : mediaBridgeRequest;
     const res = await requestImpl(
-      joinHolyCrabUrl(opts.base_url, '/api/tasks?page=1&pageSize=1'),
+      joinMediaBridgeUrl(opts.base_url, '/api/tasks?page=1&pageSize=1'),
       {
         method: 'GET',
-        headers: holyCrabHeaders(opts.api_key),
+        headers: mediaBridgeHeaders(opts.api_key),
         timeoutMs: 30000,
       }
     );
-    parseHolyCrabEnvelope(res, 'HolyCrab API Key 验证失败');
+    parseMediaBridgeEnvelope(res, 'MediaBridge API Key 验证失败');
     return;
   }
 

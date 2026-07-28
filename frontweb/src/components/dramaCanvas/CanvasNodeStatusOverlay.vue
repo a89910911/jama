@@ -49,7 +49,7 @@ const status = computed(() => {
   width: 22px;
   height: 22px;
   border: 2px solid rgba(255, 255, 255, 0.15);
-  border-top-color: #818cf8;
+  border-top-color: #6f7fc2;
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }
@@ -59,7 +59,7 @@ const status = computed(() => {
 .step-extract_props .spinner,
 .step-extract_all .spinner,
 .step-save_script .spinner { border-top-color: #fbbf24; }
-.step-video .spinner { border-top-color: #f472b6; }
+.step-video .spinner { border-top-color: #2c7a5c; }
 .step-audio .spinner { border-top-color: #fbbf24; }
 .msg {
   font-size: 10px;
@@ -77,7 +77,7 @@ const status = computed(() => {
   color: #e4e4e7;
 }
 :deep(.node-progress .generation-progress-number) {
-  color: #c7d2fe;
+  color: #c7cee8;
 }
 @keyframes spin {
   to { transform: rotate(360deg); }

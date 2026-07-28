@@ -158,7 +158,7 @@ describe('taskService.failOrphanedAsyncTasksOnStartup', () => {
     db.prepare(
       `INSERT INTO video_generations (id, task_id, status, provider_task_id, deleted_at)
        VALUES (?, ?, 'processing', ?, NULL)`
-    ).run(1, 'task-resumable-video', 'holycrab:remote-task-id');
+    ).run(1, 'task-resumable-video', 'mediabridge:remote-task-id');
     db.prepare(
       `INSERT INTO video_generations (id, task_id, status, provider_task_id, deleted_at)
        VALUES (?, ?, 'processing', NULL, NULL)`

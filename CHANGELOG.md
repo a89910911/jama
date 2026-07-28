@@ -3,10 +3,15 @@
 所有版本的重要改动记录在此文件中，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 **官方仓库：**
-[![GitHub](https://img.shields.io/badge/GitHub-xuanyustudio%2FLocalMiniDrama-181717?logo=github)](https://github.com/xuanyustudio/LocalMiniDrama)
-[![Gitee](https://img.shields.io/badge/Gitee-bi__shang__a%2Flocalminidrama-C71D23?logo=gitee)](https://gitee.com/bi_shang_a/localminidrama)
+[![GitHub](https://img.shields.io/badge/GitHub-a89910911%2Fjama-181717?logo=github)](https://github.com/a89910911/jama)
 
 ---
+
+## [Unreleased]
+
+### 移除
+
+- 移除未投入使用的 SD2 资产管理、SD2 角色/音色认证，以及对应的 ModelArk / 即梦素材库配置、接口和运行时资产注入逻辑
 
 ## [1.2.8] - 2026-07-01
 
@@ -19,13 +24,11 @@
   - **节点内操作面板**：资源节点、分镜节点、媒体节点面板完善；节点状态遮罩实时显示生成进度
   - **整集生成 composable**：`useCanvasEpisodeGenerate` 支持在画布内批量触发角色/场景/道具/分镜图/视频生成
   - **画布 CRUD**：`useCanvasCrud` 支持在画布内创建、删除实体，无需切回列表页
-- **ModelArk 私有资产库配置**：新增 `model_ark_asset` 服务类型与 `modelArkAssetConfigService`，AI 配置页可管理 BytePlus ModelArk / 火山方舟私有资产库（AK/SK 签名 / Bearer 多种鉴权、资产组创建与管理）；角色 SD2 认证优先使用即梦2角色认证，未配置时回退到此处
 - **图床配置项化**：`config.yaml` 的 `image_proxy` 支持自定义 `upload_url`、`upload_timeout_seconds`（默认 **180 秒**）、`upload_max_attempts`；不再硬编码上传地址与超时
 - **风格缩略图扩充**：新增国风、仙侠、韩漫、都市言情等 8 种风格预览图（`public/style-thumbs/`）
 
 ### 优化
 
-- **Seedance 2.0 认证加强**：角色 SD2 认证流程重构，支持 ModelArk 资产库对接、图床 URL 缓存复用与失效重传；`Sd2AssetManagement` 配置面板补充鉴权方式、路径模式、工程名等说明
 - **图床缓存校验**：`getProxyCacheValidated` 在使用缓存 URL 前探测远端是否仍可访问，404 / 超时则删缓存并触发重新上传
 - **提示词优化**：`promptI18n.js`、`framePromptService.js`、`storyGenerationService.js` 等多处提示词改进，提升剧本/分镜生成质量
 - **任务服务**：新增 `taskService` 与 `/api/task` 路由，统一异步任务状态查询
@@ -50,7 +53,6 @@
 - **导出分镜表**：制作页一键导出当前集分镜为 **HTML 表格**（`exportStoryboardSheet`），含镜号、景别、运镜、场景/角色/道具、对白、解说、提示词、全能片段等列，便于审阅与对外协作
 - **统一生成任务进度**：新增 `generationTaskStore` 与 `useGenerationTaskSync`，角色/场景/道具/分镜图（含首帧、尾帧）/分镜视频/流水线等异步任务共用轮询、去重与超时清理；刷新页面后可恢复进行中的任务状态
 - **全能片段多子分镜版式统一**：`universalOmniMultiBeatFormat` 与批量分镜生成、「生成 / 润色全能提示词」共用同一套 **分镜1 / 分镜2…** 段落格式与 `@图片1` 环境约束说明
-- **Seedance 2.0 角色素材守护**：`seedance2AssetGuards` 在角色主图变更时自动将已认证 `seedance2_asset` / 音色参考标为 **stale**，避免视频引用过期素材
 - **媒体画幅规格**：`mediaAspectRatioSpec` 统一图片 / 视频请求的宽高比解析与归一化
 - **故事生成 composable**：`useStoryGeneration` 抽离「从梗概生成剧本」流程；`scriptEpisodes` 辅助多集剧本分段
 
@@ -301,7 +303,7 @@
 - **角色/场景影响分镜面板**：角色、场景卡片描述下方新增「影响的分镜：#XX #ZZ」标签行及「↻ 重新生成分镜图」按钮，点击可批量重新生成与该资源关联的所有分镜图片，含确认弹窗和实时进度显示
 - **多并发 AI 生成转圈**：同时点击多个角色/道具/场景的「AI生成」或「重新生成」按钮，每个按钮独立保持转圈状态，互不干扰（底层由 `ref(null)` 改为 `reactive(new Set())` 实现）
 - **提示词管理动态同步**：`promptOverrides.js` 中的 `default_body` 和 `locked_suffix` 改为从 `promptI18n.js` 动态读取，新增 `getDefaultPromptBody(key)` 和 `getLockedSuffix(key)` 导出函数，UI 展示内容与运行时提示词始终一致，彻底消除双维护问题
-- **userData 路径统一**：`desktop/main.js` 将开发模式与打包 exe 的用户数据目录统一固定为 `localminidrama-desktop`，并在首次运行时自动迁移旧路径 `LocalMiniDrama` 下的数据，彻底解决开发/发布切换时数据丢失问题
+- **userData 路径统一**：`desktop/main.js` 将开发模式与打包 exe 的用户数据目录统一固定为 `jamaai-desktop`，并在首次运行时自动迁移旧版数据目录，彻底解决开发/发布切换时数据丢失问题
 
 ### 修复
 
@@ -355,7 +357,7 @@
 
 - **厂商锁定模式**：`config.yaml` 新增 `vendor_lock` 配置项，启用后强制使用指定 AI 厂商配置，用户仅可修改 API Key 和默认模型，无法新增/删除配置；打包的 exe 每次启动自动同步锁定策略
 - **全页面 UI 美化**：四个页面（首页/剧集管理/制作页/AI配置）统一升级为极光渐变背景 + 毛玻璃 Header + 玻璃拟态卡片；Header 改为 `sticky` 吸顶
-- **品牌标识双行 Logo**：左上角改为「本地短剧助手 / LocalMiniDrama」双行设计，紫色渐变文字
+- **品牌标识双行 Logo**：左上角改为「本地短剧助手 / JamaAI」双行设计，紫色渐变文字
 - **面包屑导航**：剧集管理页和制作页 Header 新增 `›` 分隔符 + 项目名标签；返回按钮移至项目名右侧
 - **NanoBanana 图片厂商**：新增 NanoBanana 作为独立图片生成厂商，支持 nano-banana-2 / nano-banana-pro / nano-banana 三个模型
 - **AI 配置导出 / 导入**：一键导出全部 AI 配置为 JSON 文件，换机或团队共享配置直接导入

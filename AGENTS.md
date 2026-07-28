@@ -4,7 +4,7 @@
 
 ### Project Overview
 
-LocalMiniDrama (本地短剧助手) — an AI-powered local short drama creation tool. Single product, three sub-projects sharing one repo (no monorepo tooling).
+JamaAI (本地短剧助手) — an AI-powered local short drama creation tool. Single product, three sub-projects sharing one repo (no monorepo tooling).
 
 ### Services
 

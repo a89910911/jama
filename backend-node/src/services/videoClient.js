@@ -43,15 +43,17 @@ const {
   veniceRequest,
 } = require('./veniceClient');
 const {
-  isHolyCrabConfig,
-  holyCrabApiBase,
-  holyCrabHeaders,
-  joinHolyCrabUrl,
-  encodeHolyCrabVideoHandle,
-  decodeHolyCrabVideoHandle,
-  holyCrabRequest,
-  parseHolyCrabEnvelope,
-} = require('./holyCrabClient');
+  isMediaBridgeConfig,
+  mediaBridgeApiBase,
+  mediaBridgeHeaders,
+  joinMediaBridgeUrl,
+  encodeMediaBridgeVideoHandle,
+  decodeMediaBridgeVideoHandle,
+  mediaBridgeRequest,
+  parseMediaBridgeEnvelope,
+  LEGACY_PROVIDER_ID,
+  canonicalizeMediaBridgeProtocol,
+} = require('./mediaBridgeClient');
 const { applyRequiredVideoAudioOption } = require('./videoAudioPolicy');
 
 /**
@@ -61,7 +63,12 @@ function inferVideoProtocol(provider) {
   const p = String(provider || '').toLowerCase();
   if (p === 'fal' || p === 'fal.ai') return 'fal';
   if (p === 'venice' || p === 'venice.ai') return 'venice';
-  if (p === 'holycrab' || p === 'holycrab.ai') return 'holycrab';
+  if (
+    p === 'mediabridge' ||
+    p === 'mediabridge.ai' ||
+    p === LEGACY_PROVIDER_ID ||
+    p === `${LEGACY_PROVIDER_ID}.ai`
+  ) return 'mediabridge';
   if (p === 'dashscope') return 'dashscope';
   if (p === 'gemini' || p === 'google') return 'gemini';
   if (p === 'volces' || p === 'volcengine' || p === 'volc') return 'volcengine';
@@ -81,7 +88,7 @@ function inferVideoProtocol(provider) {
 function resolveVideoProtocol(config, modelHint) {
   const provider = (config.provider || '').toLowerCase();
   const explicit = String(config.api_protocol || '').trim();
-  let protocol = explicit.toLowerCase() || inferVideoProtocol(provider);
+  let protocol = canonicalizeMediaBridgeProtocol(explicit) || inferVideoProtocol(provider);
   const baseLower = String(config.base_url || '').toLowerCase();
   const modelLower = String(modelHint || '').toLowerCase();
   if (!explicit && protocol === 'openai') {
@@ -483,10 +490,10 @@ async function resolveImageInputForAgnesAsync(db, rawUrl, files_base_url, storag
 }
 
 /**
- * HolyCrab 的素材接口只接受可公开访问的 HTTP(S) URL。本地文件和 data URL
- * 先复用系统图床上传能力，随后再向 HolyCrab 注册为用户素材。
+ * MediaBridge 的素材接口只接受可公开访问的 HTTP(S) URL。本地文件和 data URL
+ * 先复用系统图床上传能力，随后再向 MediaBridge 注册为用户素材。
  */
-async function resolveImageInputForHolyCrabAsync(
+async function resolveImageInputForMediaBridgeAsync(
   db,
   rawUrl,
   files_base_url,
@@ -501,7 +508,7 @@ async function resolveImageInputForHolyCrabAsync(
 
   const publicFromBase = publicUrlFromLocalRef(raw, files_base_url);
   if (publicFromBase) {
-    log.info('[HolyCrab] 使用公网 static URL', {
+    log.info('[MediaBridge] 使用公网 static URL', {
       video_gen_id,
       index,
       url_head: publicFromBase.slice(0, 80),
@@ -515,10 +522,10 @@ async function resolveImageInputForHolyCrabAsync(
       db,
       cacheKey,
       log,
-      `holycrab_vg${video_gen_id}_${index}`
+      `mediabridge_vg${video_gen_id}_${index}`
     );
     if (cached) {
-      log.info('[HolyCrab] 使用图床缓存 URL', {
+      log.info('[MediaBridge] 使用图床缓存 URL', {
         video_gen_id,
         index,
         cache_key: cacheKey,
@@ -537,10 +544,10 @@ async function resolveImageInputForHolyCrabAsync(
             buffer,
             String(match[1] || 'image/jpeg').trim(),
             log,
-            `holycrab_vg${video_gen_id}_${index}`
+            `mediabridge_vg${video_gen_id}_${index}`
           );
           if (proxyUrl) {
-            log.info('[HolyCrab] base64 参考图已上传图床', {
+            log.info('[MediaBridge] base64 参考图已上传图床', {
               video_gen_id,
               index,
               url_head: proxyUrl.slice(0, 80),
@@ -550,7 +557,7 @@ async function resolveImageInputForHolyCrabAsync(
           }
         }
       } catch (error) {
-        log.warn('[HolyCrab] base64 参考图上传失败', {
+        log.warn('[MediaBridge] base64 参考图上传失败', {
           video_gen_id,
           index,
           error: error.message,
@@ -565,10 +572,10 @@ async function resolveImageInputForHolyCrabAsync(
       storage_local_path,
       raw,
       log,
-      `holycrab_vg${video_gen_id}_${index}`
+      `mediabridge_vg${video_gen_id}_${index}`
     );
     if (proxyUrl) {
-      log.info('[HolyCrab] 本地参考图已上传图床', {
+      log.info('[MediaBridge] 本地参考图已上传图床', {
         video_gen_id,
         index,
         url_head: proxyUrl.slice(0, 80),
@@ -578,7 +585,7 @@ async function resolveImageInputForHolyCrabAsync(
     }
   }
 
-  log.warn('[HolyCrab] 参考图无法转为公网 URL', {
+  log.warn('[MediaBridge] 参考图无法转为公网 URL', {
     video_gen_id,
     index,
     raw_head: raw.slice(0, 100),
@@ -586,7 +593,7 @@ async function resolveImageInputForHolyCrabAsync(
   return null;
 }
 
-function holyCrabMimeFromExtension(extension) {
+function mediaBridgeMimeFromExtension(extension) {
   const ext = String(extension || '').replace(/^\./, '').toLowerCase();
   return {
     jpg: 'image/jpeg',
@@ -606,7 +613,7 @@ function holyCrabMimeFromExtension(extension) {
   }[ext] || '';
 }
 
-function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
+function resolveMediaBridgeLocalImageSource(rawUrl, storageLocalPath) {
   const raw = String(rawUrl || '').trim();
   if (!raw) return null;
 
@@ -666,7 +673,7 @@ function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
   }
   if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) return null;
   const extension = path.extname(candidate).replace(/^\./, '').toLowerCase();
-  const mimeType = holyCrabMimeFromExtension(extension);
+  const mimeType = mediaBridgeMimeFromExtension(extension);
   if (!mimeType) return null;
   return {
     buffer: fs.readFileSync(candidate),
@@ -796,7 +803,6 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     files_base_url,
     storage_local_path,
     video_gen_id,
-    voice_reference_url,   // Seedance 2.0 音色参考（全能模式专用）
   } = opts;
 
   const url = buildVideoUrl(config, { defaultEndpoint: '/v1/videos/generations' });
@@ -878,39 +884,7 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     body.task_type = 'i2v';
   }
 
-  // Seedance 2.0 音色参考：本路径仅 volcengine_omni 调用；有 URL 即注入（网关别名如 mingiz-sd2 也要生效）
-  if (opts.voice_reference_url) {
-    let voiceUrl = String(opts.voice_reference_url).trim();
-    if (voiceUrl) {
-      // 复用图片的本地文件转 base64 逻辑
-      if (/localhost|127\.0\.0\.1/i.test(voiceUrl) && storage_local_path && (files_base_url || '').match(/localhost|127\.0\.0\.1/i)) {
-        const baseUrl = (files_base_url || '').replace(/\/$/, '');
-        const afterStatic = voiceUrl.split('/static/')[1] || (baseUrl ? voiceUrl.replace(baseUrl + '/', '').replace(baseUrl, '') : null);
-        const relPath = afterStatic ? afterStatic.replace(/^\//, '') : null;
-        if (relPath) {
-          const filePath = path.join(storage_local_path, relPath);
-          try {
-            if (fs.existsSync(filePath)) {
-              const buf = fs.readFileSync(filePath);
-              const ext = path.extname(filePath).toLowerCase();
-              const mime =
-                { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg' }[ext] || 'audio/mpeg';
-              voiceUrl = 'data:' + mime + ';base64,' + buf.toString('base64');
-            }
-          } catch (_) {}
-        }
-      }
-      body.content.push({
-        type: 'audio_url',
-        audio_url: { url: voiceUrl },
-        role: 'reference_audio',
-      });
-      log.info('[VolcOmni] 已注入 Seedance 2.0 音色参考音频', { video_gen_id, voice_ref: String(opts.voice_reference_url).slice(0, 80) });
-    }
-  }
-
   // ===== 全能模式（Seedance 2.0 / Omni）最终请求结构体日志 =====
-  // 方便调试确认：图片参考 + 音色参考是否真正被加入 content 数组
   try {
     const contentSummary = body.content.map((part, idx) => {
       const t = part.type || 'unknown';
@@ -922,20 +896,14 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
         preview = String(part.image_url.url).slice(0, 80);
       } else if (part.video_url?.url) {
         preview = String(part.video_url.url).slice(0, 80);
-      } else if (part.audio_url?.url) {
-        preview = String(part.audio_url.url).slice(0, 80);
       }
       return { idx, type: t, role, preview };
     });
 
-    const hasAudioRef = body.content.some(p => p.role === 'reference_audio' || p.type === 'audio_url');
-
-    log.info('[VolcOmni][全能结构体] 最终发往火山的 content 概览（含音色参考验证）', {
+    log.info('[VolcOmni][全能结构体] 最终发往火山的 content 概览', {
       video_gen_id,
       model: finalModel,
       content_length: body.content.length,
-      has_reference_audio: hasAudioRef,
-      voice_reference_url_from_opts: voice_reference_url ? String(voice_reference_url).slice(0, 100) : null,
       content_summary: contentSummary
     });
   } catch (e) {
@@ -949,7 +917,6 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     duration: effectiveDuration,
     image_count: urls.length,
     has_reference_video: !!structureVideo,
-    has_voice_ref: !!voice_reference_url,
     video_gen_id,
   });
   logVideoPostRequest(log, 'VolcOmni', url, body, video_gen_id, {
@@ -958,7 +925,6 @@ async function callVolcengineOmniVideoApi(config, log, opts) {
     duration: effectiveDuration,
     image_count: urls.length,
     has_reference_video: !!structureVideo,
-    has_voice_ref: !!voice_reference_url,
   });
 
   const res = await fetch(url, {
@@ -3571,156 +3537,6 @@ async function callXaiVideoApi(config, log, opts) {
   return { error: 'xAI 未返回 request_id 或视频地址: ' + JSON.stringify(data).slice(0, 300) };
 }
 
-const VIDEO_PROTOCOLS_SUPPORT_SD2_ASSET_SCHEME = new Set([
-  'volcengine_omni',
-  'volcengine',
-  'dashscope',
-  'kling_omni',
-  'kling',
-]);
-
-function parseJsonColumnForVideo(v) {
-  if (v == null || v === '') return null;
-  try {
-    return typeof v === 'string' ? JSON.parse(v) : v;
-  } catch (_) {
-    return null;
-  }
-}
-
-function normalizeMaterialHubAssetUrlForVideo(assetUrlOrId) {
-  const s = String(assetUrlOrId || '').trim();
-  if (!s) return null;
-  if (s.startsWith('asset://')) return s;
-  if (s.startsWith('asset-')) return `asset://${s}`;
-  return `asset://${s.replace(/^\/+/, '')}`;
-}
-
-function normalizeStorageRelativePath(p) {
-  let s = String(p || '').trim().replace(/^[/\\]+/, '').split('?')[0];
-  s = s.replace(/\\/g, '/').replace(/\/+$/, '');
-  return s;
-}
-
-function storageRelativeFromPublicUrl(urlStr) {
-  const s = String(urlStr || '').trim();
-  if (!/^https?:\/\//i.test(s)) return '';
-  try {
-    const u = new URL(s);
-    let p = u.pathname || '';
-    const marker = '/static/';
-    const idx = p.toLowerCase().indexOf(marker);
-    if (idx >= 0) p = p.slice(idx + marker.length);
-    else p = p.replace(/^\/+/, '');
-    return normalizeStorageRelativePath(decodeURIComponent(p));
-  } catch (_) {
-    return '';
-  }
-}
-
-function buildSd2ActiveAssetUrlLookup(db, dramaId) {
-  const urlToAsset = new Map();
-  const relPathToAsset = new Map();
-  if (!db || !dramaId) return { urlToAsset, relPathToAsset };
-  let rows = [];
-  try {
-    rows = db.prepare(
-      'SELECT image_url, local_path, seedance2_asset FROM characters WHERE drama_id = ? AND deleted_at IS NULL'
-    ).all(Number(dramaId));
-    try {
-      rows.push(...db.prepare(
-        `SELECT image_url, local_path, seedance2_asset
-           FROM character_looks
-          WHERE drama_id = ? AND deleted_at IS NULL AND status = 'active'`
-      ).all(Number(dramaId)));
-    } catch (_) {}
-  } catch (_) {
-    return { urlToAsset, relPathToAsset };
-  }
-  for (const row of rows) {
-    const asset = parseJsonColumnForVideo(row.seedance2_asset);
-    if (!asset || String(asset.status || '').toLowerCase() !== 'active') continue;
-    const uri = normalizeMaterialHubAssetUrlForVideo(asset.hub_asset_id || asset.asset_url);
-    if (!uri) continue;
-    const certImg = String(asset.certified_image_url || '').trim();
-    const certLp = normalizeStorageRelativePath(asset.certified_local_path || '');
-    if (certImg) {
-      urlToAsset.set(certImg, uri);
-      urlToAsset.set(certImg.split('?')[0], uri);
-    }
-    if (certLp) relPathToAsset.set(certLp, uri);
-    const img = String(row.image_url || '').trim();
-    if (img) {
-      urlToAsset.set(img, uri);
-      urlToAsset.set(img.split('?')[0], uri);
-    }
-    const lp = normalizeStorageRelativePath(row.local_path || '');
-    if (lp) relPathToAsset.set(lp, uri);
-  }
-  return { urlToAsset, relPathToAsset };
-}
-
-function rewriteOneImageUrlForSd2(original, lookup) {
-  const s = String(original || '').trim();
-  if (!s || s.startsWith('asset://') || s.startsWith('data:')) return { next: s, changed: false };
-  const tries = [s, s.split('?')[0]];
-  for (const t of tries) {
-    if (lookup.urlToAsset.has(t)) return { next: lookup.urlToAsset.get(t), changed: true };
-  }
-  const rel = storageRelativeFromPublicUrl(s);
-  if (rel && lookup.relPathToAsset.has(rel)) {
-    return { next: lookup.relPathToAsset.get(rel), changed: true };
-  }
-  return { next: s, changed: false };
-}
-
-/**
- * 收集剧中所有 active 状态的 Seedance 2.0 角色音色参考
- * @returns {Map<number, string>} charId -> publicUrl
- */
-function collectActiveCharacterVoiceRefs(db, dramaId) {
-  const map = new Map();
-  if (!db || !dramaId) return map;
-  try {
-    const rows = db.prepare(
-      'SELECT id, seedance2_voice_asset FROM characters WHERE drama_id = ? AND deleted_at IS NULL'
-    ).all(Number(dramaId));
-    for (const row of rows) {
-      const asset = parseJsonColumnForVideo(row.seedance2_voice_asset);
-      if (!asset || String(asset.status || '').toLowerCase() !== 'active') continue;
-      const url = String(asset.url || '').trim();
-      if (url) map.set(Number(row.id), url);
-    }
-  } catch (_) {}
-  return map;
-}
-
-function applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts) {
-  const out = { ...opts };
-  const lookup = buildSd2ActiveAssetUrlLookup(db, opts.drama_id);
-  if (lookup.urlToAsset.size === 0 && lookup.relPathToAsset.size === 0) return out;
-  const changes = [];
-  const patch = (field, val) => {
-    const r = rewriteOneImageUrlForSd2(val, lookup);
-    if (r.changed) changes.push(field);
-    return r.next;
-  };
-  if (opts.image_url != null) out.image_url = patch('image_url', opts.image_url);
-  if (opts.first_frame_url != null) out.first_frame_url = patch('first_frame_url', opts.first_frame_url);
-  if (opts.last_frame_url != null) out.last_frame_url = patch('last_frame_url', opts.last_frame_url);
-  if (Array.isArray(opts.reference_urls)) {
-    out.reference_urls = opts.reference_urls.map((u, i) => patch(`reference_urls[${i}]`, u));
-  }
-  if (changes.length && log?.info) {
-    log.info('[视频][SD2] 已将认证图片替换为 asset 引用', {
-      video_gen_id: opts.video_gen_id,
-      drama_id: opts.drama_id,
-      changed_fields: changes,
-    });
-  }
-  return out;
-}
-
 /**
  * 火山经典 Seedance（非 omni）路径：本地图片转 base64（或直传公网 URL）。
  * 同时支持 first_frame / last_frame 专用字段，以及回退到 image_url。
@@ -4146,7 +3962,7 @@ async function callVeniceVideoApi(config, log, opts) {
   };
 }
 
-function resolveHolyCrabSeedanceModel(model) {
+function resolveMediaBridgeSeedanceModel(model) {
   const raw = String(model || '').trim().toLowerCase();
   const aliases = {
     'seedance-2.0': 'seedance-2-0',
@@ -4159,19 +3975,19 @@ function resolveHolyCrabSeedanceModel(model) {
     : 'seedance-2-0';
 }
 
-function normalizeHolyCrabDuration(duration) {
+function normalizeMediaBridgeDuration(duration) {
   const raw = Math.round(Number(String(duration ?? '').replace(/s$/i, '')));
   return Math.min(15, Math.max(4, Number.isFinite(raw) ? raw : 5));
 }
 
-function normalizeHolyCrabAspectRatio(aspectRatio) {
+function normalizeMediaBridgeAspectRatio(aspectRatio) {
   const raw = String(aspectRatio || '').trim();
   return ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].includes(raw)
     ? raw
     : '16:9';
 }
 
-function normalizeHolyCrabResolution(resolution, model) {
+function normalizeMediaBridgeResolution(resolution, model) {
   const raw = String(resolution || '').trim().toLowerCase();
   const match = raw.match(/(480|720|1080|4k)/);
   let normalized = !match
@@ -4188,21 +4004,21 @@ function normalizeHolyCrabResolution(resolution, model) {
   return normalized;
 }
 
-function normalizeHolyCrabAssetStatus(status) {
+function normalizeMediaBridgeAssetStatus(status) {
   return String(status || '').trim().toLowerCase();
 }
 
-function pickHolyCrabAssetId(asset) {
+function pickMediaBridgeAssetId(asset) {
   return String(asset?.uniqId || asset?.uniq_id || asset?.id || '').trim();
 }
 
-async function waitForHolyCrabAsset(config, asset, requestImpl, opts = {}) {
-  const assetId = pickHolyCrabAssetId(asset);
-  if (!assetId) throw new Error('HolyCrab 素材响应缺少 uniqId');
-  const initialStatus = normalizeHolyCrabAssetStatus(asset?.status);
+async function waitForMediaBridgeAsset(config, asset, requestImpl, opts = {}) {
+  const assetId = pickMediaBridgeAssetId(asset);
+  if (!assetId) throw new Error('MediaBridge 素材响应缺少 uniqId');
+  const initialStatus = normalizeMediaBridgeAssetStatus(asset?.status);
   if (initialStatus === 'success') return assetId;
   if (['failed', 'error'].includes(initialStatus)) {
-    throw new Error(`HolyCrab 素材处理失败: ${asset?.error || asset?.message || assetId}`);
+    throw new Error(`MediaBridge 素材处理失败: ${asset?.error || asset?.message || assetId}`);
   }
 
   const attempts = Math.max(1, Number(opts.asset_poll_attempts) || 90);
@@ -4212,16 +4028,16 @@ async function waitForHolyCrabAsset(config, asset, requestImpl, opts = {}) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
     const response = await requestImpl(
-      joinHolyCrabUrl(config.base_url, `/api/user-assets/${encodeURIComponent(assetId)}`),
+      joinMediaBridgeUrl(config.base_url, `/api/user-assets/${encodeURIComponent(assetId)}`),
       {
         method: 'GET',
-        headers: holyCrabHeaders(config.api_key),
+        headers: mediaBridgeHeaders(config.api_key),
         timeoutMs: 30000,
       }
     );
     let current;
     try {
-      current = parseHolyCrabEnvelope(response, 'HolyCrab 素材状态查询失败');
+      current = parseMediaBridgeEnvelope(response, 'MediaBridge 素材状态查询失败');
     } catch (error) {
       // 对象存储 PUT 后，素材记录可能有极短的最终一致性窗口。
       if (attempt + 1 < attempts && /\b404\b|不存在|not found/i.test(error.message)) {
@@ -4229,19 +4045,19 @@ async function waitForHolyCrabAsset(config, asset, requestImpl, opts = {}) {
       }
       throw error;
     }
-    const status = normalizeHolyCrabAssetStatus(current?.status);
-    if (status === 'success') return pickHolyCrabAssetId(current) || assetId;
+    const status = normalizeMediaBridgeAssetStatus(current?.status);
+    if (status === 'success') return pickMediaBridgeAssetId(current) || assetId;
     if (['failed', 'error'].includes(status)) {
       throw new Error(
-        `HolyCrab 素材处理失败: ${current?.error || current?.message || assetId}`
+        `MediaBridge 素材处理失败: ${current?.error || current?.message || assetId}`
       );
     }
   }
-  throw new Error(`HolyCrab 素材处理超时: ${assetId}`);
+  throw new Error(`MediaBridge 素材处理超时: ${assetId}`);
 }
 
-function buildHolyCrabMultipart(fields) {
-  const boundary = `----jama-holycrab-${crypto.randomBytes(12).toString('hex')}`;
+function buildMediaBridgeMultipart(fields) {
+  const boundary = `----jama-mediabridge-${crypto.randomBytes(12).toString('hex')}`;
   const parts = [];
   for (const [name, value] of Object.entries(fields || {})) {
     if (value == null) continue;
@@ -4258,19 +4074,19 @@ function buildHolyCrabMultipart(fields) {
   return { boundary, body: Buffer.concat(parts) };
 }
 
-async function findReusableHolyCrabAsset(config, name, requestImpl) {
+async function findReusableMediaBridgeAsset(config, name, requestImpl) {
   const response = await requestImpl(
-    joinHolyCrabUrl(
+    joinMediaBridgeUrl(
       config.base_url,
       `/api/user-assets?page=1&pageSize=20&name=${encodeURIComponent(name)}`
     ),
     {
       method: 'GET',
-      headers: holyCrabHeaders(config.api_key),
+      headers: mediaBridgeHeaders(config.api_key),
       timeoutMs: 30000,
     }
   );
-  const data = parseHolyCrabEnvelope(response, 'HolyCrab 素材列表查询失败');
+  const data = parseMediaBridgeEnvelope(response, 'MediaBridge 素材列表查询失败');
   const records = Array.isArray(data?.records)
     ? data.records
     : Array.isArray(data)
@@ -4279,46 +4095,46 @@ async function findReusableHolyCrabAsset(config, name, requestImpl) {
   return records.find(
     (item) =>
       String(item?.name || '').trim() === name &&
-      pickHolyCrabAssetId(item) &&
-      !['failed', 'error'].includes(normalizeHolyCrabAssetStatus(item.status))
+      pickMediaBridgeAssetId(item) &&
+      !['failed', 'error'].includes(normalizeMediaBridgeAssetStatus(item.status))
   ) || null;
 }
 
-async function uploadHolyCrabLocalImage(config, source, requestImpl, opts = {}) {
+async function uploadMediaBridgeLocalImage(config, source, requestImpl, opts = {}) {
   if (!Buffer.isBuffer(source?.buffer) || source.buffer.length === 0) {
-    throw new Error('HolyCrab 本地素材内容为空');
+    throw new Error('MediaBridge 本地素材内容为空');
   }
   const extension = String(source.extension || '').replace(/^\./, '').toLowerCase();
-  const mimeType = String(source.mimeType || holyCrabMimeFromExtension(extension));
-  if (!extension || !mimeType) throw new Error('HolyCrab 无法识别本地素材格式');
+  const mimeType = String(source.mimeType || mediaBridgeMimeFromExtension(extension));
+  if (!extension || !mimeType) throw new Error('MediaBridge 无法识别本地素材格式');
 
   const name = `jama-${crypto
     .createHash('sha256')
     .update(source.buffer)
     .digest('hex')
     .slice(0, 20)}.${extension}`;
-  const existing = await findReusableHolyCrabAsset(config, name, requestImpl);
-  if (existing) return waitForHolyCrabAsset(config, existing, requestImpl, opts);
+  const existing = await findReusableMediaBridgeAsset(config, name, requestImpl);
+  if (existing) return waitForMediaBridgeAsset(config, existing, requestImpl, opts);
 
-  const preSignUrl = joinHolyCrabUrl(
+  const preSignUrl = joinMediaBridgeUrl(
     config.base_url,
     `/api/user-assets/pre-signed-download-url?file_extension=${encodeURIComponent(extension)}` +
       `&content_type=${encodeURIComponent(mimeType)}`
   );
   const preSignResponse = await requestImpl(preSignUrl, {
     method: 'GET',
-    headers: holyCrabHeaders(config.api_key),
+    headers: mediaBridgeHeaders(config.api_key),
     timeoutMs: 30000,
   });
-  const uploadTicket = parseHolyCrabEnvelope(
+  const uploadTicket = parseMediaBridgeEnvelope(
     preSignResponse,
-    'HolyCrab 获取素材上传地址失败'
+    'MediaBridge 获取素材上传地址失败'
   );
   const preSignedUrl = String(uploadTicket?.preSignedUrl || '').trim();
   const objectKey = String(uploadTicket?.objectKey || '').trim();
   const uniqId = String(uploadTicket?.uniqId || '').trim();
   if (!preSignedUrl || !objectKey || !uniqId) {
-    throw new Error('HolyCrab 素材上传地址响应缺少 preSignedUrl、objectKey 或 uniqId');
+    throw new Error('MediaBridge 素材上传地址响应缺少 preSignedUrl、objectKey 或 uniqId');
   }
 
   const putResponse = await requestImpl(preSignedUrl, {
@@ -4330,28 +4146,28 @@ async function uploadHolyCrabLocalImage(config, source, requestImpl, opts = {}) 
   const putStatus = Number(putResponse?.statusCode || putResponse?.status || 0);
   if (putStatus < 200 || putStatus >= 300) {
     throw new Error(
-      `HolyCrab 素材文件上传失败 (${putStatus}): ${String(putResponse?.raw || '').slice(0, 300)}`
+      `MediaBridge 素材文件上传失败 (${putStatus}): ${String(putResponse?.raw || '').slice(0, 300)}`
     );
   }
 
-  const multipart = buildHolyCrabMultipart({
+  const multipart = buildMediaBridgeMultipart({
     name,
     object_key: objectKey,
     content_type: mimeType,
   });
   const recordResponse = await requestImpl(
-    joinHolyCrabUrl(config.base_url, '/api/user-assets/upload'),
+    joinMediaBridgeUrl(config.base_url, '/api/user-assets/upload'),
     {
       method: 'POST',
-      headers: holyCrabHeaders(config.api_key, {
+      headers: mediaBridgeHeaders(config.api_key, {
         'Content-Type': `multipart/form-data; boundary=${multipart.boundary}`,
       }),
       body: multipart.body,
       timeoutMs: 60000,
     }
   );
-  parseHolyCrabEnvelope(recordResponse, 'HolyCrab 素材登记失败');
-  return waitForHolyCrabAsset(
+  parseMediaBridgeEnvelope(recordResponse, 'MediaBridge 素材登记失败');
+  return waitForMediaBridgeAsset(
     config,
     { uniqId, status: 'Processing' },
     requestImpl,
@@ -4359,57 +4175,57 @@ async function uploadHolyCrabLocalImage(config, source, requestImpl, opts = {}) 
   );
 }
 
-async function registerHolyCrabAssetFromUrl(config, publicUrl, requestImpl, opts = {}) {
+async function registerMediaBridgeAssetFromUrl(config, publicUrl, requestImpl, opts = {}) {
   const name = `jama-${crypto
     .createHash('sha256')
     .update(String(publicUrl))
     .digest('hex')
     .slice(0, 20)}`;
-  const listUrl = joinHolyCrabUrl(
+  const listUrl = joinMediaBridgeUrl(
     config.base_url,
     `/api/user-assets?page=1&pageSize=20&name=${encodeURIComponent(name)}`
   );
   const listResponse = await requestImpl(listUrl, {
     method: 'GET',
-    headers: holyCrabHeaders(config.api_key),
+    headers: mediaBridgeHeaders(config.api_key),
     timeoutMs: 30000,
   });
-  const listData = parseHolyCrabEnvelope(listResponse, 'HolyCrab 素材列表查询失败');
+  const listData = parseMediaBridgeEnvelope(listResponse, 'MediaBridge 素材列表查询失败');
   const records = Array.isArray(listData?.records)
     ? listData.records
     : Array.isArray(listData)
       ? listData
       : [];
   const existing = records.find(
-    (item) => String(item?.name || '').trim() === name && pickHolyCrabAssetId(item)
+    (item) => String(item?.name || '').trim() === name && pickMediaBridgeAssetId(item)
   );
-  if (existing && !['failed', 'error'].includes(normalizeHolyCrabAssetStatus(existing.status))) {
-    return waitForHolyCrabAsset(config, existing, requestImpl, opts);
+  if (existing && !['failed', 'error'].includes(normalizeMediaBridgeAssetStatus(existing.status))) {
+    return waitForMediaBridgeAsset(config, existing, requestImpl, opts);
   }
 
-  const multipart = buildHolyCrabMultipart({
+  const multipart = buildMediaBridgeMultipart({
     url: String(publicUrl),
     name,
   });
   const createResponse = await requestImpl(
-    joinHolyCrabUrl(config.base_url, '/api/user-assets/create-asset-from-url'),
+    joinMediaBridgeUrl(config.base_url, '/api/user-assets/create-asset-from-url'),
     {
       method: 'POST',
-      headers: holyCrabHeaders(config.api_key, {
+      headers: mediaBridgeHeaders(config.api_key, {
         'Content-Type': `multipart/form-data; boundary=${multipart.boundary}`,
       }),
       body: multipart.body,
       timeoutMs: 60000,
     }
   );
-  const created = parseHolyCrabEnvelope(createResponse, 'HolyCrab 素材注册失败');
-  return waitForHolyCrabAsset(config, created, requestImpl, opts);
+  const created = parseMediaBridgeEnvelope(createResponse, 'MediaBridge 素材注册失败');
+  return waitForMediaBridgeAsset(config, created, requestImpl, opts);
 }
 
-async function callHolyCrabVideoApi(db, config, log, opts) {
+async function callMediaBridgeVideoApi(db, config, log, opts) {
   const requestImpl = typeof opts.request_impl === 'function'
     ? opts.request_impl
-    : holyCrabRequest;
+    : mediaBridgeRequest;
   const rawInputs = [];
   const appendRaw = (value) => {
     const raw = String(value || '').trim();
@@ -4431,26 +4247,26 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
   const videoAssetIds = [];
   try {
     for (let index = 0; index < rawInputs.length; index++) {
-      const localSource = resolveHolyCrabLocalImageSource(
+      const localSource = resolveMediaBridgeLocalImageSource(
         rawInputs[index],
         opts.storage_local_path
       );
       let assetId = '';
       if (localSource) {
-        log.info('[HolyCrab] 本地参考图使用预签名地址直传', {
+        log.info('[MediaBridge] 本地参考图使用预签名地址直传', {
           video_gen_id: opts.video_gen_id,
           index,
           bytes: localSource.buffer.length,
           content_type: localSource.mimeType,
         });
-        assetId = await uploadHolyCrabLocalImage(
+        assetId = await uploadMediaBridgeLocalImage(
           config,
           localSource,
           requestImpl,
           opts
         );
       } else {
-        const publicUrl = await resolveImageInputForHolyCrabAsync(
+        const publicUrl = await resolveImageInputForMediaBridgeAsync(
           db,
           rawInputs[index],
           opts.files_base_url,
@@ -4461,10 +4277,10 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
         );
         if (!publicUrl) {
           throw new Error(
-            `HolyCrab 第 ${index + 1} 张参考图无法读取或转换为公网 URL`
+            `MediaBridge 第 ${index + 1} 张参考图无法读取或转换为公网 URL`
           );
         }
-        assetId = await registerHolyCrabAssetFromUrl(
+        assetId = await registerMediaBridgeAssetFromUrl(
           config,
           publicUrl,
           requestImpl,
@@ -4474,19 +4290,19 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
       if (assetId && !imageAssetIds.includes(assetId)) imageAssetIds.push(assetId);
     }
     for (let index = 0; index < rawVideoInputs.length; index++) {
-      const localSource = resolveHolyCrabLocalImageSource(
+      const localSource = resolveMediaBridgeLocalImageSource(
         rawVideoInputs[index],
         opts.storage_local_path
       );
       let assetId = '';
       if (localSource) {
-        log.info('[HolyCrab] local structure video upload', {
+        log.info('[MediaBridge] local structure video upload', {
           video_gen_id: opts.video_gen_id,
           index,
           bytes: localSource.buffer.length,
           content_type: localSource.mimeType,
         });
-        assetId = await uploadHolyCrabLocalImage(
+        assetId = await uploadMediaBridgeLocalImage(
           config,
           localSource,
           requestImpl,
@@ -4501,9 +4317,9 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
           opts.video_gen_id
         );
         if (!publicUrl) {
-          throw new Error(`HolyCrab 第 ${index + 1} 个结构视频无法读取或转换`);
+          throw new Error(`MediaBridge 第 ${index + 1} 个结构视频无法读取或转换`);
         }
-        assetId = await registerHolyCrabAssetFromUrl(
+        assetId = await registerMediaBridgeAssetFromUrl(
           config,
           publicUrl,
           requestImpl,
@@ -4516,20 +4332,20 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
     return { error: error.message };
   }
 
-  const model = resolveHolyCrabSeedanceModel(opts.model);
+  const model = resolveMediaBridgeSeedanceModel(opts.model);
   const body = applyRequiredVideoAudioOption({
     prompt: imageAssetIds.length
       ? normalizeFalReferencePrompt(opts.prompt)
       : String(opts.prompt || ''),
-    duration: normalizeHolyCrabDuration(opts.duration),
-    ratio: normalizeHolyCrabAspectRatio(opts.aspect_ratio),
-    resolution: normalizeHolyCrabResolution(opts.resolution, model),
+    duration: normalizeMediaBridgeDuration(opts.duration),
+    ratio: normalizeMediaBridgeAspectRatio(opts.aspect_ratio),
+    resolution: normalizeMediaBridgeResolution(opts.resolution, model),
     model,
     ...(imageAssetIds.length ? { imageAssetIds } : {}),
     ...(videoAssetIds.length ? { videoAssetIds } : {}),
-  }, 'holycrab');
-  const url = joinHolyCrabUrl(config.base_url, '/api/tasks/generation');
-  log.info('[HolyCrab 视频] 提交 BytePlus Seedance 任务', {
+  }, 'mediabridge');
+  const url = joinMediaBridgeUrl(config.base_url, '/api/tasks/generation');
+  log.info('[MediaBridge 视频] 提交 Global Ark Seedance 任务', {
     video_gen_id: opts.video_gen_id,
     model,
     duration: body.duration,
@@ -4543,19 +4359,19 @@ async function callHolyCrabVideoApi(db, config, log, opts) {
   try {
     const response = await requestImpl(url, {
       method: 'POST',
-      headers: holyCrabHeaders(config.api_key, {
+      headers: mediaBridgeHeaders(config.api_key, {
         'Content-Type': 'application/json',
       }),
       body,
       timeoutMs: 120000,
     });
-    const task = parseHolyCrabEnvelope(response, 'HolyCrab 视频提交失败');
+    const task = parseMediaBridgeEnvelope(response, 'MediaBridge 视频提交失败');
     const uniqId = String(task?.uniqId || task?.uniq_id || '').trim();
     if (!uniqId) {
-      return { error: 'HolyCrab 视频提交响应缺少 uniqId' };
+      return { error: 'MediaBridge 视频提交响应缺少 uniqId' };
     }
     return {
-      task_id: encodeHolyCrabVideoHandle({ uniq_id: uniqId }),
+      task_id: encodeMediaBridgeVideoHandle({ uniq_id: uniqId }),
       status: 'submitted',
     };
   } catch (error) {
@@ -4607,52 +4423,6 @@ async function callVideoApiInternal(db, log, opts) {
   );
   const provider = (config.provider || '').toLowerCase();
   const protocol = resolveVideoProtocol(config, model);
-  if (db && opts.drama_id && VIDEO_PROTOCOLS_SUPPORT_SD2_ASSET_SCHEME.has(protocol)) {
-    opts = applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts);
-  }
-
-  // Seedance 2.0 自动注入角色音色参考（模型为 SD2 家族，或协议为 volcengine_omni；未显式指定 voice_reference_url 时）
-  const isSeedance2 =
-    isSeedance2FamilyModel(model) || protocol === 'volcengine_omni';
-  if (isSeedance2 && db && opts.drama_id && !opts.voice_reference_url) {
-    const voiceMap = collectActiveCharacterVoiceRefs(db, opts.drama_id);
-    if (voiceMap.size > 0) {
-      // 优先使用分镜显式指定的角色（如果有），否则取第一个
-      let chosen = null;
-      if (opts.voice_character_id && voiceMap.has(Number(opts.voice_character_id))) {
-        chosen = voiceMap.get(Number(opts.voice_character_id));
-      } else if (opts.storyboard_id) {
-        try {
-          const sbRow = db.prepare('SELECT characters FROM storyboards WHERE id = ?').get(opts.storyboard_id);
-          if (sbRow && sbRow.characters) {
-            const charList = typeof sbRow.characters === 'string' ? JSON.parse(sbRow.characters) : sbRow.characters;
-            const ids = Array.isArray(charList) ? charList.map(c => Number(c?.id || c)).filter(Boolean) : [];
-            const matches = [];
-            for (const cid of ids) {
-              if (voiceMap.has(cid)) matches.push(voiceMap.get(cid));
-            }
-            if (matches.length === 1) chosen = matches[0];
-          }
-        } catch (_) {}
-      }
-      if (chosen) {
-        opts.voice_reference_url = chosen;
-        log.info('[视频][SD2][全能] 自动为 Seedance 2.0 注入角色音色参考（来自角色 seedance2_voice_asset）', {
-          video_gen_id,
-          storyboard_id: opts.storyboard_id,
-          voice_ref_url: String(chosen).slice(0, 100)
-        });
-      } else {
-        log.info('[视频][SD2][全能] 当前分镜存在多个或没有唯一可判定音色，未自动注入；可显式指定 voice_character_id', {
-          video_gen_id,
-          storyboard_id: opts.storyboard_id,
-          available_voice_char_ids: Array.from(voiceMap.keys())
-        });
-      }
-    } else {
-      log.info('[视频][SD2][全能] Seedance 2.0 模型但本剧暂无 active 音色参考', { video_gen_id, drama_id: opts.drama_id });
-    }
-  }
   log.info('[视频] 路由协议', {
     video_gen_id,
     provider,
@@ -4664,8 +4434,8 @@ async function callVideoApiInternal(db, log, opts) {
     endpoint: config.endpoint || '(auto)',
   });
 
-  if (protocol === 'holycrab' || isHolyCrabConfig(config)) {
-    return callHolyCrabVideoApi(db, config, log, {
+  if (protocol === 'mediabridge' || isMediaBridgeConfig(config)) {
+    return callMediaBridgeVideoApi(db, config, log, {
       ...opts,
       prompt,
       model,
@@ -4823,8 +4593,6 @@ async function callVideoApiInternal(db, log, opts) {
       files_base_url: opts.files_base_url,
       storage_local_path: opts.storage_local_path,
       video_gen_id: opts.video_gen_id,
-      // 为将来可灵 Omni 也支持音色参考做准备（当前 Seedance 2.0 不走此分支）
-      voice_reference_url: opts.voice_reference_url,
     });
   }
 
@@ -4844,8 +4612,6 @@ async function callVideoApiInternal(db, log, opts) {
       files_base_url: opts.files_base_url,
       storage_local_path: opts.storage_local_path,
       video_gen_id: opts.video_gen_id,
-      // 关键：把 callVideoApi 里自动注入的 Seedance 2.0 音色参考音频透传下去
-      voice_reference_url: opts.voice_reference_url,
     });
   }
 
@@ -5176,22 +4942,22 @@ async function pollVeniceVideoOnce(config, handle, requestImpl = veniceRequest) 
   return { status: status || 'PROCESSING' };
 }
 
-async function pollHolyCrabVideoOnce(config, handle, requestImpl = holyCrabRequest) {
-  const url = joinHolyCrabUrl(
+async function pollMediaBridgeVideoOnce(config, handle, requestImpl = mediaBridgeRequest) {
+  const url = joinMediaBridgeUrl(
     config.base_url,
     `/api/tasks/${encodeURIComponent(handle.uniq_id)}`
   );
   try {
     const response = await requestImpl(url, {
       method: 'GET',
-      headers: holyCrabHeaders(config.api_key),
+      headers: mediaBridgeHeaders(config.api_key),
       timeoutMs: 60000,
     });
-    const task = parseHolyCrabEnvelope(response, 'HolyCrab 视频轮询失败');
+    const task = parseMediaBridgeEnvelope(response, 'MediaBridge 视频轮询失败');
     const step = Number(task?.step);
     if (step === 3) {
       return {
-        error: `HolyCrab 视频生成失败: ${
+        error: `MediaBridge 视频生成失败: ${
           task?.error || task?.message || task?.failReason || '任务失败'
         }`,
       };
@@ -5201,13 +4967,13 @@ async function pollHolyCrabVideoOnce(config, handle, requestImpl = holyCrabReque
     ).trim();
     if (step === 2) {
       if (!videoUrl) {
-        return { error: 'HolyCrab 视频任务已完成，但响应中没有 videoUrl' };
+        return { error: 'MediaBridge 视频任务已完成，但响应中没有 videoUrl' };
       }
       if (/^https?:\/\//i.test(videoUrl)) {
         return { video_url: videoUrl, status: 'COMPLETED' };
       }
       return {
-        video_url: new URL(videoUrl, `${holyCrabApiBase(config.base_url)}/`).toString(),
+        video_url: new URL(videoUrl, `${mediaBridgeApiBase(config.base_url)}/`).toString(),
         status: 'COMPLETED',
       };
     }
@@ -5239,8 +5005,8 @@ async function pollVideoTaskInternal(
   const isFal = protocol === 'fal' || !!falHandle;
   const veniceHandle = decodeVeniceVideoHandle(taskId);
   const isVenice = protocol === 'venice' || !!veniceHandle;
-  const holyCrabHandle = decodeHolyCrabVideoHandle(taskId);
-  const isHolyCrab = protocol === 'holycrab' || !!holyCrabHandle;
+  const mediaBridgeHandle = decodeMediaBridgeVideoHandle(taskId);
+  const isMediaBridge = protocol === 'mediabridge' || !!mediaBridgeHandle;
   const isDashScope = protocol === 'dashscope';
   const isGemini = protocol === 'gemini';
   const isVidu = protocol === 'vidu';
@@ -5272,14 +5038,14 @@ async function pollVideoTaskInternal(
   if (isVenice && !veniceHandle) {
     return { error: 'Venice.ai 视频任务标识无效，无法继续轮询' };
   }
-  if (isHolyCrab && !holyCrabHandle) {
-    return { error: 'HolyCrab 视频任务标识无效，无法继续轮询' };
+  if (isMediaBridge && !mediaBridgeHandle) {
+    return { error: 'MediaBridge 视频任务标识无效，无法继续轮询' };
   }
   const queryUrl = () => buildQueryUrl(config, taskId);
-  const initialPollUrl = isHolyCrab
-    ? joinHolyCrabUrl(
+  const initialPollUrl = isMediaBridge
+    ? joinMediaBridgeUrl(
         config.base_url,
-        `/api/tasks/${encodeURIComponent(holyCrabHandle.uniq_id)}`
+        `/api/tasks/${encodeURIComponent(mediaBridgeHandle.uniq_id)}`
       )
     : isVenice
     ? joinVeniceUrl(config.base_url, '/video/retrieve')
@@ -5288,8 +5054,8 @@ async function pollVideoTaskInternal(
       : queryUrl();
   log.info('[poll] ????', {
     video_gen_id: videoGenId,
-    task_id: isHolyCrab
-      ? holyCrabHandle.uniq_id
+    task_id: isMediaBridge
+      ? mediaBridgeHandle.uniq_id
       : isVenice
         ? veniceHandle.queue_id
         : isFal
@@ -5318,18 +5084,18 @@ async function pollVideoTaskInternal(
       message: `正在生成视频（预计进度，已查询 ${attempt + 1} 次）…`,
     });
     try {
-      if (isHolyCrab) {
-        const result = await pollHolyCrabVideoOnce(
+      if (isMediaBridge) {
+        const result = await pollMediaBridgeVideoOnce(
           config,
-          holyCrabHandle,
+          mediaBridgeHandle,
           typeof config.request_impl === 'function'
             ? config.request_impl
-            : holyCrabRequest
+            : mediaBridgeRequest
         );
-        log.info('[HolyCrab poll] 任务状态', {
+        log.info('[MediaBridge poll] 任务状态', {
           video_gen_id: videoGenId,
           round: attempt + 1,
-          uniq_id: holyCrabHandle.uniq_id,
+          uniq_id: mediaBridgeHandle.uniq_id,
           step: result.step,
           status: result.status || (result.error ? 'ERROR' : ''),
         });
@@ -5800,13 +5566,14 @@ module.exports = {
   resolveVeniceSeedanceModel,
   callVeniceVideoApi,
   pollVeniceVideoOnce,
-  resolveHolyCrabSeedanceModel,
-  normalizeHolyCrabDuration,
-  normalizeHolyCrabAspectRatio,
-  normalizeHolyCrabResolution,
-  resolveHolyCrabLocalImageSource,
-  uploadHolyCrabLocalImage,
-  registerHolyCrabAssetFromUrl,
-  callHolyCrabVideoApi,
-  pollHolyCrabVideoOnce,
+  resolveMediaBridgeSeedanceModel,
+  normalizeMediaBridgeDuration,
+  normalizeMediaBridgeAspectRatio,
+  normalizeMediaBridgeResolution,
+  resolveMediaBridgeLocalImageSource,
+  uploadMediaBridgeLocalImage,
+  registerMediaBridgeAssetFromUrl,
+  callMediaBridgeVideoApi,
+  pollMediaBridgeVideoOnce,
+  isMediaBridgeConfig,
 };

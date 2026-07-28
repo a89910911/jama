@@ -1,6 +1,6 @@
 # 漫剧画布工作流（LibTV 式）实施计划
 
-> 目标：在 LocalMiniDrama 现有 `project.json` / SQLite 数据之上，增加 LibTV 风格的无限画布视图；列表模式（FilmCreate）与画布模式双视图、单数据源。
+> 目标：在 JamaAI 现有 `project.json` / SQLite 数据之上，增加 LibTV 风格的无限画布视图；列表模式（FilmCreate）与画布模式双视图、单数据源。
 
 **最后更新**：2026-06-15（阶段 D：交互增强、媒体对齐、全能模式）
 

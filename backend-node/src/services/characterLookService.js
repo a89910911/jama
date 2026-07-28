@@ -14,7 +14,6 @@ const LOOK_VISUAL_FIELDS = new Set([
   'reference_images',
   'style_tokens',
   'color_palette',
-  'seedance2_asset',
 ]);
 
 const LOOK_MUTABLE_FIELDS = new Set([
@@ -36,7 +35,6 @@ const CHARACTER_MIRROR_FIELDS = [
   'four_view_image_url',
   'style_tokens',
   'color_palette',
-  'seedance2_asset',
   'error_msg',
 ];
 
@@ -63,7 +61,7 @@ const LOOK_SUMMARY_COLUMNS = `
     THEN NULL
     ELSE four_view_image_url
   END AS four_view_image_url,
-  reference_images, style_tokens, color_palette, seedance2_asset, error_msg,
+  reference_images, style_tokens, color_palette, error_msg,
   visual_revision, status, legacy_stage_key, created_at, updated_at, deleted_at
 `;
 
@@ -126,7 +124,6 @@ function serializeLook(row, defaultLookId = null) {
     reference_images: parseJson(row.reference_images, row.reference_images || null),
     style_tokens: parseJson(row.style_tokens, row.style_tokens || null),
     color_palette: parseJson(row.color_palette, row.color_palette || null),
-    seedance2_asset: parseJson(row.seedance2_asset, null),
     error_msg: row.error_msg || null,
     visual_revision: Number(row.visual_revision || 1),
     status: row.status || 'active',
@@ -204,9 +201,9 @@ function insertLookFromCharacter(db, character, options = {}) {
       (drama_id, character_id, name, category, appearance, polished_prompt,
        negative_prompt, image_url, local_path, ref_image, extra_images,
        four_view_image_url, reference_images, style_tokens, color_palette,
-       seedance2_asset, error_msg, visual_revision, status, legacy_stage_key,
+       error_msg, visual_revision, status, legacy_stage_key,
        created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, ?)`
   ).run(
     Number(character.drama_id),
     Number(character.id),
@@ -225,7 +222,6 @@ function insertLookFromCharacter(db, character, options = {}) {
     jsonColumn(options.reference_images),
     jsonColumn(options.style_tokens !== undefined ? options.style_tokens : character.style_tokens),
     jsonColumn(options.color_palette !== undefined ? options.color_palette : character.color_palette),
-    jsonColumn(options.seedance2_asset !== undefined ? options.seedance2_asset : character.seedance2_asset),
     options.error_msg !== undefined ? options.error_msg : character.error_msg || null,
     options.legacy_stage_key || null,
     now,
@@ -356,8 +352,8 @@ function createLook(db, characterId, body = {}) {
       (drama_id, character_id, name, category, appearance, polished_prompt,
        negative_prompt, image_url, local_path, ref_image, extra_images,
        four_view_image_url, reference_images, style_tokens, color_palette,
-       seedance2_asset, error_msg, visual_revision, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)`
+       error_msg, visual_revision, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)`
   ).run(
     character.drama_id,
     character.id,
@@ -374,7 +370,6 @@ function createLook(db, characterId, body = {}) {
     jsonColumn(body.reference_images),
     jsonColumn(body.style_tokens),
     jsonColumn(body.color_palette),
-    jsonColumn(body.seedance2_asset),
     body.error_msg || null,
     now,
     now
@@ -409,7 +404,7 @@ function updateLook(db, lookId, body = {}) {
     if (body[field] === undefined) continue;
     updates.push(`${field} = ?`);
     values.push(
-      ['extra_images', 'reference_images', 'style_tokens', 'color_palette', 'seedance2_asset'].includes(field)
+      ['extra_images', 'reference_images', 'style_tokens', 'color_palette'].includes(field)
         ? jsonColumn(body[field])
         : body[field]
     );

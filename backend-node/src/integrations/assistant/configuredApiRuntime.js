@@ -153,7 +153,7 @@ class ConfiguredApiRuntime {
 
   async runStructuredTurn(options, turnId) {
     const systemPrompt = [
-      '你是 LocalMiniDrama 内置的短剧创作助手。',
+      '你是 JamaAI 内置的短剧创作助手。',
       '根据用户提供的项目上下文完成任务。',
       schemaInstruction(options.outputSchema),
     ].join('\n\n');
@@ -295,7 +295,7 @@ class ConfiguredApiRuntime {
       }
       this.assertActive(taskId);
       const systemPrompt = [
-        '你是 LocalMiniDrama 内置的 AI 创作助手。',
+        '你是 JamaAI 内置的 AI 创作助手。',
         '只回答当前短剧创作问题，不要声称执行了未实际执行的数据库或文件操作。',
       ].join('\n');
       const sceneKey = resolveSceneKey(options.sceneKey);

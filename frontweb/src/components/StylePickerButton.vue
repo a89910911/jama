@@ -106,11 +106,11 @@ const filteredGroups = computed(() => {
 
 function thumbStyle(opt) {
   if (opt.thumb) return {}
-  return { background: opt.color || 'linear-gradient(135deg,#667eea,#764ba2)' }
+  return { background: opt.color || 'linear-gradient(135deg,#5a6bb8,#c96a3a)' }
 }
 
 function swatchStyle(opt) {
-  return { background: opt.color || 'linear-gradient(135deg,#667eea,#764ba2)' }
+  return { background: opt.color || 'linear-gradient(135deg,#5a6bb8,#c96a3a)' }
 }
 
 function select(opt) {

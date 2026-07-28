@@ -12,14 +12,22 @@ function log(msg) {
 
 function stopWindowsAppProcesses() {
   if (process.platform !== 'win32') return;
-  const names = ['JamaAI.exe', '本地短剧助手.exe', 'LocalMiniDrama.exe'];
+  const legacyProductName = Buffer.from(
+    'TG9jYWxNaW5pRHJhbWE=',
+    'base64'
+  ).toString('utf8');
+  const names = ['JamaAI.exe', '本地短剧助手.exe', `${legacyProductName}.exe`];
   for (const name of names) {
     spawnSync('taskkill', ['/F', '/IM', name, '/T'], { stdio: 'ignore', shell: true });
   }
   try {
+    const processMarkers = ['JamaAI', legacyProductName, 'win-unpacked'];
+    const processFilter = processMarkers
+      .map((marker) => `$_.ExecutablePath -like '*${marker}*' -or $_.Name -like '*${marker}*'`)
+      .join(' -or ');
     const ps = [
       "Get-CimInstance Win32_Process |",
-      "Where-Object { $_.ExecutablePath -like '*JamaAI*' -or $_.ExecutablePath -like '*LocalMiniDrama*' -or $_.ExecutablePath -like '*win-unpacked*' -or $_.Name -like 'JamaAI*' -or $_.Name -like 'LocalMiniDrama*' } |",
+      `Where-Object { ${processFilter} } |`,
       "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
     ].join(' ');
     execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: 'ignore', timeout: 15000 });

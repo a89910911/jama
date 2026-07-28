@@ -37,7 +37,7 @@
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.localminidrama.desktop",
+    "appId": "com.jamaai.desktop",
     "productName": "JamaAI",
     "artifactName": "JamaAI ${version}.${ext}",
     "directories": {

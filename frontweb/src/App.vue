@@ -21,6 +21,8 @@
 
       <div class="activity-spacer" />
 
+      <AccountSession compact />
+
       <button
         class="activity-item activity-theme"
         type="button"
@@ -55,6 +57,7 @@ import {
 } from '@element-plus/icons-vue'
 import ImageHoverPreview from '@/components/ImageHoverPreview.vue'
 import GenerationProgressCenter from '@/components/GenerationProgressCenter.vue'
+import AccountSession from '@/components/AccountSession.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()

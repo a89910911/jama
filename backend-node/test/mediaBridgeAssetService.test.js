@@ -11,12 +11,13 @@ const {
   uploadAsset,
   resolveAssetContentDescriptor,
   streamAssetContent,
-} = require('../src/services/holyCrabAssetService');
+} = require('../src/services/mediaBridgeAssetService');
+const { MEDIABRIDGE_API_BASE } = require('../src/services/mediaBridgeClient');
 
 const config = {
-  provider: 'holycrab',
-  api_protocol: 'holycrab',
-  base_url: 'https://abgzfc.holycrab.ai',
+  provider: 'mediabridge',
+  api_protocol: 'mediabridge',
+  base_url: MEDIABRIDGE_API_BASE,
   api_key: 'crab-secret',
 };
 
@@ -28,7 +29,7 @@ function response(data, code = 200, message = null) {
   };
 }
 
-describe('HolyCrab asset management adapter', () => {
+describe('MediaBridge asset management adapter', () => {
   it('lists a bounded page with filters and X-User-Token authentication', async () => {
     let captured;
     const result = await listAssets(
@@ -41,7 +42,7 @@ describe('HolyCrab asset management adapter', () => {
     );
     assert.equal(
       captured.url,
-      'https://abgzfc.holycrab.ai/api/user-assets?page=2&pageSize=100&name=%E8%A7%92%E8%89%B2+A&status=1'
+      `${MEDIABRIDGE_API_BASE}/api/user-assets?page=2&pageSize=100&name=%E8%A7%92%E8%89%B2+A&status=1`
     );
     assert.equal(captured.options.method, 'GET');
     assert.equal(captured.options.headers['X-User-Token'], 'crab-secret');
@@ -59,7 +60,7 @@ describe('HolyCrab asset management adapter', () => {
         return response({ uniqId: 'asset002', status: 'Processing' });
       }
     );
-    assert.equal(captured.url, 'https://abgzfc.holycrab.ai/api/user-assets/create-asset-from-url');
+    assert.equal(captured.url, `${MEDIABRIDGE_API_BASE}/api/user-assets/create-asset-from-url`);
     assert.match(captured.options.headers['Content-Type'], /^multipart\/form-data; boundary=/);
     assert.match(
       captured.options.body.toString('utf8'),
@@ -78,7 +79,7 @@ describe('HolyCrab asset management adapter', () => {
       captured = { url: String(url), options };
       return response(null);
     });
-    assert.equal(captured.url, 'https://abgzfc.holycrab.ai/api/user-assets/delete');
+    assert.equal(captured.url, `${MEDIABRIDGE_API_BASE}/api/user-assets/delete`);
     assert.deepEqual(captured.options.body, { uniq_id: 'asset003' });
     assert.deepEqual(result, { uniqId: 'asset003', deleted: true });
   });
@@ -133,7 +134,7 @@ describe('HolyCrab asset management adapter', () => {
     });
     assert.equal(
       descriptor.url,
-      'https://abgzfc.holycrab.ai/api/user-assets/serve/asset005.mp4'
+      `${MEDIABRIDGE_API_BASE}/api/user-assets/serve/asset005.mp4`
     );
     assert.equal(descriptor.filename, '角色视频.mp4');
     assert.equal(descriptor.fallback_content_type, 'video/mp4');
@@ -183,7 +184,7 @@ describe('HolyCrab asset management adapter', () => {
     try {
       await streamAssetContent(
         {
-          provider: 'holycrab',
+          provider: 'mediabridge',
           base_url: `http://127.0.0.1:${apiPort}`,
           api_key: 'range-secret',
         },

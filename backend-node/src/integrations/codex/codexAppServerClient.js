@@ -81,7 +81,7 @@ class CodexAppServerClient extends EventEmitter {
     await this.request('initialize', {
       clientInfo: {
         name: 'jama-local-mini-drama',
-        title: 'LocalMiniDrama',
+        title: 'JamaAI',
         version: this.options.clientVersion || '1.2.8',
       },
       capabilities: { experimentalApi: true },

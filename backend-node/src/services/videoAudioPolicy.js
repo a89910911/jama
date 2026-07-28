@@ -31,7 +31,7 @@ function applyRequiredVideoAudioOption(body, protocol) {
   const target = body && typeof body === 'object' ? body : {};
   switch (String(protocol || '').trim().toLowerCase()) {
     case 'fal':
-    case 'holycrab':
+    case 'mediabridge':
     case 'volcengine':
     case 'volcengine_omni':
       target.generate_audio = VIDEO_AUDIO_REQUIRED;

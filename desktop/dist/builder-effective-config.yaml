@@ -1,6 +1,6 @@
 directories:
   output: dist
   buildResources: build
-artifactName: LocalMiniDrama-${buildVersion}.${ext}
+artifactName: JamaAI-${buildVersion}.${ext}
 files: []
 electronVersion: 28.3.3

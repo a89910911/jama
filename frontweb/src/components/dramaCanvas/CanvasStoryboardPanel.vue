@@ -607,7 +607,7 @@ async function runStep(step) {
   width: min(560px, 94vw);
   padding: 10px 14px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(129, 140, 248, 0.45);
+  border: 1px solid rgba(90, 107, 184, 0.45);
   background: rgba(15, 15, 18, 0.97);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
@@ -618,7 +618,7 @@ async function runStep(step) {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #c7d2fe;
+  color: #c7cee8;
 }
 .head-actions {
   display: flex;
@@ -669,9 +669,9 @@ async function runStep(step) {
   gap: 6px;
   margin: 0 0 10px 36px;
   padding: 7px;
-  border: 1px solid rgba(129, 140, 248, 0.22);
+  border: 1px solid rgba(90, 107, 184, 0.22);
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(90, 107, 184, 0.06);
 }
 .look-binding-row {
   display: grid;

@@ -1,56 +1,5 @@
 <template>
   <div class="film-list">
-    <header class="header">
-      <div class="header-inner">
-        <h1 class="logo">
-          <BrandLogo />
-        </h1>
-        <!-- 公共资源库（左侧，靛紫调） -->
-        <div class="header-library">
-          <el-button class="btn-library" @click="showCharLibrary = true">
-            <el-icon><User /></el-icon>素材角色
-          </el-button>
-          <el-button class="btn-library" @click="showSceneLibrary = true">
-            <el-icon><PictureFilled /></el-icon>素材场景
-          </el-button>
-          <el-button class="btn-library" @click="showPropLibrary = true">
-            <el-icon><Box /></el-icon>素材道具
-          </el-button>
-          <el-button class="btn-library" @click="$router.push('/redraw')">
-            <el-icon><VideoCamera /></el-icon>转绘工作台
-          </el-button>
-          <el-button class="btn-library" @click="$router.push('/action-migration')">
-            <el-icon><MagicStick /></el-icon>动作迁移
-          </el-button>
-        </div>
-        <!-- 右侧操作区 -->
-        <div class="header-actions">
-          <!-- 暂时隐藏，功能待完善 -->
-          <!-- <el-button class="btn-library" title="自由创作" @click="$router.push('/free-create')">
-            <el-icon><MagicStick /></el-icon>自由创作
-          </el-button>
-          <el-button class="btn-library" title="媒体素材库" @click="$router.push('/media-library')">
-            <el-icon><Files /></el-icon>素材库
-          </el-button> -->
-          <AccountSession />
-          <el-button class="btn-theme" :title="isDark ? '切换到浅色模式' : '切换到暗色模式'" @click="toggleTheme">
-            <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
-            {{ isDark ? '浅色' : '暗色' }}
-          </el-button>
-          <el-button class="btn-settings" @click="openAiConfig">
-            <el-icon><Setting /></el-icon>我的 AI 配置
-          </el-button>
-          <el-button class="btn-import" :loading="importing" @click="triggerImport">
-            <el-icon><Upload /></el-icon>导入项目
-          </el-button>
-          <input ref="importFileInput" type="file" accept=".zip" style="display:none" @change="onImportFile" />
-          <el-button type="primary" class="btn-new" @click="goNewProject">
-            <el-icon><Plus /></el-icon>新建项目
-          </el-button>
-        </div>
-      </div>
-    </header>
-
     <main class="main">
       <div v-loading="loading" class="projects-wrap">
         <div class="project-grid">
@@ -86,6 +35,28 @@
               </div>
             </div>
           </div>
+          <div class="project-card library-card">
+            <div class="library-card-inner">
+              <div>
+                <h3 class="library-card-title">公共素材库</h3>
+                <p class="library-card-desc">集中管理可跨项目复用的角色、场景和道具</p>
+              </div>
+              <div class="library-entry-grid">
+                <button class="library-entry" type="button" @click="showCharLibrary = true">
+                  <span class="library-entry-icon"><el-icon><User /></el-icon></span>
+                  <span>角色</span>
+                </button>
+                <button class="library-entry" type="button" @click="showSceneLibrary = true">
+                  <span class="library-entry-icon"><el-icon><PictureFilled /></el-icon></span>
+                  <span>场景</span>
+                </button>
+                <button class="library-entry" type="button" @click="showPropLibrary = true">
+                  <span class="library-entry-icon"><el-icon><Box /></el-icon></span>
+                  <span>道具</span>
+                </button>
+              </div>
+            </div>
+          </div>
           <div
             v-for="d in dramas"
             :key="d.id"
@@ -113,6 +84,7 @@
           </div>
         </div>
       </div>
+      <input ref="importFileInput" type="file" accept=".zip" style="display:none" @change="onImportFile" />
     </main>
 
     <!-- 新建项目：先填标题和描述 -->
@@ -367,8 +339,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Delete, Setting, Plus, User, PictureFilled, Box, Sunny, Moon, Download, Upload, QuestionFilled, FolderOpened, MagicStick, Files, VideoCamera } from '@element-plus/icons-vue'
-import { useTheme } from '@/composables/useTheme'
+import { Edit, Delete, Plus, User, PictureFilled, Box, Download, Upload, QuestionFilled, FolderOpened } from '@element-plus/icons-vue'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
 import { sceneLibraryAPI } from '@/api/sceneLibrary'
@@ -376,14 +347,10 @@ import { propLibraryAPI } from '@/api/propLibrary'
 import { uploadAPI } from '@/api/upload'
 import { imagesAPI } from '@/api/images'
 import { taskAPI } from '@/api/task'
-import AccountSession from '@/components/AccountSession.vue'
-import BrandLogo from '@/components/BrandLogo.vue'
 import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
-import { authState } from '@/stores/auth'
 import { applyGenerationProgress, parseGenerationTaskResult } from '@/utils/generationProgress'
 
 const router = useRouter()
-const { isDark, toggle: toggleTheme } = useTheme()
 
 // 库编辑图片 – 文件输入 refs
 const charLibFileRef  = ref(null)
@@ -449,10 +416,6 @@ async function doGenerateLibImg(form, prompt, api, reloadFn) {
 const loading = ref(false)
 const dramas = ref([])
 const total = ref(0)
-
-function openAiConfig() {
-  router.push({ name: 'ai-config', query: { returnTo: '/' } })
-}
 
 // 图片预览
 const previewImageUrl = ref(null)
@@ -852,141 +815,9 @@ onMounted(() => {
   background: #08080d;
   color: #e4e4e7;
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(99, 102, 241, 0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 35% at 85% 55%, rgba(139, 92, 246, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(90, 107, 184, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 35% at 85% 55%, rgba(201, 106, 58, 0.1) 0%, transparent 60%),
     radial-gradient(ellipse 40% 30% at 10% 80%, rgba(79, 70, 229, 0.08) 0%, transparent 60%);
-}
-.header {
-  background: rgba(12, 12, 18, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(99, 102, 241, 0.18);
-  padding: 12px 24px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 1px 0 rgba(99, 102, 241, 0.08), 0 4px 24px rgba(0, 0, 0, 0.3);
-}
-.header-inner {
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.logo {
-  margin: 0;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1;
-}
-.logo-main {
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 50%, #f0abfc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.35));
-}
-.logo-sub {
-  font-size: 0.68rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  color: #6d6d7a;
-  -webkit-text-fill-color: #6d6d7a;
-  filter: none;
-}
-.page-title {
-  color: #a1a1aa;
-  font-size: 0.95rem;
-}
-.header-library {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 20px;
-}
-.header-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* 资源库按钮 —— 靛紫调 */
-.btn-library {
-  --el-button-bg-color: rgba(99, 102, 241, 0.12);
-  --el-button-border-color: rgba(99, 102, 241, 0.35);
-  --el-button-text-color: #a5b4fc;
-  --el-button-hover-bg-color: rgba(99, 102, 241, 0.22);
-  --el-button-hover-border-color: rgba(99, 102, 241, 0.55);
-  --el-button-hover-text-color: #c7d2fe;
-  --el-button-active-bg-color: rgba(99, 102, 241, 0.3);
-  --el-button-active-border-color: rgba(99, 102, 241, 0.7);
-}
-html.light .btn-library {
-  --el-button-bg-color: rgba(79, 70, 229, 0.08);
-  --el-button-border-color: rgba(79, 70, 229, 0.3);
-  --el-button-text-color: #3730a3;
-  --el-button-hover-bg-color: rgba(79, 70, 229, 0.14);
-  --el-button-hover-border-color: rgba(79, 70, 229, 0.5);
-  --el-button-hover-text-color: #312e81;
-  --el-button-active-bg-color: rgba(79, 70, 229, 0.2);
-  --el-button-active-border-color: rgba(79, 70, 229, 0.65);
-}
-
-/* 主题切换按钮 */
-.btn-theme {
-  --el-button-bg-color: rgba(148, 163, 184, 0.1);
-  --el-button-border-color: rgba(148, 163, 184, 0.3);
-  --el-button-text-color: #94a3b8;
-  --el-button-hover-bg-color: rgba(148, 163, 184, 0.2);
-  --el-button-hover-border-color: rgba(148, 163, 184, 0.5);
-  --el-button-hover-text-color: #cbd5e1;
-  transition: all 0.2s;
-}
-html.light .btn-theme {
-  --el-button-bg-color: rgba(99, 102, 241, 0.08);
-  --el-button-border-color: rgba(99, 102, 241, 0.3);
-  --el-button-text-color: #6366f1;
-  --el-button-hover-bg-color: rgba(99, 102, 241, 0.15);
-  --el-button-hover-border-color: rgba(99, 102, 241, 0.5);
-  --el-button-hover-text-color: #4f46e5;
-}
-
-/* AI配置按钮 —— 琥珀调 */
-.btn-settings {
-  --el-button-bg-color: rgba(234, 179, 8, 0.1);
-  --el-button-border-color: rgba(234, 179, 8, 0.32);
-  --el-button-text-color: #fcd34d;
-  --el-button-hover-bg-color: rgba(234, 179, 8, 0.2);
-  --el-button-hover-border-color: rgba(234, 179, 8, 0.5);
-  --el-button-hover-text-color: #fde68a;
-  --el-button-active-bg-color: rgba(234, 179, 8, 0.28);
-  --el-button-active-border-color: rgba(234, 179, 8, 0.65);
-}
-html.light .btn-settings {
-  --el-button-bg-color: rgba(180, 83, 9, 0.07);
-  --el-button-border-color: rgba(180, 83, 9, 0.28);
-  --el-button-text-color: #92400e;
-  --el-button-hover-bg-color: rgba(180, 83, 9, 0.12);
-  --el-button-hover-border-color: rgba(180, 83, 9, 0.45);
-  --el-button-hover-text-color: #78350f;
-  --el-button-active-bg-color: rgba(180, 83, 9, 0.18);
-  --el-button-active-border-color: rgba(180, 83, 9, 0.6);
-}
-
-/* 导入按钮 —— 亮色模式下提升可读性 */
-html.light .btn-import {
-  --el-button-text-color: #374151;
-  --el-button-border-color: #d1d5db;
-  --el-button-hover-text-color: #1f2937;
-  --el-button-hover-border-color: #9ca3af;
 }
 
 .main {
@@ -1033,32 +864,32 @@ html.light .btn-import {
   position: absolute;
   inset: 0;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.04) 0%, transparent 60%);
   pointer-events: none;
 }
 .project-card:hover {
-  border-color: rgba(99, 102, 241, 0.55);
+  border-color: rgba(90, 107, 184, 0.55);
   background: rgba(28, 28, 36, 0.9);
   transform: translateY(-3px);
-  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15), 0 0 0 1px rgba(99, 102, 241, 0.1), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 40px rgba(90, 107, 184, 0.15), 0 0 0 1px rgba(90, 107, 184, 0.1), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* 操作卡片 */
 .action-card {
   cursor: default;
   border-style: dashed;
-  border-color: rgba(99, 102, 241, 0.4);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border-color: rgba(90, 107, 184, 0.4);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.06) 0%, rgba(201, 106, 58, 0.04) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 40px rgba(99, 102, 241, 0.04);
+  box-shadow: inset 0 0 40px rgba(90, 107, 184, 0.04);
 }
 .action-card:hover {
-  border-color: rgba(99, 102, 241, 0.65);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.07) 100%);
+  border-color: rgba(90, 107, 184, 0.65);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.1) 0%, rgba(201, 106, 58, 0.07) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12), inset 0 0 40px rgba(99, 102, 241, 0.06);
+  box-shadow: 0 8px 30px rgba(90, 107, 184, 0.12), inset 0 0 40px rgba(90, 107, 184, 0.06);
 }
 .action-card::before {
   display: none;
@@ -1073,7 +904,7 @@ html.light .btn-import {
 .action-card-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #a5b4fc;
+  color: #9aa6d1;
   margin: 0;
 }
 .action-card-buttons {
@@ -1089,17 +920,80 @@ html.light .btn-import {
   --el-button-bg-color: var(--el-color-primary);
 }
 .action-btn-import {
-  --el-button-bg-color: rgba(99, 102, 241, 0.12);
-  --el-button-border-color: rgba(99, 102, 241, 0.35);
-  --el-button-text-color: #a5b4fc;
-  --el-button-hover-bg-color: rgba(99, 102, 241, 0.22);
-  --el-button-hover-border-color: rgba(99, 102, 241, 0.55);
-  --el-button-hover-text-color: #c7d2fe;
+  --el-button-bg-color: rgba(90, 107, 184, 0.12);
+  --el-button-border-color: rgba(90, 107, 184, 0.35);
+  --el-button-text-color: #9aa6d1;
+  --el-button-hover-bg-color: rgba(90, 107, 184, 0.22);
+  --el-button-hover-border-color: rgba(90, 107, 184, 0.55);
+  --el-button-hover-text-color: #c7cee8;
+}
+.library-card {
+  cursor: default;
+}
+.library-card:hover {
+  transform: none;
+}
+.library-card-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+}
+.library-card-title {
+  margin: 0 0 6px;
+  color: #fafafa;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.library-card-desc {
+  margin: 0;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.library-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.library-entry {
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(90, 107, 184, 0.24);
+  border-radius: 12px;
+  color: #c7cee8;
+  background: rgba(90, 107, 184, 0.08);
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
+}
+.library-entry:hover,
+.library-entry:focus-visible {
+  border-color: rgba(90, 107, 184, 0.58);
+  color: #f5f7ff;
+  background: rgba(90, 107, 184, 0.18);
+  outline: none;
+}
+.library-entry-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(90, 107, 184, 0.16);
+  font-size: 16px;
 }
 .action-card-example {
   width: 100%;
   padding-top: 8px;
-  border-top: 1px solid rgba(99, 102, 241, 0.15);
+  border-top: 1px solid rgba(90, 107, 184, 0.15);
 }
 .example-hint {
   display: flex;
@@ -1109,7 +1003,7 @@ html.light .btn-import {
   margin-bottom: 8px;
 }
 .example-hint-icon {
-  color: #a5b4fc;
+  color: #9aa6d1;
   font-size: 15px;
 }
 .example-hint-text {
@@ -1183,9 +1077,9 @@ html.light .btn-import {
   border: 1px solid rgba(234, 179, 8, 0.3);
 }
 .badge-status--archived {
-  background: rgba(99, 102, 241, 0.1);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(90, 107, 184, 0.1);
+  color: #9aa6d1;
+  border: 1px solid rgba(90, 107, 184, 0.25);
 }
 .badge-episodes {
   background: rgba(14, 165, 233, 0.12);
@@ -1204,9 +1098,9 @@ html.light .btn-import {
   font-family: monospace;
 }
 .badge-style {
-  background: rgba(168, 85, 247, 0.1);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: rgba(201, 106, 58, 0.1);
+  color: #e9a27e;
+  border: 1px solid rgba(201, 106, 58, 0.25);
 }
 .badge-genre {
   background: rgba(249, 115, 22, 0.1);
@@ -1283,52 +1177,49 @@ html.light .btn-import {
 
 /* ===== 亮色模式适配 ===== */
 html.light .film-list {
-  background: #f5f3ff;
-  color: #1e1b4b;
+  background: #faf9f6;
+  color: #211922;
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(99, 102, 241, 0.1) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 35% at 85% 55%, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
-}
-html.light .header {
-  background: rgba(248, 246, 255, 0.88);
-  border-bottom-color: rgba(99, 102, 241, 0.2);
-  box-shadow: 0 1px 0 rgba(99, 102, 241, 0.1), 0 4px 16px rgba(99, 102, 241, 0.06);
-}
-html.light .logo-main {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.2));
-}
-html.light .logo-sub {
-  color: #9ca3af;
-  -webkit-text-fill-color: #9ca3af;
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(90, 107, 184, 0.1) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 35% at 85% 55%, rgba(201, 106, 58, 0.06) 0%, transparent 60%);
 }
 html.light .project-card {
   background: rgba(255, 255, 255, 0.9);
   border-color: rgba(199, 210, 254, 0.8);
-  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(90, 107, 184, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
   backdrop-filter: none;
 }
 html.light .project-card::before {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.03) 0%, transparent 60%);
 }
 html.light .project-card:hover {
-  border-color: rgba(99, 102, 241, 0.5);
+  border-color: rgba(90, 107, 184, 0.5);
   background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 12px 36px rgba(99, 102, 241, 0.12), 0 0 0 1px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 12px 36px rgba(90, 107, 184, 0.12), 0 0 0 1px rgba(90, 107, 184, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 html.light .action-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
-  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.06) 0%, rgba(201, 106, 58, 0.04) 100%);
+  border-color: rgba(90, 107, 184, 0.35);
 }
 html.light .action-card:hover {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.07) 100%);
-  border-color: rgba(99, 102, 241, 0.55);
+  background: linear-gradient(135deg, rgba(90, 107, 184, 0.1) 0%, rgba(201, 106, 58, 0.07) 100%);
+  border-color: rgba(90, 107, 184, 0.55);
 }
-html.light .action-card-title { color: #4f46e5; }
-html.light .project-title { color: #1e1b4b; }
+html.light .action-card-title { color: #435ee5; }
+html.light .library-card-title { color: #211922; }
+html.light .library-card-desc { color: #62625b; }
+html.light .library-entry {
+  border-color: rgba(90, 107, 184, 0.2);
+  color: #525d92;
+  background: rgba(90, 107, 184, 0.06);
+}
+html.light .library-entry:hover,
+html.light .library-entry:focus-visible {
+  border-color: rgba(90, 107, 184, 0.48);
+  color: #303b72;
+  background: rgba(90, 107, 184, 0.12);
+}
+html.light .project-title { color: #211922; }
 html.light .project-desc { color: #4b5563; }
 html.light .project-meta { color: #6b7280; }
 html.light .example-hint-text { color: #6b7280; }
@@ -1336,7 +1227,7 @@ html.light .library-item {
   background: #faf9ff;
   border-color: #e5e7eb;
 }
-html.light .library-item-name { color: #1e1b4b; }
+html.light .library-item-name { color: #211922; }
 html.light .library-item-desc { color: #4b5563; }
 html.light .library-empty { color: #6b7280; }
 html.light .lib-img-thumb {

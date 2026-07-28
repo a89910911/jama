@@ -1,6 +1,6 @@
-# LocalMiniDrama OpenClaw Skill
+# JamaAI OpenClaw Skill
 
-让用户通过 OpenClaw（小龙虾）自然语言控制 LocalMiniDrama，完成 AI 短剧从剧本到成片的全流程。
+让用户通过 OpenClaw（小龙虾）自然语言控制 JamaAI，完成 AI 短剧从剧本到成片的全流程。
 
 ## 版本
 

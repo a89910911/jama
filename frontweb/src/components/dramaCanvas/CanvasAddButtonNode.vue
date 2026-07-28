@@ -34,7 +34,7 @@ function onClick() {
   width: 176px;
   padding: 14px 12px;
   border-radius: 10px;
-  border: 1px dashed rgba(129, 140, 248, 0.45);
+  border: 1px dashed rgba(90, 107, 184, 0.45);
   background: rgba(24, 24, 27, 0.65);
   cursor: pointer;
   display: flex;
@@ -43,15 +43,15 @@ function onClick() {
   transition: border-color 0.15s, background 0.15s;
 }
 .canvas-add-node:hover {
-  border-color: #818cf8;
-  background: rgba(129, 140, 248, 0.12);
+  border-color: #6f7fc2;
+  background: rgba(90, 107, 184, 0.12);
 }
 .add-icon {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: rgba(129, 140, 248, 0.2);
-  color: #a5b4fc;
+  background: rgba(90, 107, 184, 0.2);
+  color: #9aa6d1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -69,5 +69,5 @@ function onClick() {
 .kind-scene .add-icon { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
 .kind-prop { border-color: rgba(251, 191, 36, 0.4); }
 .kind-prop .add-icon { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
-.kind-storyboard { border-color: rgba(167, 139, 250, 0.45); width: 200px; }
+.kind-storyboard { border-color: rgba(232, 160, 122, 0.45); width: 200px; }
 </style>

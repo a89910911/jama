@@ -27,7 +27,7 @@ const MODE_PRESETS = {
   },
 };
 
-const SUPPORTED_REFERENCE_VIDEO_PROTOCOLS = new Set(['volcengine_omni', 'holycrab']);
+const SUPPORTED_REFERENCE_VIDEO_PROTOCOLS = new Set(['volcengine_omni', 'mediabridge']);
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.m4v', '.avi', '.mkv']);
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
@@ -250,7 +250,8 @@ function configCapability(config) {
   const provider = String(config.provider || '').toLowerCase();
   const model = getVideoModel(config) || '';
   const ok = SUPPORTED_REFERENCE_VIDEO_PROTOCOLS.has(protocol)
-    || SUPPORTED_REFERENCE_VIDEO_PROTOCOLS.has(provider);
+    || SUPPORTED_REFERENCE_VIDEO_PROTOCOLS.has(provider)
+    || videoClient.isMediaBridgeConfig(config);
   return {
     ok,
     code: ok ? 'supported' : 'unsupported_reference_video',

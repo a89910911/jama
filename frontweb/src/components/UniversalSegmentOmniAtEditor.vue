@@ -490,13 +490,13 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .omni-at-copy-btn {
-  color: #a78bfa !important;
+  color: #e8a07a !important;
 }
 .omni-at-copy-btn:hover {
-  color: #c4b5fd !important;
+  color: #f1c2a8 !important;
 }
 html.light .omni-at-copy-btn {
-  color: #6d28d9 !important;
+  color: #a94f27 !important;
 }
 .omni-at-editor {
   flex: 1;
@@ -515,8 +515,8 @@ html.light .omni-at-copy-btn {
   word-break: break-word;
 }
 .omni-at-editor:focus {
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.25) inset;
+  border-color: #e8a07a;
+  box-shadow: 0 0 0 1px rgba(232, 160, 122, 0.25) inset;
 }
 .omni-at-editor:empty::before {
   content: attr(data-placeholder);
@@ -531,16 +531,16 @@ html.light .omni-at-copy-btn {
   padding: 0 5px;
   border-radius: 4px;
   font-weight: 600;
-  color: #c4b5fd;
-  background: rgba(139, 92, 246, 0.22);
-  border: 1px solid rgba(167, 139, 250, 0.45);
+  color: #f1c2a8;
+  background: rgba(201, 106, 58, 0.22);
+  border: 1px solid rgba(232, 160, 122, 0.45);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 :deep(.omni-at-chip:hover) {
-  background: rgba(139, 92, 246, 0.38);
-  border-color: #a78bfa;
+  background: rgba(201, 106, 58, 0.38);
+  border-color: #e8a07a;
 }
 html.light .omni-at-editor {
   color: #1f2937;
@@ -548,16 +548,16 @@ html.light .omni-at-editor {
   border-color: var(--el-border-color, #dcdfe6);
 }
 html.light .omni-at-editor:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2) inset;
+  border-color: #c96a3a;
+  box-shadow: 0 0 0 1px rgba(201, 106, 58, 0.2) inset;
 }
 html.light :deep(.omni-at-chip) {
-  color: #5b21b6;
-  background: rgba(124, 58, 237, 0.12);
-  border-color: rgba(124, 58, 237, 0.35);
+  color: #873c1c;
+  background: rgba(201, 106, 58, 0.12);
+  border-color: rgba(201, 106, 58, 0.35);
 }
 html.light :deep(.omni-at-chip:hover) {
-  background: rgba(124, 58, 237, 0.2);
+  background: rgba(201, 106, 58, 0.2);
 }
 </style>
 
@@ -701,7 +701,7 @@ html.light .omni-at-menu-name {
 .omni-at-menu-at {
   font-size: 11px;
   font-family: ui-monospace, monospace;
-  color: #a78bfa;
+  color: #e8a07a;
 }
 .omni-at-menu-at-sub {
   font-size: 10px;
@@ -709,7 +709,7 @@ html.light .omni-at-menu-name {
   color: #94a3b8;
 }
 html.light .omni-at-menu-at {
-  color: #6d28d9;
+  color: #a94f27;
 }
 html.light .omni-at-menu-at-sub {
   color: #64748b;

@@ -194,120 +194,20 @@ function testConnection(db, log) {
   };
 }
 
-/** ModelArk / 方舟私有资产库：代理调用 CreateAssetGroup、ListAssets 等（与官方 Action 名一致） */
-function parseSettings(value) {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function modelArkAsset(db, log) {
-  return async (req, res) => {
-    const body = req.body || {};
-    const action = (body.action || '').toString().trim();
-    const configId = Number.parseInt(body.config_id, 10);
-    const savedConfig = Number.isInteger(configId) && configId > 0
-      ? userAiConfigService.getRuntimeConfig(db, req.user.id, configId)
-      : null;
-    if (Number.isInteger(configId) && configId > 0 && !savedConfig) {
-      return response.notFound(res, '配置不存在');
-    }
-    if (savedConfig && savedConfig.service_type !== 'model_ark_asset') {
-      return response.badRequest(res, '所选配置不是 SD2 资产库配置');
-    }
-    if (savedConfig && !savedConfig.is_active) {
-      return response.badRequest(res, '所选配置未启用');
-    }
-    const savedSettings = parseSettings(savedConfig?.settings);
-    const valueOrSaved = (value, key) => {
-      const clean = value == null ? '' : String(value).trim();
-      return clean || savedSettings[key];
-    };
-    try {
-      const modelArkAssetProxyService = require('../services/modelArkAssetProxyService');
-      const data = await modelArkAssetProxyService.callModelArkAsset(
-        {
-          base_url: body.base_url || savedConfig?.base_url,
-          api_key: body.api_key || savedConfig?.api_key,
-          action,
-          body: body.payload,
-          path_mode: body.path_mode || savedSettings.path_mode,
-          http_method: body.http_method,
-          api_version: body.api_version || savedSettings.api_version,
-          auth_mode: body.auth_mode || savedSettings.auth_mode,
-          access_key_id: valueOrSaved(body.access_key_id, 'access_key_id'),
-          secret_access_key: valueOrSaved(body.secret_access_key, 'secret_access_key'),
-          sign_region: body.sign_region || savedSettings.sign_region,
-          sign_service: body.sign_service || savedSettings.sign_service,
-          session_token: valueOrSaved(body.session_token, 'session_token'),
-          project_name: body.project_name || savedSettings.project_name,
-        },
-        log
-      );
-      response.success(res, data);
-    } catch (err) {
-      log.error('model-ark-asset proxy failed', { error: err.message, action });
-      const status = err.status >= 400 && err.status < 600 ? err.status : 400;
-      return response.error(res, status, 'MODEL_ARK_ASSET', err.message || '请求失败', err.payload);
-    }
-  };
-}
-
-/** 即梦2角色认证：代理 GET 素材列表（表单未保存也可用当前填写的网关与 Token） */
-function listJimeng2MaterialAssets(db, log) {
-  return async (req, res) => {
-    const body = req.body || {};
-    const configId = Number.parseInt(body.config_id, 10);
-    const savedConfig = Number.isInteger(configId) && configId > 0
-      ? userAiConfigService.getRuntimeConfig(db, req.user.id, configId)
-      : null;
-    if (Number.isInteger(configId) && configId > 0 && !savedConfig) {
-      return response.notFound(res, '配置不存在');
-    }
-    if (savedConfig && savedConfig.service_type !== 'jimeng2_character_auth') {
-      return response.badRequest(res, '所选配置不是即梦2角色认证配置');
-    }
-    if (savedConfig && !savedConfig.is_active) {
-      return response.badRequest(res, '所选配置未启用');
-    }
-    const base_url = (body.base_url || savedConfig?.base_url || '')
-      .toString()
-      .trim()
-      .replace(/\/$/, '');
-    const { normalizeMaterialHubToken } = require('../services/jimengMaterialHubService');
-    const api_key = normalizeMaterialHubToken(body.api_key || savedConfig?.api_key || '');
-    if (!base_url || !api_key) {
-      return response.badRequest(res, '请先填写网关 URL 与 Token');
-    }
-    const jimengMaterialHubService = require('../services/jimengMaterialHubService');
-    const ctx = { baseUrl: base_url, token: api_key };
-    const r = await jimengMaterialHubService.listAssets(ctx, { limit: body.limit, cursor: body.cursor }, log);
-    if (!r.ok) {
-      return response.badRequest(res, String(r.error || '列出素材失败').slice(0, 800));
-    }
-    response.success(res, r.data);
-  };
-}
-
-/** HolyCrab 素材管理：使用已保存的配置，密钥无需由浏览器重复传输。 */
-function holyCrabAssets(db, log) {
+/** MediaBridge 素材管理：使用已保存的配置，密钥无需由浏览器重复传输。 */
+function mediaBridgeAssets(db, log) {
   return async (req, res) => {
     const body = req.body || {};
     const configId = Number.parseInt(body.config_id, 10);
     if (!Number.isFinite(configId) || configId <= 0) {
-      return response.badRequest(res, '请选择 HolyCrab 配置');
+      return response.badRequest(res, '请选择 MediaBridge 配置');
     }
     const config = userAiConfigService.getRuntimeConfig(db, req.user.id, configId);
-    if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
-    if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
+    if (!config) return response.notFound(res, 'MediaBridge 配置不存在');
+    if (!config.is_active) return response.badRequest(res, 'MediaBridge 配置未启用');
 
     const action = String(body.action || '').trim().toLowerCase();
-    const service = require('../services/holyCrabAssetService');
+    const service = require('../services/mediaBridgeAssetService');
     try {
       let data;
       if (action === 'list') {
@@ -321,45 +221,45 @@ function holyCrabAssets(db, log) {
       } else if (action === 'upload') {
         data = await service.uploadAsset(config, req.file, body);
       } else {
-        return response.badRequest(res, '不支持的 HolyCrab 素材操作');
+        return response.badRequest(res, '不支持的 MediaBridge 素材操作');
       }
       response.success(res, data);
     } catch (err) {
-      log.error('holycrab asset operation failed', {
+      log.error('mediabridge asset operation failed', {
         action,
         config_id: configId,
         error: err.message,
       });
-      response.badRequest(res, err.message || 'HolyCrab 素材操作失败');
+      response.badRequest(res, err.message || 'MediaBridge 素材操作失败');
     }
   };
 }
 
-/** HolyCrab 素材内容代理：供浏览器播放器和下载按钮使用，支持 Range 请求。 */
-function holyCrabAssetContent(db, log) {
+/** MediaBridge 素材内容代理：供浏览器播放器和下载按钮使用，支持 Range 请求。 */
+function mediaBridgeAssetContent(db, log) {
   return async (req, res) => {
     const configId = Number.parseInt(req.params.configId, 10);
     if (!Number.isFinite(configId) || configId <= 0) {
-      return response.badRequest(res, 'HolyCrab 配置 ID 无效');
+      return response.badRequest(res, 'MediaBridge 配置 ID 无效');
     }
     const config = userAiConfigService.getRuntimeConfig(db, req.user.id, configId);
-    if (!config) return response.notFound(res, 'HolyCrab 配置不存在');
-    if (!config.is_active) return response.badRequest(res, 'HolyCrab 配置未启用');
+    if (!config) return response.notFound(res, 'MediaBridge 配置不存在');
+    if (!config.is_active) return response.badRequest(res, 'MediaBridge 配置未启用');
 
-    const service = require('../services/holyCrabAssetService');
+    const service = require('../services/mediaBridgeAssetService');
     try {
       const asset = await service.getAsset(config, req.params.uniqId);
       await service.streamAssetContent(config, asset, req, res, {
         download: String(req.query.download || '') === '1',
       });
     } catch (err) {
-      log.error('holycrab asset content proxy failed', {
+      log.error('mediabridge asset content proxy failed', {
         config_id: configId,
         uniq_id: req.params.uniqId,
         error: err.message,
       });
       if (!res.headersSent && !res.destroyed) {
-        return response.badRequest(res, err.message || 'HolyCrab 素材文件读取失败');
+        return response.badRequest(res, err.message || 'MediaBridge 素材文件读取失败');
       }
       if (!res.destroyed) res.destroy(err);
     }
@@ -377,10 +277,8 @@ module.exports = function aiConfigRoutes(db, log, cfg) {
     listModels: listModels(db, log),
     delete: remove(db, log, cfg),
     testConnection: testConnection(db, log),
-    listJimeng2MaterialAssets: listJimeng2MaterialAssets(db, log),
-    modelArkAsset: modelArkAsset(db, log),
-    holyCrabAssets: holyCrabAssets(db, log),
-    holyCrabAssetContent: holyCrabAssetContent(db, log),
+    mediaBridgeAssets: mediaBridgeAssets(db, log),
+    mediaBridgeAssetContent: mediaBridgeAssetContent(db, log),
     bulkUpdateKey: bulkUpdateKey(db, log, cfg),
   };
 };

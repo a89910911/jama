@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 LocalMiniDrama
+# 🎬 JamaAI
 
 **A locally-running AI short drama & comic generator — download and run, no cloud required, fully open source**
 
@@ -92,13 +92,13 @@ This project is built entirely in JavaScript from scratch. Connect your own AI A
 ### Option A — Download exe (recommended)
 
 Go to **[Releases](../../releases)** and download the latest:
-- `LocalMiniDrama Setup x.x.x.exe` — NSIS installer
-- `LocalMiniDrama x.x.x.exe` — portable, no install needed
+- `JamaAI Setup x.x.x.exe` — NSIS installer
+- `JamaAI x.x.x.exe` — portable, no install needed
 
 Double-click → open **AI Config** → enter your API key → start creating.
 
 > On first launch a config file is created at:  
-> `%APPDATA%\LocalMiniDrama\backend\configs\config.yaml`
+> `%APPDATA%\jamaai-desktop\backend\configs\config.yaml`
 
 ### Option B — Development Mode
 
@@ -106,8 +106,8 @@ Double-click → open **AI Config** → enter your API key → start creating.
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-username/LocalMiniDrama.git
-cd LocalMiniDrama
+git clone https://github.com/your-username/jama.git
+cd jama
 
 # 2. Backend (port 5679)
 cd backend-node
@@ -148,7 +148,7 @@ You can also double-click `run_dev.bat` at the project root to **start both serv
 ## 🏗 Architecture
 
 ```
-LocalMiniDrama/
+jama/
 ├── backend-node/          # Node.js backend (MySQL by default; SQLite for packaged desktop)
 │   ├── src/
 │   │   ├── config/        # YAML config loader
@@ -188,7 +188,6 @@ Full version history → **[CHANGELOG](changelog.md)**
 **Latest v1.2.8 highlights:**
 - 🆕 **Agnes AI** — one-click setup for text (`agnes-2.0-flash`), image (`agnes-image-2.1-flash`), and video (`agnes-video-v2.0`) with a single API key
 - 🆕 **Canvas mode enhancements** — script node on canvas, context menu, floating toolbar, in-canvas create/delete, batch episode generation
-- 🆕 **ModelArk private asset library** — configure BytePlus / Volcengine Ark asset groups for Seedance 2.0 character certification (AK/SK or Bearer auth)
 - 🔧 **Configurable image proxy** — `upload_url`, timeout (default 180s), and retry count in `config.yaml`; stale cache URLs auto-reupload
 - 🔧 **Prompt improvements** · **Storyboard image count limit fix**
 
@@ -250,7 +249,7 @@ All contributions are welcome!
 
 ## ☕ Buy the Author a Coffee
 
-LocalMiniDrama is **free, open source, and runs locally** — maintained in spare time. If it saved you hours or helped ship a short drama, optional tips are warmly appreciated (any amount; totally voluntary).
+JamaAI is **free, open source, and runs locally** — maintained in spare time. If it saved you hours or helped ship a short drama, optional tips are warmly appreciated (any amount; totally voluntary).
 
 > Tips do **not** affect features, issues, or PRs. A ⭐ Star or sharing the repo helps just as much.
 

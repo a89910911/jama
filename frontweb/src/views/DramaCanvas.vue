@@ -1111,7 +1111,7 @@ onBeforeUnmount(() => {
 
 .logo-sub {
   font-size: 11px;
-  color: #818cf8;
+  color: #6f7fc2;
 }
 
 .breadcrumb-sep { color: var(--text-faint, #52525b); }
@@ -1197,7 +1197,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: background 0.15s;
 }
-.sidebar-item:hover { background: rgba(129, 140, 248, 0.12); }
+.sidebar-item:hover { background: rgba(90, 107, 184, 0.12); }
 .sidebar-item.active { background: rgba(52, 211, 153, 0.16); color: #6ee7b7; }
 
 .workflow-item { white-space: normal; }
@@ -1241,11 +1241,11 @@ onBeforeUnmount(() => {
 }
 
 :deep(.vue-flow__node.selected) {
-  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.8);
+  box-shadow: 0 0 0 2px rgba(90, 107, 184, 0.8);
 }
 </style>
 
 <style>
 html.light .drama-canvas-page { background: var(--bg-page); }
-html.light .vue-flow-canvas { background: #eef2ff; }
+html.light .vue-flow-canvas { background: #f6f6f3; }
 </style>

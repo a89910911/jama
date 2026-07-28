@@ -1,12 +1,12 @@
 ﻿---
 name: local-mini-drama
 version: 1.1.0
-description: LocalMiniDrama 本地短剧助手 — 通过自然语言控制短剧项目全流程：创建剧本、生成角色/场景/道具、生成分镜、批量出图、出视频、合成完整剧集、支持小说导入和工程导入导出
+description: JamaAI 本地短剧助手 — 通过自然语言控制短剧项目全流程：创建剧本、生成角色/场景/道具、生成分镜、批量出图、出视频、合成完整剧集、支持小说导入和工程导入导出
 trigger: "生成短剧|创建短剧|制作短剧|短剧创作|生成分镜|生成视频|生成图片|生成角色|生成场景|生成道具|导出工程|导入工程|导入小说|合成视频|短剧项目|短剧助手|帮我写剧本|写一个短剧|我要拍短剧|生成本集|继续制作|查看项目|查看剧本|查看分镜|角色库|场景库|道具库|AI配置|配置密钥|配置API"
 config:
   base_url:
     type: string
-    description: LocalMiniDrama 后端地址，如 http://localhost:5679 或 http://你的服务器IP:5679
+    description: JamaAI 后端地址，如 http://localhost:5679 或 http://你的服务器IP:5679
     default: "http://localhost:5679"
   default_aspect_ratio:
     type: string
@@ -21,12 +21,12 @@ requiredContext:
   - drama_id
   - episode_id
 author: xuanyustudio
-homepage: https://github.com/xuanyustudio/LocalMiniDrama
+homepage: https://github.com/a89910911/jama
 ---
 
-# LocalMiniDrama 本地短剧助手
+# JamaAI 本地短剧助手
 
-通过自然语言控制 LocalMiniDrama 后端，完成从零到短剧成片的全流程 AI 生成。
+通过自然语言控制 JamaAI 后端，完成从零到短剧成片的全流程 AI 生成。
 
 ## 核心概念
 
@@ -748,7 +748,7 @@ POST /api/v1/video-merges
    - AI Config 中图片/视频 API Key 是否配置
    - 账户额度是否充足
 4. **竖屏创作**：`metadata.aspect_ratio = "9:16"`，视频 API 参数也要对应
-5. **工程文件导入**：仅支持从 `LocalMiniDrama` 导出的 ZIP 格式
+5. **工程文件导入**：仅支持从 `JamaAI` 导出的 ZIP 格式
 6. **小说导入**：建议单次不超过 30 章，超长文本先让用户分段
 
 ---

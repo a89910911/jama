@@ -99,7 +99,6 @@ function rowToItem(r) {
     appearance_context_hash: r.appearance_context_hash ?? undefined,
     generation_context_hash: r.generation_context_hash ?? undefined,
     superseded: !!r.superseded,
-    voice_character_id: r.voice_character_id ?? undefined,
     created_at: r.created_at,
     updated_at: r.updated_at,
     completed_at: r.completed_at,
@@ -656,16 +655,14 @@ async function processVideoGeneration(db, log, videoGenId) {
     const rowForAspect = { ...row, aspect_ratio: aspectForVideo || row.aspect_ratio };
     const hasOmniRefs = !!(reference_urls && reference_urls.length > 0);
     if (row.task_id && hasOmniRefs) {
-      const isHolyCrab =
-        String(config.provider || '').toLowerCase() === 'holycrab' ||
-        String(config.api_protocol || '').toLowerCase() === 'holycrab';
+      const isMediaBridge = videoClient.isMediaBridgeConfig(config);
       taskService.updateTaskStatus(
         db,
         row.task_id,
         'processing',
         5,
-        isHolyCrab
-          ? `正在直传 ${reference_urls.length} 张参考图到 HolyCrab…`
+        isMediaBridge
+          ? `正在直传 ${reference_urls.length} 张参考图到 MediaBridge…`
           : `正在上传 ${reference_urls.length} 张参考图到图床…`
       );
     }
@@ -684,7 +681,6 @@ async function processVideoGeneration(db, log, videoGenId) {
       provider: row.provider,
       drama_id: row.drama_id,
       storyboard_id: row.storyboard_id || undefined,
-      voice_character_id: row.voice_character_id || undefined,
       image_url: hasOmniRefs ? undefined : row.image_url,
       source_video_url: row.source_video_url || undefined,
       first_frame_url: hasOmniRefs ? undefined : row.first_frame_url,

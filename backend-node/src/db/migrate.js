@@ -387,8 +387,8 @@ function ensureAllColumns(database, columnsByTable = allTableColumns(database)) 
     { name: 'polished_prompt',   type: 'TEXT' },   // 文字AI润色后的完整图片生成提示词（可编辑，生图时直接使用）
     { name: 'ref_image',         type: 'TEXT' },   // 用户上传的参考图（本地相对路径或 URL），独立于 AI 生成的主图
     { name: 'stages',            type: 'TEXT' },   // JSON: 多阶段造型 [{episode_range:[1,3], appearance:"..."}]
-    { name: 'seedance2_asset', type: 'TEXT' },   // JSON: 即梦/Seedance2 素材库认证 hub_asset_id / asset_url 等
-    { name: 'seedance2_voice_asset', type: 'TEXT' }, // JSON: Seedance 2.0 音色参考音频（仅 SD2 模型有效）
+    { name: 'seedance2_asset', type: 'TEXT' },   // 已下线模块的历史兼容列，保留以避免破坏旧项目数据
+    { name: 'seedance2_voice_asset', type: 'TEXT' }, // 已下线模块的历史兼容列，保留以避免破坏旧项目数据
     { name: 'negative_prompt', type: 'TEXT' },
     { name: 'default_look_id',   type: 'INTEGER' },
     { name: 'identity_appearance', type: 'TEXT' },
@@ -708,7 +708,7 @@ function ensureAllColumns(database, columnsByTable = allTableColumns(database)) 
     { name: 'appearance_context_hash', type: 'TEXT' },
     { name: 'generation_context_hash', type: 'TEXT' },
     { name: 'superseded',           type: 'INTEGER NOT NULL DEFAULT 0' },
-    { name: 'voice_character_id',   type: 'INTEGER' },
+    { name: 'voice_character_id',   type: 'INTEGER' }, // 已下线模块的历史兼容列
     { name: 'requested_by_user_id', type: 'INTEGER' },
     { name: 'ai_config_id',         type: 'INTEGER' },
     { name: 'ai_config_revision_id', type: 'INTEGER' },

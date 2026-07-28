@@ -73,8 +73,8 @@ function close() {
   cursor: pointer;
 }
 .ctx-item:hover {
-  background: rgba(129, 140, 248, 0.15);
-  color: #c7d2fe;
+  background: rgba(90, 107, 184, 0.15);
+  color: #c7cee8;
 }
 .ctx-divider {
   height: 1px;

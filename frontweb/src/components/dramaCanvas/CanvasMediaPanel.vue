@@ -156,7 +156,7 @@ async function runStep(step) {
   width: min(360px, 90vw);
   padding: 10px 12px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(129, 140, 248, 0.4);
+  border: 1px solid rgba(90, 107, 184, 0.4);
   background: rgba(15, 15, 18, 0.96);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
 }
@@ -166,7 +166,7 @@ async function runStep(step) {
   justify-content: space-between;
   font-size: 11px;
   font-weight: 700;
-  color: #a5b4fc;
+  color: #9aa6d1;
   margin-bottom: 8px;
 }
 .head-right {
@@ -234,7 +234,7 @@ async function runStep(step) {
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.12);
-  border-top-color: #818cf8;
+  border-top-color: #6f7fc2;
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }
@@ -251,8 +251,8 @@ async function runStep(step) {
   display: flex;
   gap: 8px;
 }
-.kind-video { border-color: rgba(244, 114, 182, 0.45); }
-.kind-universal { border-color: rgba(167, 139, 250, 0.45); }
+.kind-video { border-color: rgba(44, 122, 92, 0.45); }
+.kind-universal { border-color: rgba(232, 160, 122, 0.45); }
 .kind-audio { border-color: rgba(251, 191, 36, 0.45); }
 @keyframes spin {
   to { transform: rotate(360deg); }

@@ -83,13 +83,13 @@ const kindLabel = computed(() => {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .canvas-media-node.focused {
-  border-color: #818cf8;
-  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.35);
+  border-color: #6f7fc2;
+  box-shadow: 0 0 0 1px rgba(90, 107, 184, 0.35);
 }
 .tag {
   font-size: 10px;
   font-weight: 600;
-  color: #818cf8;
+  color: #6f7fc2;
   margin-bottom: 6px;
 }
 .text-body {
@@ -133,12 +133,12 @@ const kindLabel = computed(() => {
 .universal-body {
   -webkit-line-clamp: 8;
 }
-.kind-universal { border-color: rgba(167, 139, 250, 0.5); }
-.kind-universal .tag { color: #c4b5fd; }
-.kind-image { border-color: rgba(129, 140, 248, 0.4); }
-.kind-video { border-color: rgba(244, 114, 182, 0.4); }
+.kind-universal { border-color: rgba(232, 160, 122, 0.5); }
+.kind-universal .tag { color: #f1c2a8; }
+.kind-image { border-color: rgba(90, 107, 184, 0.4); }
+.kind-video { border-color: rgba(44, 122, 92, 0.4); }
 .kind-audio { border-color: rgba(251, 191, 36, 0.4); }
 .canvas-media-node.processing { border-color: #60a5fa; }
-.highlighted { box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.55); }
+.highlighted { box-shadow: 0 0 0 2px rgba(90, 107, 184, 0.55); }
 .dimmed { opacity: 0.28; }
 </style>

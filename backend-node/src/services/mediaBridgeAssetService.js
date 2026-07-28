@@ -3,30 +3,30 @@ const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
 const {
-  isHolyCrabConfig,
-  holyCrabApiBase,
-  joinHolyCrabUrl,
-  holyCrabHeaders,
-  holyCrabRequest,
-  parseHolyCrabEnvelope,
-} = require('./holyCrabClient');
+  isMediaBridgeConfig,
+  mediaBridgeApiBase,
+  joinMediaBridgeUrl,
+  mediaBridgeHeaders,
+  mediaBridgeRequest,
+  parseMediaBridgeEnvelope,
+} = require('./mediaBridgeClient');
 
-const HOLYCRAB_ASSET_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+const MEDIABRIDGE_ASSET_ID_RE = /^[A-Za-z0-9]{1,64}$/;
 
-function requireHolyCrabConfig(config) {
-  if (!config || !isHolyCrabConfig(config)) {
-    throw new Error('请选择有效的 HolyCrab 配置');
+function requireMediaBridgeConfig(config) {
+  if (!config || !isMediaBridgeConfig(config)) {
+    throw new Error('请选择有效的 MediaBridge 配置');
   }
   if (!String(config.api_key || '').trim()) {
-    throw new Error('HolyCrab 配置缺少 API Key');
+    throw new Error('MediaBridge 配置缺少 API Key');
   }
   return config;
 }
 
 function normalizeAssetId(value) {
   const id = String(value || '').trim();
-  if (!HOLYCRAB_ASSET_ID_RE.test(id)) {
-    throw new Error('HolyCrab 素材 uniqId 格式无效');
+  if (!MEDIABRIDGE_ASSET_ID_RE.test(id)) {
+    throw new Error('MediaBridge 素材 uniqId 格式无效');
   }
   return id;
 }
@@ -38,15 +38,15 @@ function clampInteger(value, fallback, min, max) {
 }
 
 async function requestAsset(config, endpoint, options, fallback, requestImpl) {
-  const cfg = requireHolyCrabConfig(config);
-  const response = await requestImpl(joinHolyCrabUrl(cfg.base_url, endpoint), {
+  const cfg = requireMediaBridgeConfig(config);
+  const response = await requestImpl(joinMediaBridgeUrl(cfg.base_url, endpoint), {
     ...options,
-    headers: holyCrabHeaders(cfg.api_key, options?.headers || {}),
+    headers: mediaBridgeHeaders(cfg.api_key, options?.headers || {}),
   });
-  return parseHolyCrabEnvelope(response, fallback);
+  return parseMediaBridgeEnvelope(response, fallback);
 }
 
-async function listAssets(config, params = {}, requestImpl = holyCrabRequest) {
+async function listAssets(config, params = {}, requestImpl = mediaBridgeRequest) {
   const page = clampInteger(params.page ?? params.current, 1, 1, 1000000);
   const pageSize = clampInteger(params.page_size ?? params.pageSize, 50, 1, 100);
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
@@ -59,23 +59,23 @@ async function listAssets(config, params = {}, requestImpl = holyCrabRequest) {
     config,
     `/api/user-assets?${query.toString()}`,
     { method: 'GET' },
-    'HolyCrab 素材列表查询失败',
+    'MediaBridge 素材列表查询失败',
     requestImpl
   );
 }
 
-async function getAsset(config, uniqId, requestImpl = holyCrabRequest) {
+async function getAsset(config, uniqId, requestImpl = mediaBridgeRequest) {
   const id = normalizeAssetId(uniqId);
   return requestAsset(
     config,
     `/api/user-assets/${encodeURIComponent(id)}`,
     { method: 'GET' },
-    'HolyCrab 素材详情查询失败',
+    'MediaBridge 素材详情查询失败',
     requestImpl
   );
 }
 
-async function createAssetFromUrl(config, input = {}, requestImpl = holyCrabRequest) {
+async function createAssetFromUrl(config, input = {}, requestImpl = mediaBridgeRequest) {
   const rawUrl = String(input.url || '').trim();
   let parsed;
   try {
@@ -99,12 +99,12 @@ async function createAssetFromUrl(config, input = {}, requestImpl = holyCrabRequ
       headers: { 'Content-Type': `multipart/form-data; boundary=${multipart.boundary}` },
       body: multipart.body,
     },
-    'HolyCrab URL 素材创建失败',
+    'MediaBridge URL 素材创建失败',
     requestImpl
   );
 }
 
-async function deleteAsset(config, uniqId, requestImpl = holyCrabRequest) {
+async function deleteAsset(config, uniqId, requestImpl = mediaBridgeRequest) {
   const id = normalizeAssetId(uniqId);
   await requestAsset(
     config,
@@ -114,7 +114,7 @@ async function deleteAsset(config, uniqId, requestImpl = holyCrabRequest) {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: { uniq_id: id },
     },
-    'HolyCrab 素材删除失败',
+    'MediaBridge 素材删除失败',
     requestImpl
   );
   return { uniqId: id, deleted: true };
@@ -132,27 +132,27 @@ function safeAssetFilename(asset, contentUrl) {
   const id = normalizeAssetId(asset?.uniqId || asset?.uniq_id || asset?.id);
   const urlPath = new URL(contentUrl).pathname;
   const urlExtension = path.extname(urlPath).slice(0, 12);
-  let name = String(asset?.name || '').trim() || `holycrab-${id}`;
+  let name = String(asset?.name || '').trim() || `mediabridge-${id}`;
   name = name.replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_').trim();
-  if (!name) name = `holycrab-${id}`;
+  if (!name) name = `mediabridge-${id}`;
   if (!path.extname(name) && urlExtension) name += urlExtension;
   return name.slice(0, 240);
 }
 
 function resolveAssetContentDescriptor(config, asset) {
-  const cfg = requireHolyCrabConfig(config);
+  const cfg = requireMediaBridgeConfig(config);
   const rawUrl = String(asset?.url || '').trim();
-  if (!rawUrl) throw new Error('HolyCrab 素材暂无可播放或下载的文件');
+  if (!rawUrl) throw new Error('MediaBridge 素材暂无可播放或下载的文件');
   let contentUrl;
   try {
-    contentUrl = new URL(rawUrl, `${holyCrabApiBase(cfg.base_url)}/`);
+    contentUrl = new URL(rawUrl, `${mediaBridgeApiBase(cfg.base_url)}/`);
   } catch (_) {
-    throw new Error('HolyCrab 素材文件地址无效');
+    throw new Error('MediaBridge 素材文件地址无效');
   }
   if (!['http:', 'https:'].includes(contentUrl.protocol)) {
-    throw new Error('HolyCrab 素材文件地址仅支持 http 或 https');
+    throw new Error('MediaBridge 素材文件地址仅支持 http 或 https');
   }
-  const apiUrl = new URL(`${holyCrabApiBase(cfg.base_url)}/`);
+  const apiUrl = new URL(`${mediaBridgeApiBase(cfg.base_url)}/`);
   return {
     url: contentUrl.toString(),
     api_origin: apiUrl.origin,
@@ -170,11 +170,11 @@ function encodeContentDispositionFilename(filename) {
 }
 
 /**
- * 将 HolyCrab 素材流式代理到当前响应。Range 会原样转发，因此 video/audio
- * 元素可以读取元数据、拖动进度条；仅访问 HolyCrab API 主机时携带用户 Token。
+ * 将 MediaBridge 素材流式代理到当前响应。Range 会原样转发，因此 video/audio
+ * 元素可以读取元数据、拖动进度条；仅访问 MediaBridge API 主机时携带用户 Token。
  */
 function streamAssetContent(config, asset, req, res, options = {}) {
-  const cfg = requireHolyCrabConfig(config);
+  const cfg = requireMediaBridgeConfig(config);
   const descriptor = resolveAssetContentDescriptor(cfg, asset);
   const download = options.download === true;
   const maxRedirects = 5;
@@ -194,23 +194,23 @@ function streamAssetContent(config, asset, req, res, options = {}) {
       try {
         target = new URL(rawUrl);
       } catch (_) {
-        finish(new Error('HolyCrab 素材重定向地址无效'));
+        finish(new Error('MediaBridge 素材重定向地址无效'));
         return;
       }
       if (!['http:', 'https:'].includes(target.protocol)) {
-        finish(new Error('HolyCrab 素材重定向协议不受支持'));
+        finish(new Error('MediaBridge 素材重定向协议不受支持'));
         return;
       }
 
       const headers = {
         Accept: '*/*',
         'Accept-Encoding': 'identity',
-        'User-Agent': 'JamaAI-HolyCrab-Asset-Proxy/1.0',
+        'User-Agent': 'JamaAI-MediaBridge-Asset-Proxy/1.0',
       };
       const range = String(req?.headers?.range || '').trim();
       if (/^bytes=\d*-\d*(?:,\d*-\d*)*$/i.test(range)) headers.Range = range;
       if (target.origin === descriptor.api_origin) {
-        Object.assign(headers, holyCrabHeaders(cfg.api_key));
+        Object.assign(headers, mediaBridgeHeaders(cfg.api_key));
       }
 
       const transport = target.protocol === 'https:' ? https : http;
@@ -222,7 +222,7 @@ function streamAssetContent(config, asset, req, res, options = {}) {
           if ([301, 302, 303, 307, 308].includes(status) && upstream.headers.location) {
             upstream.resume();
             if (redirectCount >= maxRedirects) {
-              finish(new Error('HolyCrab 素材下载重定向次数过多'));
+              finish(new Error('MediaBridge 素材下载重定向次数过多'));
               return;
             }
             relay(new URL(upstream.headers.location, target).toString(), redirectCount + 1);
@@ -239,7 +239,7 @@ function streamAssetContent(config, asset, req, res, options = {}) {
             });
             upstream.on('end', () => {
               const detail = Buffer.concat(chunks).toString('utf8').slice(0, 500);
-              finish(new Error(`HolyCrab 素材文件读取失败 (${status}): ${detail || '无响应内容'}`));
+              finish(new Error(`MediaBridge 素材文件读取失败 (${status}): ${detail || '无响应内容'}`));
             });
             upstream.on('error', finish);
             return;
@@ -273,7 +273,7 @@ function streamAssetContent(config, asset, req, res, options = {}) {
         }
       );
       activeRequest.setTimeout(Number(options.timeout_ms) || 600000, () => {
-        activeRequest.destroy(new Error('HolyCrab 素材文件读取超时'));
+        activeRequest.destroy(new Error('MediaBridge 素材文件读取超时'));
       });
       activeRequest.on('error', finish);
       activeRequest.end();
@@ -311,7 +311,7 @@ function extensionFromUpload(file) {
 }
 
 function buildMultipart(fields) {
-  const boundary = `----jama-holycrab-asset-${crypto.randomBytes(12).toString('hex')}`;
+  const boundary = `----jama-mediabridge-asset-${crypto.randomBytes(12).toString('hex')}`;
   const chunks = [];
   for (const [key, rawValue] of Object.entries(fields)) {
     if (rawValue === undefined || rawValue === null || rawValue === '') continue;
@@ -335,8 +335,8 @@ function assetTypeFromMime(mimeType) {
   return '';
 }
 
-async function uploadAsset(config, file, input = {}, requestImpl = holyCrabRequest) {
-  requireHolyCrabConfig(config);
+async function uploadAsset(config, file, input = {}, requestImpl = mediaBridgeRequest) {
+  requireMediaBridgeConfig(config);
   if (!file?.buffer?.length) throw new Error('请选择需要上传的素材文件');
   const extension = extensionFromUpload(file);
   const contentType = String(file.mimetype || '').trim().toLowerCase();
@@ -360,11 +360,11 @@ async function uploadAsset(config, file, input = {}, requestImpl = holyCrabReque
     config,
     `/api/user-assets/pre-signed-download-url?${preSignQuery.toString()}`,
     { method: 'GET' },
-    'HolyCrab 获取素材上传地址失败',
+    'MediaBridge 获取素材上传地址失败',
     requestImpl
   );
   if (!ticket?.preSignedUrl || !ticket?.objectKey || !ticket?.uniqId) {
-    throw new Error('HolyCrab 上传地址响应缺少必要字段');
+    throw new Error('MediaBridge 上传地址响应缺少必要字段');
   }
 
   const putResponse = await requestImpl(ticket.preSignedUrl, {
@@ -376,7 +376,7 @@ async function uploadAsset(config, file, input = {}, requestImpl = holyCrabReque
   const putStatus = Number(putResponse?.statusCode || putResponse?.status || 0);
   if (putStatus < 200 || putStatus >= 300) {
     throw new Error(
-      `HolyCrab 素材文件上传失败 (${putStatus}): ${String(putResponse?.raw || '').slice(0, 300)}`
+      `MediaBridge 素材文件上传失败 (${putStatus}): ${String(putResponse?.raw || '').slice(0, 300)}`
     );
   }
 
@@ -396,7 +396,7 @@ async function uploadAsset(config, file, input = {}, requestImpl = holyCrabReque
       headers: { 'Content-Type': `multipart/form-data; boundary=${multipart.boundary}` },
       body: multipart.body,
     },
-    'HolyCrab 素材登记失败',
+    'MediaBridge 素材登记失败',
     requestImpl
   );
 
@@ -409,7 +409,7 @@ async function uploadAsset(config, file, input = {}, requestImpl = holyCrabReque
 }
 
 module.exports = {
-  HOLYCRAB_ASSET_ID_RE,
+  MEDIABRIDGE_ASSET_ID_RE,
   normalizeAssetId,
   listAssets,
   getAsset,

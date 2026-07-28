@@ -28,21 +28,13 @@ export const aiAPI = {
   testConnection(body) {
     return request.post('/ai-configs/test', body)
   },
-  /** 即梦2角色认证：GET /api/business/v1/assets（body: base_url, api_key, limit?, cursor?） */
-  listJimeng2MaterialAssets(body) {
-    return request.post('/ai-configs/jimeng2-list-assets', body)
+  /** MediaBridge 素材管理（列表、详情、URL 导入和删除） */
+  mediaBridgeAsset(body) {
+    return request.post('/ai-configs/mediabridge-assets', body)
   },
-  /** ModelArk 私有资产库：action + payload，见 AI 配置页 SD2 资产管理 */
-  modelArkAsset(body) {
-    return request.post('/ai-configs/model-ark-asset', body)
-  },
-  /** HolyCrab 素材管理（列表、详情、URL 导入和删除） */
-  holyCrabAsset(body) {
-    return request.post('/ai-configs/holycrab-assets', body)
-  },
-  /** 上传本地文件到 HolyCrab 素材库 */
-  uploadHolyCrabAsset(form) {
-    return request.post('/ai-configs/holycrab-assets/upload', form, {
+  /** 上传本地文件到 MediaBridge 素材库 */
+  uploadMediaBridgeAsset(form) {
+    return request.post('/ai-configs/mediabridge-assets/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 600000,
     })

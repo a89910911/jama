@@ -70,7 +70,7 @@ const isNodeBusy = computed(() => {
   width: 200px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(129, 140, 248, 0.35);
+  border: 1px solid rgba(90, 107, 184, 0.35);
   background: var(--bg-card, #18181b);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -78,8 +78,8 @@ const isNodeBusy = computed(() => {
 .canvas-sb-node:hover,
 .canvas-sb-node.selected,
 .canvas-sb-node.focused {
-  border-color: #818cf8;
-  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.35), 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: #6f7fc2;
+  box-shadow: 0 0 0 1px rgba(90, 107, 184, 0.35), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 .head {
   display: flex;
@@ -90,7 +90,7 @@ const isNodeBusy = computed(() => {
 .num {
   font-size: 12px;
   font-weight: 700;
-  color: #a5b4fc;
+  color: #9aa6d1;
 }
 .wf-badge {
   font-size: 10px;
@@ -114,8 +114,8 @@ const isNodeBusy = computed(() => {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(167, 139, 250, 0.2);
-  color: #c4b5fd;
+  background: rgba(232, 160, 122, 0.2);
+  color: #f1c2a8;
 }
 .title {
   font-size: 13px;
@@ -145,7 +145,7 @@ const isNodeBusy = computed(() => {
   border-color: #60a5fa;
 }
 .highlighted {
-  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.75), 0 8px 28px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 0 0 2px rgba(90, 107, 184, 0.75), 0 8px 28px rgba(90, 107, 184, 0.25);
 }
 .dimmed {
   opacity: 0.28;

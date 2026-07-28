@@ -123,11 +123,11 @@ function setupRouter(cfg, db, log) {
   r.get('/dramas/:id/assets/export', drama.exportAssets);
   const multer = require('multer');
   const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
-  const holyCrabAssetUpload = multer({
+  const mediaBridgeAssetUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 200 * 1024 * 1024 },
   });
-  const holyCrabAssetSingle = holyCrabAssetUpload.single('file');
+  const mediaBridgeAssetSingle = mediaBridgeAssetUpload.single('file');
   r.post('/dramas/import', importUpload.single('file'), drama.importDrama);
   r.post('/dramas/import-novel', importUpload.single('file'), async (req, res) => {
     try {
@@ -208,17 +208,15 @@ function setupRouter(cfg, db, log) {
   r.get('/ai-configs', aiConfig.list);
   r.post('/ai-configs', aiConfig.create);
   r.post('/ai-configs/test', aiConfig.testConnection);
-  r.post('/ai-configs/jimeng2-list-assets', aiConfig.listJimeng2MaterialAssets);
-  r.post('/ai-configs/model-ark-asset', aiConfig.modelArkAsset);
-  r.post('/ai-configs/holycrab-assets', aiConfig.holyCrabAssets);
-  r.get('/ai-configs/holycrab-assets/:configId/:uniqId/content', aiConfig.holyCrabAssetContent);
-  r.post('/ai-configs/holycrab-assets/upload', (req, res, next) => {
-    holyCrabAssetSingle(req, res, (err) => {
+  r.post('/ai-configs/mediabridge-assets', aiConfig.mediaBridgeAssets);
+  r.get('/ai-configs/mediabridge-assets/:configId/:uniqId/content', aiConfig.mediaBridgeAssetContent);
+  r.post('/ai-configs/mediabridge-assets/upload', (req, res, next) => {
+    mediaBridgeAssetSingle(req, res, (err) => {
       if (err?.code === 'LIMIT_FILE_SIZE') {
-        return response.error(res, 413, 'FILE_TOO_LARGE', 'HolyCrab 单个素材不能超过 200MB');
+        return response.error(res, 413, 'FILE_TOO_LARGE', 'MediaBridge 单个素材不能超过 200MB');
       }
       if (err) return next(err);
-      return aiConfig.holyCrabAssets(req, res);
+      return aiConfig.mediaBridgeAssets(req, res);
     });
   });
   r.put('/ai-configs/bulk-update-key', aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
@@ -298,10 +296,6 @@ function setupRouter(cfg, db, log) {
   r.put('/characters/:id/image-from-library', characters.imageFromLibrary);
   r.post('/characters/:id/add-to-library', characters.addToLibrary);
   r.post('/characters/:id/add-to-material-library', characters.addToMaterialLibrary);
-  r.post('/characters/:id/sd2-certify', characters.sd2Certify);
-  r.post('/characters/:id/sd2-certify/refresh', characters.sd2CertifyRefresh);
-  r.post('/characters/:id/sd2-voice-upload', uploadModule.multerAudioSingle, characters.sd2VoiceUpload);
-  r.post('/characters/:id/sd2-voice-refresh', characters.sd2VoiceRefresh);
   r.post('/characters/:id/extract-from-image', characters.extractFromImage);
   r.post('/characters/:id/extract-anchors', characters.extractAnchors);
 

@@ -321,8 +321,8 @@ onBeforeUnmount(() => {
 }
 .generation-toggle:hover,
 .generation-toggle.expanded {
-  color: var(--el-color-primary, #6366f1);
-  border-color: color-mix(in srgb, var(--el-color-primary, #6366f1) 55%, transparent);
+  color: var(--el-color-primary, #5a6bb8);
+  border-color: color-mix(in srgb, var(--el-color-primary, #5a6bb8) 55%, transparent);
 }
 .generation-toggle-dot {
   flex: 0 0 auto;
@@ -348,7 +348,7 @@ onBeforeUnmount(() => {
   padding: 2px 4px;
   border-radius: 999px;
   color: #fff;
-  background: var(--el-color-primary, #6366f1);
+  background: var(--el-color-primary, #5a6bb8);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   text-align: center;

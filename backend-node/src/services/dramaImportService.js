@@ -191,9 +191,9 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
       `INSERT INTO characters (
          drama_id, name, role, description, personality, appearance,
          identity_appearance, identity_anchors, voice_style, polished_prompt,
-         local_path, extra_images, seedance2_voice_asset, sort_order, created_at, updated_at
+         local_path, extra_images, sort_order, created_at, updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       dramaId,
       c.name,
@@ -207,7 +207,6 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
       c.polished_prompt || null,
       localPath,
       extraImagesJson,
-      c.seedance2_voice_asset ? JSON.stringify(c.seedance2_voice_asset) : null,
       i,
       now,
       now
@@ -251,7 +250,6 @@ function _doImport(db, storagePath, files, data, d, title, metaStr, now, log) {
           reference_images: sourceLook.reference_images || [],
           style_tokens: sourceLook.style_tokens || null,
           color_palette: sourceLook.color_palette || null,
-          seedance2_asset: sourceLook.seedance2_asset || null,
         };
         let newLookId;
         if (lookIndex === defaultIndex) {

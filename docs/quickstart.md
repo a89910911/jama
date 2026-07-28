@@ -29,7 +29,7 @@
 
 3. 首次运行会在以下路径生成配置文件：
    ```
-   %APPDATA%\LocalMiniDrama\backend\configs\config.yaml
+   %APPDATA%\jamaai-desktop\backend\configs\config.yaml
    ```
 
 4. 点击软件右上角「AI 配置」，填入你的 AI API Key，即可开始使用。
@@ -148,7 +148,7 @@ npm run dist:cn
 
 ## 配置文件说明
 
-配置文件位于 `backend-node/configs/config.yaml`（开发模式）或 `%APPDATA%\LocalMiniDrama\backend\configs\config.yaml`（exe 模式）。
+配置文件位于 `backend-node/configs/config.yaml`（开发模式）或 `%APPDATA%\jamaai-desktop\backend\configs\config.yaml`（exe 模式）。
 
 主要配置项：
 
@@ -179,7 +179,7 @@ AI 服务配置通过软件内「AI 配置」页面管理，无需手动编辑 Y
 |------|------|
 | `backend-node/data/drama_generator.db` | SQLite 数据库（开发模式） |
 | `backend-node/data/storage/` | 生成的图片和视频文件 |
-| `%APPDATA%\LocalMiniDrama\` | exe 模式下的所有数据 |
+| `%APPDATA%\jamaai-desktop\` | exe 模式下的所有数据 |
 
 > ⚠️ 升级版本前建议备份 `data/` 目录；数据库会在启动时自动执行迁移脚本，一般无需手动操作。
 
@@ -224,7 +224,7 @@ npm run dist
 ### Q: 生成的图片/视频保存在哪里？
 
 开发模式：`backend-node/data/storage/`  
-exe 模式：`%APPDATA%\LocalMiniDrama\backend\data\storage\`
+exe 模式：`%APPDATA%\jamaai-desktop\backend\data\storage\`
 
 目录结构：
 ```

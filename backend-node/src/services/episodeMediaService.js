@@ -92,7 +92,6 @@ function videoRowToItem(row) {
     appearance_context_hash: row.appearance_context_hash ?? undefined,
     generation_context_hash: row.generation_context_hash ?? undefined,
     superseded: !!row.superseded,
-    voice_character_id: row.voice_character_id ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
     completed_at: row.completed_at,

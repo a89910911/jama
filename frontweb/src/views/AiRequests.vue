@@ -625,10 +625,10 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
 <style scoped>
 .ai-records-page {
   min-height: 100vh;
-  color: #eeeaf5;
+  color: #f5efe8;
   background:
     radial-gradient(circle at 12% 0%, rgba(224, 151, 56, .12), transparent 30%),
-    radial-gradient(circle at 88% 8%, rgba(111, 78, 180, .14), transparent 32%),
+    radial-gradient(circle at 88% 8%, rgba(201, 106, 58, .14), transparent 32%),
     #0d0c10;
 }
 .page-header {
@@ -750,7 +750,7 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
   font-size: 12px;
 }
 .summary-card strong {
-  color: #f4f1f7;
+  color: #f5efe8;
   font-size: 28px;
   font-weight: 680;
   letter-spacing: -.04em;
@@ -856,8 +856,8 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
   background: rgba(255, 255, 255, .055);
   font-size: 10px;
 }
-.type-pill--text { color: #c5b9ee; background: rgba(139, 116, 216, .12); }
-.type-pill--vision { color: #b9aaf0; background: rgba(139, 116, 216, .15); }
+.type-pill--text { color: #aeb8df; background: rgba(90, 107, 184, .12); }
+.type-pill--vision { color: #e8a07a; background: rgba(201, 106, 58, .15); }
 .type-pill--image { color: #edb96e; background: rgba(231, 163, 67, .12); }
 .type-pill--video { color: #73b9e9; background: rgba(80, 161, 216, .12); }
 .type-pill--tts { color: #75d1a8; background: rgba(81, 183, 138, .12); }
@@ -887,8 +887,8 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
   height: 6px;
   border-radius: 50%;
 }
-.status-pill--processing { color: #d6b3ff; background: rgba(145, 94, 205, .13); }
-.status-pill--processing i { background: #ad7fe1; box-shadow: 0 0 8px #ad7fe1; }
+.status-pill--processing { color: #f1c2a8; background: rgba(201, 106, 58, .13); }
+.status-pill--processing i { background: #df8051; box-shadow: 0 0 8px #df8051; }
 .status-pill--succeeded { color: #79cda9; background: rgba(67, 168, 125, .12); }
 .status-pill--succeeded i { background: #64c697; }
 .status-pill--failed { color: #ea8f8f; background: rgba(210, 80, 80, .12); }
@@ -931,7 +931,7 @@ onBeforeUnmount(() => clearInterval(refreshTimer))
 }
 .drawer-header h2 {
   margin: 10px 0 5px;
-  color: #f1edf5;
+  color: #f5efe8;
   font-size: 22px;
 }
 .drawer-header p {
@@ -1140,13 +1140,13 @@ html.light .records-panel { box-shadow: 0 16px 44px rgba(38, 50, 68, .09); }
   background: var(--record-surface-soft);
   font-size: 12px;
 }
-.type-pill--text { color: #d8ccff; background: rgba(139, 116, 216, .2); }
-.type-pill--vision { color: #d2c4ff; background: rgba(139, 116, 216, .22); }
+.type-pill--text { color: #c7cee8; background: rgba(90, 107, 184, .2); }
+.type-pill--vision { color: #f1c2a8; background: rgba(201, 106, 58, .22); }
 .type-pill--image { color: #ffd18d; background: rgba(231, 163, 67, .2); }
 .type-pill--video { color: #a8d9fa; background: rgba(80, 161, 216, .2); }
 .type-pill--tts { color: #a5e8ca; background: rgba(81, 183, 138, .2); }
 html.light .type-pill--text,
-html.light .type-pill--vision { color: #5e42ad; }
+html.light .type-pill--vision { color: #7b4329; }
 html.light .type-pill--image { color: #8b5004; }
 html.light .type-pill--video { color: #176596; }
 html.light .type-pill--tts { color: #14704a; }
@@ -1162,10 +1162,10 @@ html.light .type-pill--tts { color: #14704a; }
   font-size: 12px;
   font-weight: 600;
 }
-.status-pill--processing { color: #dec3ff; background: rgba(145, 94, 205, .2); }
+.status-pill--processing { color: #f1c2a8; background: rgba(201, 106, 58, .2); }
 .status-pill--succeeded { color: #a1e1c2; background: rgba(67, 168, 125, .2); }
 .status-pill--failed { color: #ffb1b1; background: rgba(210, 80, 80, .2); }
-html.light .status-pill--processing { color: #7040a5; }
+html.light .status-pill--processing { color: #a94f27; }
 html.light .status-pill--succeeded { color: #176c49; }
 html.light .status-pill--failed { color: #a83232; }
 .duration {

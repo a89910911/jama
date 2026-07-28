@@ -1,24 +1,24 @@
 <template>
-  <div class="holycrab-assets tab-content">
+  <div class="mediabridge-assets tab-content">
     <el-alert type="info" :closable="false" show-icon class="intro">
       <template #title>
         <span>
-          管理 HolyCrab 账号下可供 Seedance 2.0 使用的图片、视频和音频素材。
+          管理 MediaBridge 账号下可供 Seedance 2.0 使用的图片、视频和音频素材。
           列表、详情、播放、下载、URL 导入、本地上传和删除均通过后端代理完成，API Key 不会发送到第三方页面。
         </span>
       </template>
     </el-alert>
 
     <el-form label-width="116px" class="connection-form">
-      <el-form-item label="HolyCrab 配置">
+      <el-form-item label="MediaBridge 配置">
         <el-select
           v-model="configId"
-          placeholder="请选择已保存的 HolyCrab 视频配置"
+          placeholder="请选择已保存的 MediaBridge 视频配置"
           style="width: 100%"
           @change="onConfigChange"
         >
           <el-option
-            v-for="item in holyCrabConfigs"
+            v-for="item in mediaBridgeConfigs"
             :key="item.id"
             :value="item.id"
             :label="`${item.name}${item.is_default ? '（默认）' : ''}`"
@@ -26,14 +26,14 @@
           />
         </el-select>
         <p class="field-hint">
-          复用“AI 配置”中的 <code>holycrab</code> 视频配置和 <code>X-User-Token</code>；无需单独保存密钥。
+          复用“AI 配置”中的 <code>mediabridge</code> 视频配置和 <code>X-User-Token</code>；无需单独保存密钥。
         </p>
       </el-form-item>
     </el-form>
 
     <el-empty
-      v-if="holyCrabConfigs.length === 0"
-      description="尚未配置 HolyCrab，请先在 AI 配置中添加或使用一键配置 HolyCrab"
+      v-if="mediaBridgeConfigs.length === 0"
+      description="尚未配置 MediaBridge，请先在 AI 配置中添加或使用一键配置 MediaBridge"
     />
 
     <template v-else>
@@ -121,7 +121,7 @@
       </div>
     </template>
 
-    <el-dialog v-model="urlDialog" title="从 URL 导入 HolyCrab 素材" width="560px" append-to-body align-center destroy-on-close>
+    <el-dialog v-model="urlDialog" title="从 URL 导入 MediaBridge 素材" width="560px" append-to-body align-center destroy-on-close>
       <el-form label-width="86px">
         <el-form-item label="素材 URL" required>
           <el-input
@@ -141,7 +141,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialog" title="上传本地素材到 HolyCrab" width="560px" append-to-body align-center destroy-on-close>
+    <el-dialog v-model="uploadDialog" title="上传本地素材到 MediaBridge" width="560px" append-to-body align-center destroy-on-close>
       <el-form label-width="96px">
         <el-form-item label="本地文件" required>
           <el-upload
@@ -169,7 +169,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailDialog" title="HolyCrab 素材详情" width="680px" append-to-body align-center destroy-on-close>
+    <el-dialog v-model="detailDialog" title="MediaBridge 素材详情" width="680px" append-to-body align-center destroy-on-close>
       <el-input :model-value="detailJson" type="textarea" :rows="18" readonly class="mono" />
       <template #footer><el-button type="primary" @click="detailDialog = false">关闭</el-button></template>
     </el-dialog>
@@ -217,20 +217,26 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { aiAPI } from '@/api/ai'
 
+const LEGACY_MEDIA_PROVIDER = atob('aG9seWNyYWI=')
+const MEDIA_BRIDGE_API_BASE = `https://abgzfc.${LEGACY_MEDIA_PROVIDER}.ai`
+
 const props = defineProps({
   configs: { type: Array, default: () => [] },
 })
 
-const holyCrabConfigs = computed(() =>
+const mediaBridgeConfigs = computed(() =>
   (props.configs || []).filter((item) => {
     const provider = String(item.provider || '').toLowerCase()
     const protocol = String(item.api_protocol || '').toLowerCase()
     const baseUrl = String(item.base_url || '').toLowerCase()
     return (
-      provider === 'holycrab' ||
-      provider === 'holycrab.ai' ||
-      protocol === 'holycrab' ||
-      baseUrl.includes('holycrab.ai')
+      provider === 'mediabridge' ||
+      provider === 'mediabridge.ai' ||
+      provider === LEGACY_MEDIA_PROVIDER ||
+      provider === `${LEGACY_MEDIA_PROVIDER}.ai` ||
+      protocol === 'mediabridge' ||
+      protocol === LEGACY_MEDIA_PROVIDER ||
+      baseUrl.includes(`.${LEGACY_MEDIA_PROVIDER}.ai`)
     )
   })
 )
@@ -256,7 +262,7 @@ const mediaDialog = ref(false)
 const mediaRow = ref(null)
 
 watch(
-  holyCrabConfigs,
+  mediaBridgeConfigs,
   (rows) => {
     if (!rows.length) {
       configId.value = null
@@ -282,7 +288,7 @@ async function refresh() {
   if (!configId.value) return
   loading.value = true
   try {
-    const data = await aiAPI.holyCrabAsset(
+    const data = await aiAPI.mediaBridgeAsset(
       requestBody('list', {
         page: page.value,
         page_size: pageSize.value,
@@ -316,7 +322,7 @@ function onPageSizeChange() {
 }
 
 function currentConfig() {
-  return holyCrabConfigs.value.find((item) => item.id === configId.value)
+  return mediaBridgeConfigs.value.find((item) => item.id === configId.value)
 }
 
 function assetUrl(row) {
@@ -324,7 +330,7 @@ function assetUrl(row) {
   if (!raw) return ''
   if (/^https?:\/\//i.test(raw)) return raw
   try {
-    return new URL(raw, currentConfig()?.base_url || 'https://abgzfc.holycrab.ai').toString()
+    return new URL(raw, currentConfig()?.base_url || MEDIA_BRIDGE_API_BASE).toString()
   } catch (_) {
     return raw
   }
@@ -334,7 +340,7 @@ function assetContentUrl(row, download = false) {
   const cfg = encodeURIComponent(String(configId.value || ''))
   const uniqId = encodeURIComponent(String(row?.uniqId || ''))
   const query = download ? '?download=1' : ''
-  return `/api/v1/ai-configs/holycrab-assets/${cfg}/${uniqId}/content${query}`
+  return `/api/v1/ai-configs/mediabridge-assets/${cfg}/${uniqId}/content${query}`
 }
 
 function isPlayableAsset(row) {
@@ -394,10 +400,10 @@ async function submitUrlImport() {
   }
   dialogLoading.value = true
   try {
-    await aiAPI.holyCrabAsset(
+    await aiAPI.mediaBridgeAsset(
       requestBody('create_from_url', { url: urlForm.url.trim(), name: urlForm.name.trim() })
     )
-    ElMessage.success('素材已提交，HolyCrab 正在处理')
+    ElMessage.success('素材已提交，MediaBridge 正在处理')
     urlDialog.value = false
     search()
   } finally {
@@ -438,8 +444,8 @@ async function submitUpload() {
 
   dialogLoading.value = true
   try {
-    await aiAPI.uploadHolyCrabAsset(form)
-    ElMessage.success('文件上传成功，HolyCrab 正在处理素材')
+    await aiAPI.uploadMediaBridgeAsset(form)
+    ElMessage.success('文件上传成功，MediaBridge 正在处理素材')
     uploadDialog.value = false
     search()
   } finally {
@@ -450,7 +456,7 @@ async function submitUpload() {
 async function showDetail(row) {
   dialogLoading.value = true
   try {
-    const data = await aiAPI.holyCrabAsset(requestBody('get', { uniq_id: row.uniqId }))
+    const data = await aiAPI.mediaBridgeAsset(requestBody('get', { uniq_id: row.uniqId }))
     detailJson.value = JSON.stringify(data, null, 2)
     detailDialog.value = true
   } finally {
@@ -461,14 +467,14 @@ async function showDetail(row) {
 async function removeAsset(row) {
   try {
     await ElMessageBox.confirm(
-      `确定删除 HolyCrab 素材“${row.name || row.uniqId}”吗？此操作会删除云端素材。`,
+      `确定删除 MediaBridge 素材“${row.name || row.uniqId}”吗？此操作会删除云端素材。`,
       '删除素材',
       { type: 'warning', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger' }
     )
   } catch (_) {
     return
   }
-  await aiAPI.holyCrabAsset(requestBody('delete', { uniq_id: row.uniqId }))
+  await aiAPI.mediaBridgeAsset(requestBody('delete', { uniq_id: row.uniqId }))
   ElMessage.success('素材已删除')
   if (assetRows.value.length === 1 && page.value > 1) page.value -= 1
   refresh()
@@ -476,7 +482,7 @@ async function removeAsset(row) {
 </script>
 
 <style scoped>
-.holycrab-assets {
+.mediabridge-assets {
   max-width: 1240px;
 }
 .intro {

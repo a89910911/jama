@@ -8,18 +8,17 @@
 
 *JamaAI · AI-powered short drama creator*
 
-[![version](https://img.shields.io/badge/version-1.2.8-blue?style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama/releases)
+[![version](https://img.shields.io/badge/version-1.2.8-blue?style=flat-square)](https://github.com/a89910911/jama/releases)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat-square)](#-快速开始)
 [![stack](https://img.shields.io/badge/Vue3%20%2B%20Node.js%20%2B%20Electron-informational?style=flat-square)](#-项目架构)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/a89910911/jama/pulls)
 
 **[English](docs/en.md) · 简体中文 · [作者故事](docs/story.md)**
 
-[![GitHub](https://img.shields.io/badge/GitHub-xuanyustudio%2FLocalMiniDrama-181717?logo=github&style=flat-square)](https://github.com/xuanyustudio/LocalMiniDrama)
-[![Gitee](https://img.shields.io/badge/Gitee-bi__shang__a%2Flocalminidrama-C71D23?logo=gitee&style=flat-square)](https://gitee.com/bi_shang_a/localminidrama)
+[![GitHub](https://img.shields.io/badge/GitHub-a89910911%2Fjama-181717?logo=github&style=flat-square)](https://github.com/a89910911/jama)
 
-[**⬇️ 下载 Release**](https://github.com/xuanyustudio/LocalMiniDrama/releases) · [**🚀 快速开始**](#-快速开始) · [**📖 配置 AI**](docs/configuration.md) · [**🗺 画布文档**](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
+[**⬇️ 下载 Release**](https://github.com/a89910911/jama/releases) · [**🚀 快速开始**](#-快速开始) · [**📖 配置 AI**](docs/configuration.md) · [**🗺 画布文档**](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
 
 </div>
 
@@ -45,7 +44,6 @@
 
 - 🆕 **Agnes AI 接入**：文本 / 图片 / 视频一键配置，一个 Key 覆盖全流程
 - 🆕 **画布模式增强**：剧本节点、右键菜单、浮动工具栏、画布内新建/删除/整集生成
-- 🆕 **ModelArk 私有资产库**：SD2 角色认证对接火山方舟资产组，AK/SK 与 Bearer 双鉴权
 - 🔧 **图床可配置**：`upload_url` / 超时（默认 180s）/ 重试次数写入 `config.yaml`；缓存 URL 失效自动重传
 - 🔧 **提示词优化** · **分镜图片数量上限修复**
 
@@ -177,7 +175,7 @@
 
 ### 方式一：下载 exe（推荐）
 
-前往 **[Releases 下载页](https://github.com/xuanyustudio/LocalMiniDrama/releases)**：
+前往 **[Releases 下载页](https://github.com/a89910911/jama/releases)**：
 
 | 版本 | 说明 | 适合 |
 |------|------|------|
@@ -186,15 +184,15 @@
 
 双击运行 → 「AI 配置」填入 API Key → 开始创作。
 
-> 首次运行配置：`%APPDATA%\LocalMiniDrama\backend\configs\config.yaml`
+> 首次运行配置：`%APPDATA%\jamaai-desktop\backend\configs\config.yaml`
 
 ### 方式二：源码开发
 
 > Node.js ≥ 18
 
 ```bash
-git clone https://github.com/xuanyustudio/LocalMiniDrama.git
-cd LocalMiniDrama
+git clone https://github.com/a89910911/jama.git
+cd jama
 
 # 后端（端口 5679）
 cd backend-node && npm install
@@ -230,7 +228,7 @@ cd frontweb && npm install && npm run dev
 ## 🏗 项目架构
 
 ```
-LocalMiniDrama/
+jama/
 ├── backend-node/     # Express + MySQL（服务端默认）/ SQLite（打包桌面端）
 ├── frontweb/         # Vue 3 + Element Plus + @vue-flow/core
 │   └── views/        # FilmList · DramaDetail · FilmCreate · DramaCanvas
@@ -257,7 +255,7 @@ LocalMiniDrama/
 | 📋 | 参考图自由选择 | 生图时手动指定角色/场景参考 |
 | 📋 | 宫格图生成视频 | 多帧合图作为视频输入（部分模型已支持） |
 
-> 认领功能或提建议 → [New Issue](https://github.com/xuanyustudio/LocalMiniDrama/issues/new)
+> 认领功能或提建议 → [New Issue](https://github.com/a89910911/jama/issues/new)
 
 <details>
 <summary><b>📋 更多历史版本亮点（v1.2.3 及更早）</b></summary>
@@ -286,8 +284,8 @@ LocalMiniDrama/
 
 ## 🤝 参与贡献
 
-- 🐛 [报告 Bug](https://github.com/xuanyustudio/LocalMiniDrama/issues/new)
-- 💡 [功能建议](https://github.com/xuanyustudio/LocalMiniDrama/issues/new)
+- 🐛 [报告 Bug](https://github.com/a89910911/jama/issues/new)
+- 💡 [功能建议](https://github.com/a89910911/jama/issues/new)
 - 🔧 Fork → PR
 - ⭐ **Star** 帮助更多人发现本项目
 
@@ -330,6 +328,6 @@ LocalMiniDrama/
 
 **如果这个项目对你有帮助，请点 ⭐ Star —— 这是对作者最大的鼓励！**
 
-[⬇️ 立即下载](https://github.com/xuanyustudio/LocalMiniDrama/releases) · [📖 快速开始文档](docs/quickstart.md) · [🗺 画布文档](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
+[⬇️ 立即下载](https://github.com/a89910911/jama/releases) · [📖 快速开始文档](docs/quickstart.md) · [🗺 画布文档](docs/plans/2026-06-15-drama-canvas-workflow-plan.md)
 
 </div>

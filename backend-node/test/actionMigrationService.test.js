@@ -32,7 +32,7 @@ describe('action migration prompt builder', () => {
 describe('action migration model capability', () => {
   it('allows configured video protocols that accept source_video_url', () => {
     assert.equal(configCapability({ api_protocol: 'volcengine_omni', model: 'seedance' }).ok, true);
-    assert.equal(configCapability({ provider: 'holycrab', model: 'seedance-2-0' }).ok, true);
+    assert.equal(configCapability({ provider: 'mediabridge', model: 'seedance-2-0' }).ok, true);
   });
 
   it('blocks video models that cannot consume a driving video', () => {

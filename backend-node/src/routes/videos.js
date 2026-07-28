@@ -155,13 +155,6 @@ function routes(db, log) {
             reference_urls: referenceUrls,
           })
           : null;
-        const voiceCharacterId = body.voice_character_id != null
-          ? Number(body.voice_character_id)
-          : null;
-        if (voiceCharacterId && visualContext
-          && !visualContext.characters.some((item) => item.character_id === voiceCharacterId)) {
-          return response.badRequest(res, '配音角色必须属于当前分镜角色名单');
-        }
         const selectedConfig = require('../services/videoClient').getDefaultVideoConfig(
           db,
           model,
@@ -201,7 +194,6 @@ function routes(db, log) {
           appearance_context_json: appearanceContextJson,
           appearance_context_hash: appearanceContextHash,
           generation_context_hash: generationContextHash,
-          voice_character_id: voiceCharacterId,
           requested_by_user_id: req.user.id,
           ai_config_id: selectedConfig.id,
           ai_config_revision_id: selectedConfig.revision_id,

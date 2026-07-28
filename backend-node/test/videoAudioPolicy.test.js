@@ -18,7 +18,7 @@ describe('required video audio policy', () => {
 
   it('overrides provider-specific attempts to disable native audio', () => {
     assert.deepEqual(
-      applyRequiredVideoAudioOption({ generate_audio: false }, 'holycrab'),
+      applyRequiredVideoAudioOption({ generate_audio: false }, 'mediabridge'),
       { generate_audio: true }
     );
     assert.deepEqual(

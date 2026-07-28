@@ -57,7 +57,7 @@ MySQL 启动时同样走这套流程。SQLite 语法会通过 `src/db/sqlDialect
 | 17 | `17_character_stages.sql` | `characters.stages` |
 | 18 | `18_storyboard_narration.sql` | `storyboards.narration` |
 | 19 | `19_storyboard_universal_mode.sql` | 万能片段模式字段 |
-| 20 | `20_character_seedance2_asset.sql` | 即梦/Seedance 素材认证字段 |
+| 20 | `20_character_seedance2_asset.sql` | 已下线素材认证的历史兼容字段（仅保留迁移记录，不再被业务使用） |
 | 21 | `21_asset_negative_prompt.sql` | 角色/场景/道具负向提示词 |
 | 22 | `22_library_source_id.sql` | 素材库来源 ID 字段及历史数据回填 |
 | 23 | `23_prompt_templates.sql` | 提示词定义/模板表及索引 |

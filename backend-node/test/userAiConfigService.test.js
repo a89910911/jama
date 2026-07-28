@@ -91,6 +91,23 @@ function createTextConfig(db, userId, name, apiKey, secretKey) {
   });
 }
 
+test('removed SD2 service types are rejected and hidden from legacy personal configs', () => {
+  for (const serviceType of ['jimeng2_character_auth', 'model_ark_asset']) {
+    assert.throws(
+      () => userAiConfigService.normalizeServiceType(serviceType),
+      { code: 'INVALID_SERVICE_TYPE' }
+    );
+  }
+
+  const db = createConfigDb();
+  const config = createTextConfig(db, 101, 'legacy-sd2', 'key', 'secret');
+  db.prepare('UPDATE user_ai_configs SET service_type = ? WHERE id = ?')
+    .run('model_ark_asset', config.id);
+
+  assert.equal(userAiConfigService.getRuntimeConfig(db, 101, config.id), null);
+  assert.deepEqual(userAiConfigService.listRuntimeConfigs(db, 101), []);
+})
+
 test('personal AI configs isolate owners, store plaintext server-side, and mask browser DTOs', () => {
   const db = createConfigDb();
   const alice = createTextConfig(db, 101, 'alice', 'alice-plain-key', 'alice-plain-secret');

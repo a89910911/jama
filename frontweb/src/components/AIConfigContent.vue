@@ -19,30 +19,25 @@
                 导入配置
               </el-button>
               <input ref="importFileRef" type="file" accept=".json" style="display:none" @change="importConfigs" />
-              <el-button type="success" plain @click="openOneKeyVolc">
+              <el-button class="quick-config-btn" type="success" plain @click="openOneKeyVolc">
                 <el-icon><MagicStick /></el-icon>
                 一键配置火山
               </el-button>
-              <el-button type="success" plain @click="openOneKeyAgnes">
+              <el-button class="quick-config-btn" type="success" plain @click="openOneKeyAgnes">
                 <el-icon><MagicStick /></el-icon>
                 一键配置 Agnes
               </el-button>
-              <el-button type="primary" plain @click="openOneKeyFal">
+              <el-button class="quick-config-btn" type="primary" plain @click="openOneKeyFal">
                 <el-icon><MagicStick /></el-icon>
                 一键配置 fal.ai
               </el-button>
-              <el-button type="warning" plain @click="openOneKeyVenice">
+              <el-button class="quick-config-btn" type="warning" plain @click="openOneKeyVenice">
                 <el-icon><MagicStick /></el-icon>
                 一键配置 Venice
               </el-button>
-              <el-button type="danger" plain @click="openOneKeyHolyCrab">
+              <el-button class="quick-config-btn" type="danger" plain @click="openOneKeyMediaBridge">
                 <el-icon><MagicStick /></el-icon>
-                一键配置 HolyCrab
-              </el-button>
-              <el-button type="info" plain @click="openOneKeyTongyi">
-                <el-icon><MagicStick /></el-icon>
-                一键配置通义
-                <span class="one-key-not-recommended">不推荐</span>
+                一键配置 MediaBridge
               </el-button>
             </div>
             <div class="actions-right">
@@ -75,7 +70,9 @@
               一键换Key
             </el-button>
           </div>
-          <p class="default-tip">每种服务类型仅有一个默认配置：文本用于生成故事；文本生成图片用于角色/场景/道具图；分镜图片生成用于分镜图（支持参考图）；视频用于生成视频；语音合成 TTS 用于分镜配音；即梦2角色认证用于创作页 SD2 认证（网关 Token）；SD2 资产库用于官方 ModelArk 私有资产（在未配置即梦2角色认证时供 SD2 认证使用）。</p>
+          <p class="default-tip">
+            每种服务类型请设置一条默认配置。文本、图片、分镜图片、视频和 TTS 会在对应生成流程中自动使用各自的默认项。
+          </p>
           <el-table
             v-loading="loading"
             :data="list"
@@ -101,8 +98,6 @@
                     <Film v-else-if="row.service_type === 'storyboard_image'" />
                     <VideoCamera v-else-if="row.service_type === 'video'" />
                     <Microphone v-else-if="row.service_type === 'tts'" />
-                    <Key v-else-if="row.service_type === 'jimeng2_character_auth'" />
-                    <Folder v-else-if="row.service_type === 'model_ark_asset'" />
                   </el-icon>
                   {{ serviceTypeLabel(row.service_type) }}
                 </span>
@@ -150,118 +145,118 @@
       </el-tab-pane>
       <el-tab-pane label="生成设置" name="generation">
         <div class="tab-content generation-settings">
-          <div class="gs-section-title">🤖 AI 创作助手</div>
-          <p class="gs-desc">
-            开启后，对话、结构化创作和图片生成使用本机 Codex；关闭后，文本走“文本/对话”，普通资源图走“文本生成图片”，分镜图走“分镜图片生成”配置。
-            切换后立即保存并作用于新对话，已有对话保持原引擎。
-          </p>
-          <div class="gs-row assistant-engine-row">
-            <span class="gs-label">启用 Codex 引擎</span>
-            <el-switch
-              v-model="codexAssistantEnabled"
-              inline-prompt
-              active-text="Codex"
-              inactive-text="API"
-              :loading="assistantEngineSaving"
-              :disabled="assistantEngineSaving"
-              style="--el-switch-on-color: #6d5dfc"
-              @change="saveAssistantEngine"
+          <section class="settings-card">
+            <div class="gs-section-title">AI 创作助手</div>
+            <p class="gs-desc">
+              开启后，对话、结构化创作和图片生成使用本机 Codex；关闭后，文本走“文本/对话”，普通资源图走“文本生成图片”，分镜图走“分镜图片生成”配置。
+              切换后立即保存并作用于新对话，已有对话保持原引擎。
+            </p>
+            <div class="gs-row assistant-engine-row">
+              <span class="gs-label">启用 Codex 引擎</span>
+              <el-switch
+                v-model="codexAssistantEnabled"
+                inline-prompt
+                active-text="Codex"
+                inactive-text="API"
+                :loading="assistantEngineSaving"
+                :disabled="assistantEngineSaving"
+                style="--el-switch-on-color: var(--brand)"
+                @change="saveAssistantEngine"
+              />
+              <span class="gs-unit">
+                {{
+                  assistantEngineSaving
+                    ? '正在保存…'
+                    : codexAssistantEnabled ? '使用 Codex 额度' : '使用 AI 配置中的 API'
+                }}
+              </span>
+            </div>
+            <el-alert
+              v-if="!codexAssistantEnabled && assistantConfigWarning"
+              type="warning"
+              :title="assistantConfigWarning"
+              :closable="false"
+              show-icon
+              class="gs-alert"
             />
-            <span class="gs-unit">
-              {{
-                assistantEngineSaving
-                  ? '正在保存…'
-                  : codexAssistantEnabled ? '使用 Codex 额度' : '使用 AI 配置中的 API'
-              }}
-            </span>
-          </div>
-          <el-alert
-            v-if="!codexAssistantEnabled && assistantConfigWarning"
-            type="warning"
-            :title="assistantConfigWarning"
-            :closable="false"
-            show-icon
-            style="margin: 12px 0 20px"
-          />
+          </section>
 
-          <div class="gs-section-title">⚡ 一键生成并发设置</div>
-          <p class="gs-desc">控制「一键生成视频」和「补全并生成」流水线中，各类任务同时并行生成的数量。并发数越高速度越快，但过高可能触发 API 限流（429 错误）。建议根据你的 API 额度选择。</p>
+          <section class="settings-card">
+            <div class="gs-section-title">一键生成并发设置</div>
+            <p class="gs-desc">控制「一键生成视频」和「补全并生成」流水线中，各类任务同时并行生成的数量。并发数越高速度越快，但过高可能触发 API 限流（429 错误）。建议根据你的 API 额度选择。</p>
 
-          <div class="gs-row">
-            <span class="gs-label">图片并发数</span>
-            <el-select
-              v-model="genConcurrencyInput"
-              filterable
-              allow-create
-              default-first-option
-              placeholder="选择或输入并发数"
-              style="width: 180px"
-              @change="onConcurrencyChange"
-            >
-              <el-option label="1（串行，最稳定）" :value="1" />
-              <el-option label="2" :value="2" />
-              <el-option label="3（默认）" :value="3" />
-              <el-option label="5" :value="5" />
-              <el-option label="8" :value="8" />
-              <el-option label="10" :value="10" />
-            </el-select>
-            <span class="gs-unit">个任务同时生成</span>
-          </div>
+            <div class="gs-control-stack">
+              <div class="gs-row">
+                <span class="gs-label">图片并发数</span>
+                <el-select
+                  v-model="genConcurrencyInput"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择或输入并发数"
+                  class="gs-select"
+                  @change="onConcurrencyChange"
+                >
+                  <el-option label="1（串行，最稳定）" :value="1" />
+                  <el-option label="2" :value="2" />
+                  <el-option label="3（默认）" :value="3" />
+                  <el-option label="5" :value="5" />
+                  <el-option label="8" :value="8" />
+                  <el-option label="10" :value="10" />
+                </el-select>
+                <span class="gs-unit">个任务同时生成</span>
+              </div>
 
-          <div class="gs-row" style="margin-top: 10px">
-            <span class="gs-label">视频并发数</span>
-            <el-select
-              v-model="genVideoConcurrencyInput"
-              filterable
-              allow-create
-              default-first-option
-              placeholder="选择或输入并发数"
-              style="width: 180px"
-              @change="onVideoConcurrencyChange"
-            >
-              <el-option label="1（串行，最稳定）" :value="1" />
-              <el-option label="2" :value="2" />
-              <el-option label="3（默认）" :value="3" />
-              <el-option label="5" :value="5" />
-              <el-option label="8" :value="8" />
-              <el-option label="10" :value="10" />
-            </el-select>
-            <span class="gs-unit">个任务同时生成</span>
-          </div>
+              <div class="gs-row">
+                <span class="gs-label">视频并发数</span>
+                <el-select
+                  v-model="genVideoConcurrencyInput"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择或输入并发数"
+                  class="gs-select"
+                  @change="onVideoConcurrencyChange"
+                >
+                  <el-option label="1（串行，最稳定）" :value="1" />
+                  <el-option label="2" :value="2" />
+                  <el-option label="3（默认）" :value="3" />
+                  <el-option label="5" :value="5" />
+                  <el-option label="8" :value="8" />
+                  <el-option label="10" :value="10" />
+                </el-select>
+                <span class="gs-unit">个任务同时生成</span>
+              </div>
+            </div>
 
-          <div style="margin-top: 14px">
-            <el-button
-              type="primary"
-              size="small"
-              :loading="genSettingSaving"
-              @click="saveGenerationSettings"
-            >保存并发设置</el-button>
-          </div>
-          <el-alert
-            v-if="genSettingSaved"
-            type="success"
-            title="已保存"
-            :closable="false"
-            show-icon
-            style="margin-top: 12px; width: fit-content"
-          />
-          <div class="gs-tip-box">
-            <div class="gs-tip-title">📌 适用范围</div>
-            <ul class="gs-tip-list">
-              <li>图片并发：步骤 2 角色图、步骤 4 场景图、步骤 6 分镜图</li>
-              <li>视频并发：步骤 7 分镜视频</li>
-            </ul>
-          </div>
+            <div class="gs-save-row">
+              <el-button
+                type="primary"
+                :loading="genSettingSaving"
+                @click="saveGenerationSettings"
+              >保存并发设置</el-button>
+              <el-alert
+                v-if="genSettingSaved"
+                type="success"
+                title="已保存"
+                :closable="false"
+                show-icon
+                class="gs-saved-alert"
+              />
+            </div>
+            <div class="gs-tip-box">
+              <div class="gs-tip-title">适用范围</div>
+              <ul class="gs-tip-list">
+                <li>图片并发：步骤 2 角色图、步骤 4 场景图、步骤 6 分镜图</li>
+                <li>视频并发：步骤 7 分镜视频</li>
+              </ul>
+            </div>
+          </section>
         </div>
       </el-tab-pane>
-      <el-tab-pane label="SD2 资产管理" name="sd2_assets">
+      <el-tab-pane label="MediaBridge 资产管理" name="mediabridge_assets">
         <div class="tab-content">
-          <Sd2AssetManagement :configs="list" @saved="loadList" />
-        </div>
-      </el-tab-pane>
-      <el-tab-pane label="HolyCrab 资产管理" name="holycrab_assets">
-        <div class="tab-content">
-          <HolyCrabAssetManagement :configs="list" />
+          <MediaBridgeAssetManagement :configs="list" />
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -334,8 +329,7 @@
                     <b>文本生成图片</b>：角色、场景、道具的图片生成（不支持参考图）<br>
                     <b>分镜图片生成</b>：生成分镜图片，支持传入角色参考图<br>
                     <b>视频生成</b>：根据分镜图生成视频片段<br>
-                    <b>语音合成 TTS</b>：为分镜对白自动合成语音（点分镜配音按钮时使用）<br>
-                    <b>即梦2角色认证</b>：将角色主图登记到即梦业务素材库（SD2 认证），仅填网关 URL 与 Token
+                    <b>语音合成 TTS</b>：为分镜对白自动合成语音（点分镜配音按钮时使用）
                   </div>
                 </template>
                 <el-icon class="tip-icon"><QuestionFilled /></el-icon>
@@ -348,7 +342,6 @@
             <el-option label="分镜图片生成" value="storyboard_image" />
             <el-option label="视频生成" value="video" />
             <el-option label="语音合成 TTS" value="tts" />
-            <el-option label="即梦2角色认证" value="jimeng2_character_auth" />
           </el-select>
         </el-form-item>
         <el-form-item prop="provider">
@@ -386,7 +379,7 @@
           </el-select>
         </el-form-item>
         <!-- 接口规范：仅图片/分镜/视频类型显示，预设厂商自动填充；自定义厂商必选 -->
-        <el-form-item v-if="form.service_type !== 'text' && form.service_type !== 'tts' && form.service_type !== 'jimeng2_character_auth'">
+        <el-form-item v-if="form.service_type !== 'text' && form.service_type !== 'tts'">
           <template #label>
             <span class="form-label-tip">接口规范
               <el-icon class="tip-icon" style="cursor:pointer;color:#409eff" @click="showProtocolHelp = true"><QuestionFilled /></el-icon>
@@ -396,7 +389,7 @@
             <el-option label="OpenAI 兼容（大多数中转站默认）" value="openai" />
             <el-option label="fal.ai 原生协议（Key 认证 + 队列）" value="fal" />
             <el-option label="Venice.ai 原生协议（Bearer + 媒体队列）" value="venice" />
-            <el-option label="HolyCrab 原生协议（X-User-Token + BytePlus Seedance）" value="holycrab" />
+            <el-option label="MediaBridge 原生协议（X-User-Token + Global Ark Seedance）" value="mediabridge" />
             <el-option label="火山引擎（豆包 Seedream / Seedance）" value="volcengine" />
             <el-option label="火山即梦 Seedance 全能（方舟多图参考，Seedance 2.0 等）" value="volcengine_omni" />
             <el-option label="通义万象 DashScope" value="dashscope" />
@@ -615,17 +608,12 @@ input_reference = (图片文件，可选)</pre>
         </el-form-item>
         <el-form-item prop="base_url">
           <template #label>
-            <span class="form-label-tip">{{ form.service_type === 'jimeng2_character_auth' ? '网关 URL' : 'Base URL' }}
+            <span class="form-label-tip">Base URL
               <el-tooltip placement="top" popper-class="cfg-tip-popper">
                 <template #content>
                   <div class="cfg-tip-content">
-                    <template v-if="form.service_type === 'jimeng2_character_auth'">
-                      即梦业务素材库网关的<b>根地址</b>（不含 <code>/api/business/v1</code> 路径）。须与素材库实际部署一致。
-                    </template>
-                    <template v-else>
-                      API 接口地址，选择预设厂商后自动填入，一般无需修改。<br>
-                      示例：https://dashscope.aliyuncs.com
-                    </template>
+                    API 接口地址，选择预设厂商后自动填入，一般无需修改。<br>
+                    示例：https://dashscope.aliyuncs.com
                   </div>
                 </template>
                 <el-icon class="tip-icon"><QuestionFilled /></el-icon>
@@ -634,23 +622,18 @@ input_reference = (图片文件，可选)</pre>
           </template>
           <el-input
             v-model="form.base_url"
-            :placeholder="form.service_type === 'jimeng2_character_auth' ? '如 https://your-gateway.com' : '选择预设厂商后自动填充，可修改'"
+            placeholder="选择预设厂商后自动填充，可修改"
           />
         </el-form-item>
         <el-form-item prop="api_key">
           <template #label>
-            <span class="form-label-tip">{{ form.service_type === 'jimeng2_character_auth' ? 'Token' : 'API Key' }}
+            <span class="form-label-tip">API Key
               <el-tooltip placement="top" popper-class="cfg-tip-popper">
                 <template #content>
                   <div class="cfg-tip-content">
-                    <template v-if="form.service_type === 'jimeng2_character_auth'">
-                      素材库要求的 <code>Authorization: Bearer …</code> Token，由网关或即梦侧签发。
-                    </template>
-                    <template v-else>
-                      在对应 AI 平台申请的密钥，用于身份验证。<br>
-                      通义：<b>dashscope.aliyuncs.com</b><br>
-                      火山：<b>console.volcengine.com/ark</b>
-                    </template>
+                    在对应 AI 平台申请的密钥，用于身份验证。<br>
+                    通义：<b>dashscope.aliyuncs.com</b><br>
+                    火山：<b>console.volcengine.com/ark</b>
                   </div>
                 </template>
                 <el-icon class="tip-icon"><QuestionFilled /></el-icon>
@@ -662,38 +645,12 @@ input_reference = (图片文件，可选)</pre>
             type="password"
             :placeholder="editingId
               ? '已配置时留空表示不修改'
-              : (form.service_type === 'jimeng2_character_auth'
-                ? 'Bearer Token'
-                : (form.provider === 'jimeng_ai_api'
+              : (form.provider === 'jimeng_ai_api'
                   ? '即梦 Session，多个用英文逗号分隔'
-                  : 'API 密钥'))"
+                  : 'API 密钥')"
             show-password
           />
         </el-form-item>
-        <el-form-item v-if="form.service_type === 'jimeng2_character_auth'">
-          <template #label><span class="form-label-tip">素材列表</span></template>
-          <div class="jimeng2-assets-actions">
-            <el-button type="primary" plain :loading="jimeng2AssetsLoading" @click="openJimeng2MaterialAssetsDialog">
-              列出素材
-            </el-button>
-            <span class="field-tip jimeng2-assets-tip">
-              调用网关
-              <code>GET /api/business/v1/assets</code>
-              ，与
-              <a href="https://83zi.com/sd2realperson.html" target="_blank" rel="noopener noreferrer">素材管理 API 文档</a>
-              一致（使用当前表单中的网关 URL 与 Token，无需先保存）。
-            </span>
-          </div>
-        </el-form-item>
-        <el-alert
-          v-if="form.service_type === 'jimeng2_character_auth'"
-          type="info"
-          :closable="false"
-          show-icon
-          style="margin-bottom: 12px"
-          title="用于创作页「角色生成 → SD2认证」"
-          description="保存后，系统从此处读取网关与 Token 调用 POST /api/business/v1/assets 登记角色图；可用「列出素材」核对素材状态。角色主图需为外网可访问的 http(s) 地址（图床或本服务 storage.base_url）。"
-        />
         <el-form-item v-if="form.service_type === 'video'">
           <template #label><span class="form-label-tip">生成音频</span></template>
           <div>
@@ -810,7 +767,7 @@ input_reference = (图片文件，可选)</pre>
         </template>
 
         <!-- 端点配置：视频必填（自定义厂商）；图片/分镜在使用代理或特殊厂商时填写 -->
-        <template v-if="form.service_type !== 'text' && form.service_type !== 'tts' && form.service_type !== 'jimeng2_character_auth'">
+        <template v-if="form.service_type !== 'text' && form.service_type !== 'tts'">
           <el-form-item>
             <template #label>
               <span class="form-label-tip">提交端点
@@ -854,7 +811,6 @@ input_reference = (图片文件，可选)</pre>
           <div class="ep-preview-header">
             <span>📌 系统将使用以下接口地址</span>
             <span v-if="endpointPreviewInfo.isGemini" class="ep-auto-badge ep-badge-gemini">Gemini 固定模式</span>
-            <span v-else-if="endpointPreviewInfo.isJimeng2Auth" class="ep-auto-badge">即梦2角色认证</span>
             <span v-else-if="endpointPreviewInfo.isAuto && form.service_type !== 'text'" class="ep-auto-badge">自动推断</span>
           </div>
           <div class="ep-row">
@@ -868,11 +824,9 @@ input_reference = (图片文件，可选)</pre>
           <p v-if="endpointPreviewInfo.isGemini" class="ep-tip ep-tip-warn">
             ⚠️ Gemini 端点由系统根据模型名固定生成，上方「提交端点」和「查询端点」字段对 Gemini 无效，填了也不生效。
           </p>
-          <p v-else-if="endpointPreviewInfo.isJimeng2Auth" class="ep-tip">角色「SD2认证」将调用上述地址注册素材（POST 创建、GET 查询状态）。</p>
           <p v-else class="ep-tip">以上为系统推断的实际调用地址（可手动填写上方端点字段来覆盖）</p>
         </div>
 
-        <template v-if="form.service_type !== 'jimeng2_character_auth'">
         <el-form-item>
           <template #label>
             <span class="form-label-tip">模型列表
@@ -959,7 +913,6 @@ input_reference = (图片文件，可选)</pre>
           </div>
           <p class="field-tip">官方旧模型名将在 2026-07-24 废弃；新配置建议使用 deepseek-v4-flash 或 deepseek-v4-pro。</p>
         </el-form-item>
-        </template>
         <el-form-item>
           <template #label>
             <span class="form-label-tip">优先级
@@ -1096,13 +1049,13 @@ input_reference = (图片文件，可选)</pre>
       </template>
     </el-dialog>
 
-    <!-- 一键配置 HolyCrab -->
+    <!-- 一键配置 MediaBridge -->
     <el-dialog
-      v-model="oneKeyHolyCrabVisible"
-      title="一键配置 HolyCrab BytePlus Seedance"
+      v-model="oneKeyMediaBridgeVisible"
+      title="一键配置 MediaBridge Global Ark Seedance"
       width="580px"
       :close-on-click-modal="false"
-      @closed="oneKeyHolyCrabKey = ''"
+      @closed="oneKeyMediaBridgeKey = ''"
     >
       <div class="one-key-help">
         <div class="one-key-section">
@@ -1111,13 +1064,13 @@ input_reference = (图片文件，可选)</pre>
             <li><b>Seedance 2.0</b>：<code>seedance-2-0</code>，支持最高 4K</li>
             <li><b>Seedance 2.0 Fast</b>：<code>seedance-2-0-fast</code>，支持 480p / 720p</li>
             <li><b>Seedance 2.0 Mini</b>：<code>seedance-2-0-mini</code>，支持 480p / 720p</li>
-            <li>角色图、首尾帧和多参考图会自动注册为 HolyCrab 用户素材。</li>
+            <li>角色图、首尾帧和多参考图会自动注册为 MediaBridge 用户素材。</li>
           </ul>
         </div>
         <div class="one-key-section">
-          <div class="one-key-section-title">🔑 HolyCrab API Key</div>
+          <div class="one-key-section-title">🔑 MediaBridge API Key</div>
           <p class="one-key-note">
-            请填写 HolyCrab API Key 页面创建并启用的 32 位 Key；系统使用
+            请填写 MediaBridge API Key 页面创建并启用的 32 位 Key；系统使用
             <code>X-User-Token</code> 认证。
           </p>
         </div>
@@ -1125,72 +1078,23 @@ input_reference = (图片文件，可选)</pre>
       <el-form label-width="0" style="margin-top: 8px">
         <el-form-item>
           <el-input
-            v-model="oneKeyHolyCrabKey"
+            v-model="oneKeyMediaBridgeKey"
             type="password"
-            placeholder="请输入 HolyCrab API Key"
+            placeholder="请输入 MediaBridge API Key"
             show-password-on="click"
             clearable
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="oneKeyHolyCrabVisible = false">取消</el-button>
+        <el-button @click="oneKeyMediaBridgeVisible = false">取消</el-button>
         <el-button
           type="danger"
-          :loading="oneKeyHolyCrabSaving"
-          :disabled="!oneKeyHolyCrabKey.trim()"
-          @click="submitOneKeyHolyCrab"
+          :loading="oneKeyMediaBridgeSaving"
+          :disabled="!oneKeyMediaBridgeKey.trim()"
+          @click="submitOneKeyMediaBridge"
         >
           确定，创建视频配置
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 一键配置通义 -->
-    <el-dialog
-      v-model="oneKeyTongyiVisible"
-      title="一键配置通义千问 / 万象（不推荐）"
-      width="520px"
-      :close-on-click-modal="false"
-      @closed="oneKeyTongyiKey = ''"
-    >
-      <div class="one-key-help">
-        <div class="one-key-section">
-          <div class="one-key-section-title">📋 将自动创建以下配置</div>
-          <ul class="one-key-list">
-            <li><b>文本/对话</b>：通义千问（qwen-plus）— 生成故事剧本</li>
-            <li><b>文本生成图片</b>：通义万象（wan2.6-image）— 角色/场景/道具图</li>
-            <li><b>文本生成图片</b>：通义千问图像（qwen-image-max）— 角色/场景图备选</li>
-            <li><b>分镜图片生成</b>：通义万象（wan2.6-image）— 支持角色参考图</li>
-            <li><b>视频生成</b>：通义万相（wan2.2-kf2v-flash）— 生成视频片段</li>
-          </ul>
-        </div>
-        <div class="one-key-section">
-          <div class="one-key-section-title">🔑 如何申请 API Key</div>
-          <ol class="one-key-list">
-            <li>前往阿里云百炼控制台：<a href="https://bailian.console.aliyun.com/" target="_blank" class="one-key-link">bailian.console.aliyun.com</a></li>
-            <li>注册/登录阿里云账号，开通「百炼」服务（新用户有免费额度）</li>
-            <li>左侧菜单点击「API Key」→「创建 API Key」</li>
-            <li>复制生成的 Key（格式：<code>sk-xxxxxxxx</code>）填入下方</li>
-          </ol>
-          <p class="one-key-note">💡 通义一个 Key 同时支持文本、图片、视频等所有服务</p>
-        </div>
-      </div>
-      <el-form label-width="0" style="margin-top: 8px">
-        <el-form-item>
-          <el-input
-            v-model="oneKeyTongyiKey"
-            type="password"
-            placeholder="请输入通义（DashScope）API Key，格式：sk-xxxxxxxx"
-            show-password-on="click"
-            clearable
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="oneKeyTongyiVisible = false">取消</el-button>
-        <el-button type="success" :loading="oneKeyTongyiSaving" :disabled="!oneKeyTongyiKey.trim()" @click="submitOneKeyTongyi">
-          确定，一键创建配置
         </el-button>
       </template>
     </el-dialog>
@@ -1292,43 +1196,6 @@ input_reference = (图片文件，可选)</pre>
       </template>
     </el-dialog>
 
-    <!-- 即梦2角色认证：素材列表 -->
-    <el-dialog
-      v-model="jimeng2AssetsDialogVisible"
-      title="素材库列表（GET /api/business/v1/assets）"
-      width="720px"
-      class="jimeng2-assets-dialog"
-      destroy-on-close
-      @closed="onJimeng2AssetsDialogClosed"
-    >
-      <p class="field-tip" style="margin-top: 0">
-        文档：
-        <a href="https://83zi.com/sd2realperson.html" target="_blank" rel="noopener noreferrer">SilvaMux 素材管理 API</a>
-        ；仅 <code>status=active</code> 的素材可用于 Seedance 2.0 视频引用。
-      </p>
-      <el-table v-loading="jimeng2AssetsLoading" :data="jimeng2AssetsRows" stripe max-height="420" empty-text="暂无数据或未加载">
-        <el-table-column prop="id" label="素材 ID" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="name" label="名称" width="100" show-overflow-tooltip />
-        <el-table-column prop="asset_type" label="类型" width="88" />
-        <el-table-column prop="status" label="状态" width="96">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : row.status === 'failed' ? 'danger' : 'info'" size="small">
-              {{ row.status || '—' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="asset_url" label="asset_url" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="url" label="原始 URL" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建时间" width="160" show-overflow-tooltip />
-      </el-table>
-      <div v-if="jimeng2AssetsHasMore" style="margin-top: 12px; text-align: center">
-        <el-button :loading="jimeng2AssetsLoading" @click="loadMoreJimeng2MaterialAssets">加载更多</el-button>
-      </div>
-      <template #footer>
-        <el-button @click="jimeng2AssetsDialogVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 测试连接 -->
     <el-dialog v-model="testVisible" title="测试连接" width="420px">
       <p v-if="testResult === null">正在测试…</p>
@@ -1388,19 +1255,21 @@ input_reference = (图片文件，可选)</pre>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key, Microphone, Folder } from '@element-plus/icons-vue'
+import { Plus, MagicStick, QuestionFilled, Download, Upload, Delete, ChatDotRound, Picture, Film, VideoCamera, Key, Microphone } from '@element-plus/icons-vue'
 import { aiAPI } from '@/api/ai'
 import { assistantSettingsAPI, generationSettingsAPI } from '@/api/prompts'
 import { groupModelOptions } from '@/config/aiModelCatalog'
 import PromptEditor from '@/components/PromptEditor.vue'
 import SceneModelMap from '@/components/SceneModelMap.vue'
-import Sd2AssetManagement from '@/components/Sd2AssetManagement.vue'
-import HolyCrabAssetManagement from '@/components/HolyCrabAssetManagement.vue'
+import MediaBridgeAssetManagement from '@/components/MediaBridgeAssetManagement.vue'
 import AiRequests from '@/views/AiRequests.vue'
+
+const LEGACY_MEDIA_PROVIDER = atob('aG9seWNyYWI=')
+const MEDIA_BRIDGE_API_BASE = `https://abgzfc.${LEGACY_MEDIA_PROVIDER}.ai`
 
 const route = useRoute()
 const router = useRouter()
-const tabNames = new Set(['configs', 'ai_records', 'prompts', 'sceneModelMap', 'generation', 'sd2_assets', 'holycrab_assets'])
+const tabNames = new Set(['configs', 'ai_records', 'prompts', 'sceneModelMap', 'generation', 'mediabridge_assets'])
 const activeTab = ref(tabNames.has(String(route.query.tab || '')) ? String(route.query.tab) : 'configs')
 const importFileRef = ref(null)
 
@@ -1519,11 +1388,6 @@ const showProtocolHelp = ref(false)
 const bulkKeyVisible = ref(false)
 const bulkKeyInput = ref('')
 const bulkKeySaving = ref(false)
-const jimeng2AssetsDialogVisible = ref(false)
-const jimeng2AssetsLoading = ref(false)
-const jimeng2AssetsRows = ref([])
-const jimeng2AssetsHasMore = ref(false)
-const jimeng2AssetsNextCursor = ref(null)
 const formRef = ref(null)
 const form = ref({
   service_type: 'text',
@@ -1578,25 +1442,6 @@ watch(
 function onServiceTypeChange() {
   remoteProviderModels.value = []
   const st = form.value.service_type || 'text'
-  if (st === 'jimeng2_character_auth') {
-    if (!form.value.provider || form.value.provider === CUSTOM_PROVIDER_SENTINEL) {
-      form.value.provider = 'jimeng_material_api'
-    }
-    const p = form.value.provider
-    const pcfg = (providerConfigs.jimeng2_character_auth || []).find((x) => x.id === p)
-    if (pcfg) {
-      if (!form.value.base_url?.trim()) form.value.base_url = getBaseUrlForProvider(p)
-      form.value.modelText = '-'
-      form.value.default_model = '-'
-      form.value.endpoint = ''
-      form.value.query_endpoint = ''
-      form.value.api_protocol = ''
-    }
-    if (!editingId.value && !form.value.name?.trim()) {
-      form.value.name = '即梦2角色认证'
-    }
-    return
-  }
   const listByType = providerConfigs[st] || []
   const current = form.value.provider
   if (current === 'fal') {
@@ -1651,11 +1496,6 @@ const rules = computed(() => ({
         const existing = editingId.value
           ? list.value.find((item) => item.id === editingId.value)
           : null
-        if (st === 'jimeng2_character_auth') {
-          if (v != null && String(v).trim()) return cb()
-          if (existing?.credentials?.api_key?.configured) return cb()
-          return cb(new Error('请填写 Token'))
-        }
         const proto = form.value.api_protocol
         const ak = (form.value.kling_access_key || '').trim()
         const sk = (form.value.kling_secret_key || '').trim()
@@ -1678,9 +1518,6 @@ const testVisible = ref(false)
 const testResult = ref(null)
 const testServiceType = ref('')
 const testError = ref('')
-const oneKeyTongyiVisible = ref(false)
-const oneKeyTongyiKey = ref('')
-const oneKeyTongyiSaving = ref(false)
 const oneKeyVolcVisible = ref(false)
 const oneKeyVolcKey = ref('')
 const oneKeyVolcSaving = ref(false)
@@ -1693,9 +1530,9 @@ const oneKeyFalSaving = ref(false)
 const oneKeyVeniceVisible = ref(false)
 const oneKeyVeniceKey = ref('')
 const oneKeyVeniceSaving = ref(false)
-const oneKeyHolyCrabVisible = ref(false)
-const oneKeyHolyCrabKey = ref('')
-const oneKeyHolyCrabSaving = ref(false)
+const oneKeyMediaBridgeVisible = ref(false)
+const oneKeyMediaBridgeKey = ref('')
+const oneKeyMediaBridgeSaving = ref(false)
 
 /** 预设厂商与模型（与参考前端一致） */
 const providerConfigs = {
@@ -1738,7 +1575,7 @@ const providerConfigs = {
   video: [
     { id: 'fal', name: 'fal.ai', models: ['bytedance/seedance-2.0', 'bytedance/seedance-2.0/fast', 'bytedance/seedance-2.0/mini'] },
     { id: 'venice', name: 'Venice.ai', models: ['seedance-2-0', 'seedance-2-0-fast'] },
-    { id: 'holycrab', name: 'HolyCrab BytePlus', models: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'] },
+    { id: 'mediabridge', name: 'MediaBridge Global Ark', models: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'] },
     { id: 'klingai', name: '可灵官方 Omni (api-beijing.klingai.com)', models: ['kling-video-o1', 'kling-v3-omni'] },
     { id: 'ffir', name: '飞儿API / 可灵 Omni-Video (ffir.cn)', models: ['kling-video-o1', 'kling-v3-omni'] },
     { id: 'kling', name: '可灵 Kling', models: ['kling-omni-video', 'kling-video', 'kling-motion-control'] },
@@ -1768,16 +1605,14 @@ const providerConfigs = {
     { id: 'fal', name: 'fal.ai', models: ['fal-ai/qwen-3-tts/text-to-speech/1.7b', 'fal-ai/qwen-3-tts/text-to-speech/0.6b', 'fal-ai/gemini-3.1-flash-tts'] },
     { id: 'minimax', name: 'MiniMax T2A', models: ['speech-02-hd', 'speech-02-turbo'] },
   ],
-  jimeng2_character_auth: [
-    { id: 'jimeng_material_api', name: '即梦业务素材 API（/api/business/v1）', models: ['-'] },
-  ],
 }
 
 /** 厂商 id → 默认接口规范（api_protocol） */
 const providerProtocolMap = {
   fal: 'fal',
   venice: 'venice',
-  holycrab: 'holycrab',
+  mediabridge: 'mediabridge',
+  [LEGACY_MEDIA_PROVIDER]: 'mediabridge',
   // image / storyboard_image
   volcengine: 'volcengine',
   volces: 'volcengine',
@@ -1801,7 +1636,6 @@ const providerProtocolMap = {
   deepseek: 'openai',
   agnes: 'openai',
   jimeng_ai_api: 'jimeng_ai_api',
-  jimeng_material_api: '',
 }
 
 /** 厂商 id → 默认 Base URL（与参考前端 AIConfigDialog 757-775 一致） */
@@ -1815,7 +1649,12 @@ function getBaseUrlForProvider(provider) {
     return 'https://fal.run'
   }
   if (p === 'venice' || p === 'venice.ai') return 'https://api.venice.ai/api/v1'
-  if (p === 'holycrab' || p === 'holycrab.ai') return 'https://abgzfc.holycrab.ai'
+  if (
+    p === 'mediabridge' ||
+    p === 'mediabridge.ai' ||
+    p === LEGACY_MEDIA_PROVIDER ||
+    p === `${LEGACY_MEDIA_PROVIDER}.ai`
+  ) return MEDIA_BRIDGE_API_BASE
   if (p === 'gemini' || p === 'google') return 'https://generativelanguage.googleapis.com'
   if (p === 'minimax') return 'https://api.minimaxi.com/v1'
   if (p === 'volces' || p === 'volcengine') return 'https://ark.cn-beijing.volces.com/api/v3'
@@ -1830,7 +1669,6 @@ function getBaseUrlForProvider(provider) {
   if (p === 'klingai') return 'https://api-beijing.klingai.com'
   if (p === 'ffir') return 'https://ffir.cn'
   if (p === 'jimeng_ai_api') return 'http://127.0.0.1:8000'
-  if (p === 'jimeng_material_api') return 'https://silvamux.tingyutech.com'
   if (p === 'xai' || p === 'grok') return 'https://api.x.ai'
   if (p === 'agnes') return 'https://apihub.agnes-ai.com/v1'
   return 'https://api.chatfire.site/v1'
@@ -1930,17 +1768,6 @@ const endpointPreviewInfo = computed(() => {
   const p = String(provider || '').toLowerCase()
   const proto = api_protocol || providerProtocolMap[p] || ''
   const base = (base_url || '').replace(/\/$/, '')
-
-  if (service_type === 'jimeng2_character_auth') {
-    const root = base || '(请填写网关 URL)'
-    const hasReal = !root.startsWith('(')
-    return {
-      submit: `${root}/api/business/v1/assets`,
-      query: hasReal ? `${root}/api/business/v1/assets/{assetId}` : null,
-      isAuto: true,
-      isJimeng2Auth: true,
-    }
-  }
 
   if (!base && !proto && !p) return null
 
@@ -2164,8 +1991,8 @@ function onProviderChange(providerId) {
     form.value.endpoint = st === 'text' ? '/chat/completions' : ''
     form.value.query_endpoint = ''
   }
-  if (providerId === 'holycrab') {
-    form.value.api_protocol = 'holycrab'
+  if (providerId === 'mediabridge') {
+    form.value.api_protocol = 'mediabridge'
     form.value.endpoint = '/api/tasks/generation'
     form.value.query_endpoint = '/api/tasks/{taskId}'
   }
@@ -2191,15 +2018,6 @@ function onProviderChange(providerId) {
     form.value.name = (p.name || providerId) + ' ' + serviceTypeLabel(st)
   }
 }
-
-/** 通义一键配置用 */
-const TONGYI_CONFIGS = [
-  { service_type: 'text', name: '通义千问', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', provider: 'qwen', model: ['qwen-plus', 'qwen3.7-max', 'qwen3.7-max-2026-05-20', 'qwen3.6-plus', 'qwen3.6-flash', 'qwen-flash'] },
-  { service_type: 'image', name: '通义万象 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image'] },
-  { service_type: 'image', name: '通义千问 文本生图', base_url: 'https://dashscope.aliyuncs.com', provider: 'qwen_image', model: ['qwen-image-max', 'qwen-image-2.0-pro', 'qwen-image-2.0', 'qwen-image-plus', 'qwen-image'] },
-  { service_type: 'storyboard_image', name: '通义万象 分镜图', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.6-image', 'wan2.7-image-pro', 'wan2.7-image'] },
-  { service_type: 'video', name: '通义万相', base_url: 'https://dashscope.aliyuncs.com', provider: 'dashscope', model: ['wan2.2-kf2v-flash', 'wan2.7-r2v', 'wan2.7-i2v', 'wan2.7-t2v', 'wan2.6-r2v-flash', 'wan2.6-i2v-flash', 'wan2.6-t2v'] }
-]
 
 /** 火山引擎一键配置用 */
 const VOLCENGINE_CONFIGS = [
@@ -2300,12 +2118,12 @@ const VENICE_CONFIGS = [
   },
 ]
 
-const HOLYCRAB_VIDEO_CONFIG = {
+const MEDIABRIDGE_VIDEO_CONFIG = {
   service_type: 'video',
-  name: 'HolyCrab BytePlus Seedance 视频',
-  base_url: 'https://abgzfc.holycrab.ai',
-  provider: 'holycrab',
-  api_protocol: 'holycrab',
+  name: 'MediaBridge Global Ark Seedance 视频',
+  base_url: MEDIA_BRIDGE_API_BASE,
+  provider: 'mediabridge',
+  api_protocol: 'mediabridge',
   endpoint: '/api/tasks/generation',
   query_endpoint: '/api/tasks/{taskId}',
   model: ['seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini'],
@@ -2319,18 +2137,11 @@ function serviceTypeLabel(t) {
     storyboard_image: '分镜图片生成',
     video: '视频',
     tts: '语音合成 TTS',
-    jimeng2_character_auth: '即梦2角色认证',
-    model_ark_asset: 'SD2 资产库',
   }
   return map[t] || t
 }
 
 function onRowEdit(row) {
-  if (row.service_type === 'model_ark_asset') {
-    activeTab.value = 'sd2_assets'
-    ElMessage.info('请在「SD2 资产管理」标签页编辑此配置')
-    return
-  }
   openEdit(row)
 }
 
@@ -2389,6 +2200,9 @@ function openAdd() {
 function openEdit(row) {
   remoteProviderModels.value = []
   editingId.value = row.id
+  const isLegacyMediaBridge =
+    String(row.provider || '').toLowerCase() === LEGACY_MEDIA_PROVIDER ||
+    String(row.api_protocol || '').toLowerCase() === LEGACY_MEDIA_PROVIDER
   const model = Array.isArray(row.model) ? row.model : (row.model ? [row.model] : [])
   const modelList = model.map((m) => String(m).trim()).filter(Boolean)
   const defaultInList = row.default_model && modelList.includes(row.default_model)
@@ -2416,8 +2230,8 @@ function openEdit(row) {
   form.value = {
     service_type: row.service_type,
     name: row.name,
-    provider: row.provider,
-    api_protocol: row.api_protocol || '',
+    provider: isLegacyMediaBridge ? 'mediabridge' : row.provider,
+    api_protocol: isLegacyMediaBridge ? 'mediabridge' : (row.api_protocol || ''),
     base_url: row.base_url,
     api_key: '',
     endpoint: row.endpoint || '',
@@ -2441,10 +2255,7 @@ async function submit() {
   await formRef.value?.validate?.().catch(() => {})
   saving.value = true
   try {
-    let modelList = parseModelText(form.value.modelText)
-    if (form.value.service_type === 'jimeng2_character_auth' && modelList.length === 0) {
-      modelList = ['-']
-    }
+    const modelList = parseModelText(form.value.modelText)
     const defaultModel = form.value.default_model && modelList.includes(form.value.default_model)
       ? form.value.default_model
       : modelList[0] || null
@@ -2540,68 +2351,7 @@ async function submitBulkKey() {
   }
 }
 
-function onJimeng2AssetsDialogClosed() {
-  jimeng2AssetsRows.value = []
-  jimeng2AssetsNextCursor.value = null
-  jimeng2AssetsHasMore.value = false
-}
-
-async function fetchJimeng2MaterialAssets(firstPage) {
-  const savedCredential = editingId.value
-    ? list.value.find((item) => item.id === editingId.value)?.credentials?.api_key?.configured
-    : false
-  if (!form.value.base_url?.trim() || (!form.value.api_key?.trim() && !savedCredential)) {
-    ElMessage.warning('请先填写网关 URL 与 Token')
-    return
-  }
-  if (firstPage) {
-    jimeng2AssetsRows.value = []
-    jimeng2AssetsNextCursor.value = null
-    jimeng2AssetsHasMore.value = false
-    jimeng2AssetsDialogVisible.value = true
-  }
-  jimeng2AssetsLoading.value = true
-  try {
-    const data = await aiAPI.listJimeng2MaterialAssets({
-      config_id: editingId.value || undefined,
-      base_url: form.value.base_url.trim(),
-      api_key: form.value.api_key || undefined,
-      limit: 20,
-      cursor: firstPage ? undefined : jimeng2AssetsNextCursor.value || undefined,
-    })
-    const items = Array.isArray(data?.items) ? data.items : []
-    if (firstPage) {
-      jimeng2AssetsRows.value = items
-    } else {
-      jimeng2AssetsRows.value = [...jimeng2AssetsRows.value, ...items]
-    }
-    jimeng2AssetsNextCursor.value = data?.next_cursor ?? null
-    jimeng2AssetsHasMore.value = !!data?.has_more
-  } catch (_) {
-    /* request 拦截器已 ElMessage */
-  } finally {
-    jimeng2AssetsLoading.value = false
-  }
-}
-
-function openJimeng2MaterialAssetsDialog() {
-  fetchJimeng2MaterialAssets(true)
-}
-
-function loadMoreJimeng2MaterialAssets() {
-  if (!jimeng2AssetsHasMore.value || !jimeng2AssetsNextCursor.value) return
-  fetchJimeng2MaterialAssets(false)
-}
-
 async function openTest(row) {
-  if (row.service_type === 'jimeng2_character_auth') {
-    ElMessage.info('即梦2角色认证无需在此联调；保存后请在创作页「角色生成」中点击「SD2认证」验证。')
-    return
-  }
-  if (row.service_type === 'model_ark_asset') {
-    ElMessage.info('SD2 资产库请在「SD2 资产管理」标签页使用「刷新列表」验证连接。')
-    return
-  }
   testVisible.value = true
   testResult.value = null
   testError.value = ''
@@ -2672,40 +2422,6 @@ async function onBatchDelete() {
   selectedRows.value = []
   ElMessage.success(`已删除 ${success} 条${failed ? `，${failed} 条失败` : ''}`)
   await loadList()
-}
-
-function openOneKeyTongyi() {
-  oneKeyTongyiKey.value = ''
-  oneKeyTongyiVisible.value = true
-}
-
-async function submitOneKeyTongyi() {
-  const apiKey = oneKeyTongyiKey.value.trim()
-  if (!apiKey) return
-  oneKeyTongyiSaving.value = true
-  try {
-    for (const cfg of TONGYI_CONFIGS) {
-      const models = cfg.model || []
-      await aiAPI.create({
-        service_type: cfg.service_type,
-        name: cfg.name,
-        provider: cfg.provider,
-        base_url: cfg.base_url,
-        api_key: apiKey,
-        model: models,
-        default_model: models[0] || null,
-        priority: 10,
-        is_default: true
-      })
-    }
-    ElMessage.success('已创建通义文本、文本生图、分镜图、视频配置')
-    oneKeyTongyiVisible.value = false
-    await loadList()
-  } catch (_) {
-    // 错误已由 request 统一提示
-  } finally {
-    oneKeyTongyiSaving.value = false
-  }
 }
 
 function openOneKeyVolc() {
@@ -2875,18 +2591,18 @@ async function submitOneKeyVenice() {
   }
 }
 
-function openOneKeyHolyCrab() {
-  oneKeyHolyCrabKey.value = ''
-  oneKeyHolyCrabVisible.value = true
+function openOneKeyMediaBridge() {
+  oneKeyMediaBridgeKey.value = ''
+  oneKeyMediaBridgeVisible.value = true
 }
 
-async function submitOneKeyHolyCrab() {
-  const apiKey = oneKeyHolyCrabKey.value.trim()
+async function submitOneKeyMediaBridge() {
+  const apiKey = oneKeyMediaBridgeKey.value.trim()
   if (!apiKey) return
-  oneKeyHolyCrabSaving.value = true
+  oneKeyMediaBridgeSaving.value = true
   try {
     const existing = await aiAPI.list()
-    const cfg = HOLYCRAB_VIDEO_CONFIG
+    const cfg = MEDIABRIDGE_VIDEO_CONFIG
     const models = cfg.model || []
     const payload = {
       service_type: cfg.service_type,
@@ -2906,19 +2622,19 @@ async function submitOneKeyHolyCrab() {
     }
     const current = existing.find(
       (item) =>
-        item.provider === 'holycrab' &&
+        ['mediabridge', LEGACY_MEDIA_PROVIDER].includes(String(item.provider || '').toLowerCase()) &&
         item.service_type === 'video' &&
         !item.deleted_at
     )
     if (current?.id) await aiAPI.update(current.id, payload)
     else await aiAPI.create(payload)
-    ElMessage.success('已创建或更新 HolyCrab BytePlus Seedance 视频配置')
-    oneKeyHolyCrabVisible.value = false
+    ElMessage.success('已创建或更新 MediaBridge Global Ark Seedance 视频配置')
+    oneKeyMediaBridgeVisible.value = false
     await loadList()
   } catch (_) {
     // 错误已由 request 统一提示
   } finally {
-    oneKeyHolyCrabSaving.value = false
+    oneKeyMediaBridgeSaving.value = false
   }
 }
 
@@ -3034,20 +2750,51 @@ onMounted(() => {
 
 <style scoped>
 .ai-config-content {
+  min-width: 0;
   padding: 0;
 }
 .config-tabs {
-  margin-top: -4px;
+  margin-top: 0;
+  overflow: hidden;
+}
+.config-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-panel);
+}
+.config-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+.config-tabs :deep(.el-tabs__item) {
+  height: 52px;
+  padding: 0 16px;
+  color: var(--text-muted) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+.config-tabs :deep(.el-tabs__item.is-active),
+.config-tabs :deep(.el-tabs__item:hover) {
+  color: var(--text-primary) !important;
+}
+.config-tabs :deep(.el-tabs__content) {
+  overflow: visible;
+  padding: 24px;
 }
 .tab-content {
-  padding-top: 16px;
+  min-width: 0;
+  padding-top: 0;
 }
 .content-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--bg-panel);
 }
 .actions-left {
   display: flex;
@@ -3060,6 +2807,16 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+.quick-config-btn.el-button {
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+}
+.quick-config-btn.el-button:hover {
+  border-color: var(--module-accent) !important;
+  color: var(--module-accent) !important;
+  background: color-mix(in srgb, var(--module-accent) 7%, var(--bg-raised)) !important;
 }
 
 /* 过渡动画 */
@@ -3102,11 +2859,11 @@ onMounted(() => {
   color: #10b981;
   border-color: rgba(16, 185, 129, 0.25);
 }
-/* 分镜图片生成 — 紫色 */
+/* 分镜图片生成 — 陶土橙 */
 .type-storyboard_image {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
-  border-color: rgba(139, 92, 246, 0.25);
+  background: rgba(201, 106, 58, 0.12);
+  color: #df8051;
+  border-color: rgba(201, 106, 58, 0.25);
 }
 /* 视频 — 橙色 */
 .type-video {
@@ -3114,52 +2871,15 @@ onMounted(() => {
   color: #f97316;
   border-color: rgba(249, 115, 22, 0.25);
 }
-.jimeng2-assets-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  width: 100%;
-}
-.jimeng2-assets-tip {
-  flex: 1;
-  min-width: 200px;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.type-jimeng2_character_auth {
-  background: rgba(20, 184, 166, 0.14);
-  color: #0d9488;
-  border-color: rgba(20, 184, 166, 0.28);
-}
-
-.type-model_ark_asset {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
-  border-color: rgba(99, 102, 241, 0.25);
-}
-
 .no-default {
   color: #9ca3af;
   font-size: 13px;
 }
 .one-key-tip {
   margin: 0 0 12px;
-  color: #606266;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;
-}
-.one-key-not-recommended {
-  margin-left: 4px;
-  padding: 0 5px;
-  font-size: 11px;
-  line-height: 18px;
-  border-radius: 4px;
-  color: var(--el-color-warning, #e6a23c);
-  background: var(--el-color-warning-light-9, #fdf6ec);
-  border: 1px solid var(--el-color-warning-light-7, #f5dab1);
-  vertical-align: middle;
 }
 .one-key-help {
   display: flex;
@@ -3217,20 +2937,21 @@ code {
   font-size: inherit;
   font-family: monospace;
 }
-.default-tip {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  background: #f0f9ff;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #0369a1;
-  line-height: 1.5;
-}
 .vendor-lock-bar {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+}
+.default-tip {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--module-accent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--module-accent) 7%, var(--bg-panel));
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 .vendor-lock-bar .vendor-lock-tip {
   flex: 1;
@@ -3400,58 +3121,137 @@ code {
   color: #b8860b;
   border-color: #f0d080;
 }
+.config-tabs :deep(.prompt-editor) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.config-tabs :deep(.scene-model-map-page .page-header) {
+  margin-bottom: 18px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.config-tabs :deep(.mediabridge-assets) {
+  max-width: none;
+}
+.ai-records-tab :deep(.ai-records-page.ai-records-page--embedded) {
+  --record-page: var(--bg-card);
+  --record-surface: var(--bg-raised);
+  --record-surface-raised: var(--bg-panel);
+  --record-surface-soft: var(--bg-inner);
+  --record-primary: var(--text-primary);
+  --record-secondary: var(--text-muted);
+  --record-muted: var(--text-subtle);
+  --record-subtle: var(--text-faint);
+  --record-border: var(--border-color);
+  --record-accent: var(--brand);
+}
+.ai-records-tab :deep(.ai-records-page--embedded .content) {
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.ai-records-tab :deep(.panel-footer .el-pager li.is-active) {
+  color: #fff !important;
+  background: var(--brand) !important;
+}
 .generation-settings {
-  max-width: 600px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: none;
+}
+.settings-card {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--bg-panel);
 }
 .gs-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
 }
 .gs-desc {
+  min-height: 66px;
+  margin: 0 0 20px;
+  color: var(--text-muted);
   font-size: 13px;
-  color: #606266;
-  line-height: 1.6;
-  margin-bottom: 20px;
+  line-height: 1.7;
 }
 .gs-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 12px;
+  min-height: 42px;
 }
 .gs-label {
+  min-width: 78px;
+  color: var(--text-primary);
   font-size: 13px;
-  color: #303133;
   font-weight: 500;
   white-space: nowrap;
 }
 .gs-unit {
+  color: var(--text-muted);
   font-size: 13px;
-  color: #606266;
   white-space: nowrap;
+}
+.gs-alert {
+  margin-top: 14px;
+}
+.gs-control-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gs-select {
+  width: 180px;
+}
+.gs-save-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+.gs-saved-alert {
+  width: fit-content;
 }
 .gs-tip-box {
   margin-top: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
   padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: var(--bg-raised);
   font-size: 13px;
 }
 .gs-tip-title {
-  font-weight: 600;
-  color: #303133;
   margin-bottom: 8px;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 .gs-tip-list {
   margin: 0 0 8px 16px;
   padding: 0;
-  color: #606266;
+  color: var(--text-muted);
   line-height: 1.8;
 }
 .gs-tip-note {
-  color: #909399;
+  color: var(--text-subtle);
   font-size: 12px;
+}
+@media (max-width: 1180px) {
+  .generation-settings {
+    grid-template-columns: 1fr;
+  }
+  .gs-desc {
+    min-height: 0;
+  }
 }
 </style>

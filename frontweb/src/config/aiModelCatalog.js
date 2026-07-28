@@ -80,7 +80,7 @@ export const AI_MODEL_META = {
       'seedance-2-0': { tier: 'recommended', hint: '标准版' },
       'seedance-2-0-fast': { tier: 'fast', hint: '720p 快速版' },
     },
-    holycrab: {
+    mediabridge: {
       'seedance-2-0': { tier: 'recommended', hint: '公开标准版' },
       'seedance-2-0-fast': { tier: 'fast', hint: '账号可用性需验证' },
       'seedance-2-0-mini': { tier: 'fast', hint: '账号可用性需验证' },

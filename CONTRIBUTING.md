@@ -1,8 +1,8 @@
 # 贡献指南 / Contributing Guide
 
-感谢你对 LocalMiniDrama 的关注！无论是报告 Bug、提功能建议，还是贡献代码，都非常欢迎。
+感谢你对 JamaAI 的关注！无论是报告 Bug、提功能建议，还是贡献代码，都非常欢迎。
 
-> Thank you for your interest in LocalMiniDrama! All forms of contribution are welcome — bug reports, feature suggestions, or code.
+> Thank you for your interest in JamaAI! All forms of contribution are welcome — bug reports, feature suggestions, or code.
 
 ---
 
@@ -47,8 +47,8 @@ By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ```bash
 # 1. Fork 本仓库，然后克隆你的 Fork
-git clone https://github.com/你的用户名/LocalMiniDrama.git
-cd LocalMiniDrama
+git clone https://github.com/你的用户名/jama.git
+cd jama
 
 # 2. 创建功能分支（从 main 分支切出）
 git checkout -b feature/your-feature-name
