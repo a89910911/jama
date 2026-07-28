@@ -47,16 +47,16 @@
           <el-button type="primary" class="btn-new" @click="goNewProject">
             <el-icon><Plus /></el-icon>新建项目
           </el-button>
+          <el-button
+            v-if="!vendorLockEnabled"
+            class="btn-wechat header-wechat"
+            title="扫码联系作者"
+            @click="showWechat = true"
+          >
+            <el-icon><ChatDotSquare /></el-icon>微信我
+          </el-button>
         </div>
       </div>
-      <el-button
-        v-if="!vendorLockEnabled"
-        class="btn-wechat header-wechat"
-        title="扫码联系作者"
-        @click="showWechat = true"
-      >
-        <el-icon><ChatDotSquare /></el-icon>微信我
-      </el-button>
     </header>
 
     <main class="main">
@@ -893,12 +893,11 @@ onMounted(async () => {
 }
 .header-inner {
   width: 100%;
-  padding-right: 104px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 16px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .logo {
   margin: 0;
@@ -1003,11 +1002,7 @@ html.light .btn-wechat {
   --el-button-hover-text-color: #14532d;
 }
 .header-wechat {
-  position: absolute;
-  top: 50%;
-  right: 24px;
   margin: 0;
-  transform: translateY(-50%);
 }
 
 /* AI配置按钮 —— 琥珀调 */

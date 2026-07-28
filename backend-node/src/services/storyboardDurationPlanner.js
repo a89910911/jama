@@ -231,6 +231,89 @@ function estimateStoryboardDuration(row) {
   return Math.max(contentMinimum, Number.isFinite(aiDuration) && aiDuration > 0 ? Math.round(aiDuration) : 0);
 }
 
+function minimumStoryboardDuration(row) {
+  const dialogueSeconds = charSpeechWeight(row?.dialogue);
+  const narrationSeconds = charSpeechWeight(row?.narration);
+  const speechSeconds = dialogueSeconds + narrationSeconds;
+  return clampStoryboardDuration(
+    speechSeconds > 0 ? Math.ceil(speechSeconds) : estimateActionDuration(row),
+    STORYBOARD_MIN_DURATION
+  );
+}
+
+function rebalanceStoryboardDurations(storyboards, targetTotalDuration) {
+  const requested = Number(targetTotalDuration);
+  if (!Number.isFinite(requested) || requested <= 0 || storyboards.length === 0) {
+    return {
+      storyboards,
+      targetTotalDuration: null,
+      minimumTotalDuration: storyboards.reduce(
+        (sum, row) => sum + minimumStoryboardDuration(row),
+        0
+      ),
+      maximumTotalDuration: storyboards.length * STORYBOARD_MAX_DURATION,
+    };
+  }
+
+  const target = Math.round(requested);
+  const minimums = storyboards.map(minimumStoryboardDuration);
+  const minimumTotal = minimums.reduce((sum, duration) => sum + duration, 0);
+  const maximumTotal = storyboards.length * STORYBOARD_MAX_DURATION;
+  if (target < minimumTotal || target > maximumTotal) {
+    const err = new RangeError(
+      `目标总时长 ${target} 秒与当前分镜内容不兼容；在不删减对白/旁白且单镜保持 `
+      + `${STORYBOARD_MIN_DURATION}～${STORYBOARD_MAX_DURATION} 秒的前提下，可用范围为 `
+      + `${minimumTotal}～${maximumTotal} 秒`
+    );
+    err.code = 'STORYBOARD_DURATION_BUDGET';
+    err.targetTotalDuration = target;
+    err.minimumTotalDuration = minimumTotal;
+    err.maximumTotalDuration = maximumTotal;
+    throw err;
+  }
+
+  const durations = storyboards.map((row, index) => Math.max(
+    minimums[index],
+    clampStoryboardDuration(row.duration, minimums[index])
+  ));
+  let difference = target - durations.reduce((sum, duration) => sum + duration, 0);
+
+  // Deterministically shrink the shots with the most slack first.
+  while (difference < 0) {
+    let changed = false;
+    const order = durations
+      .map((duration, index) => ({ index, slack: duration - minimums[index] }))
+      .sort((a, b) => b.slack - a.slack || a.index - b.index);
+    for (const item of order) {
+      if (difference === 0) break;
+      if (durations[item.index] <= minimums[item.index]) continue;
+      durations[item.index] -= 1;
+      difference += 1;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+
+  // Add spare seconds round-robin so one shot does not absorb the whole budget.
+  while (difference > 0) {
+    let changed = false;
+    for (let index = 0; index < durations.length && difference > 0; index++) {
+      if (durations[index] >= STORYBOARD_MAX_DURATION) continue;
+      durations[index] += 1;
+      difference -= 1;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+
+  return {
+    storyboards: storyboards.map((row, index) => ({ ...row, duration: durations[index] })),
+    targetTotalDuration: target,
+    minimumTotalDuration: minimumTotal,
+    maximumTotalDuration: maximumTotal,
+  };
+}
+
 function formatDialogue(speaker, text) {
   return speaker ? `${speaker}：${text}` : text;
 }
@@ -335,7 +418,7 @@ function planStoryboardDurations(rows, options = {}) {
     expanded.push(...parts);
   }
 
-  const storyboards = expanded.map((row, index) => {
+  let storyboards = expanded.map((row, index) => {
     const duration = mode === 'fixed'
       ? requestedFixed
       : clampStoryboardDuration(estimateStoryboardDuration(row), STORYBOARD_MIN_DURATION);
@@ -346,6 +429,8 @@ function planStoryboardDurations(rows, options = {}) {
       duration,
     };
   });
+  const budgetPlan = rebalanceStoryboardDurations(storyboards, options.targetTotalDuration);
+  storyboards = budgetPlan.storyboards;
   return {
     storyboards,
     mode,
@@ -353,6 +438,9 @@ function planStoryboardDurations(rows, options = {}) {
     mergedCount: Math.max(0, (Array.isArray(rows) ? rows.length : 0) - merged.length),
     splitCount,
     totalDuration: storyboards.reduce((sum, row) => sum + row.duration, 0),
+    targetTotalDuration: budgetPlan.targetTotalDuration,
+    minimumTotalDuration: budgetPlan.minimumTotalDuration,
+    maximumTotalDuration: budgetPlan.maximumTotalDuration,
   };
 }
 
@@ -391,6 +479,8 @@ module.exports = {
   charSpeechWeight,
   splitTextForDuration,
   estimateStoryboardDuration,
+  minimumStoryboardDuration,
+  rebalanceStoryboardDurations,
   planStoryboardDurations,
   buildDurationPromptConstraint,
   validateDurationBudget,

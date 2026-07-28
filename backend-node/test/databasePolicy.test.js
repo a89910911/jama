@@ -6,6 +6,7 @@ const path = require('path');
 const {
   DEFAULT_DATABASE_TYPE,
   resolveDatabaseType,
+  resolveInsecureTls,
 } = require('../src/config');
 const {
   ensureCharacterLookMysqlTextCapacity,
@@ -31,6 +32,20 @@ test('explicit database type remains available outside packaged desktop mode', (
   assert.equal(
     resolveDatabaseType({ type: 'mysql' }, { JAMA_DB_TYPE: 'sqlite' }),
     'sqlite'
+  );
+});
+
+test('TLS verification stays enabled by default and test-only override is explicit', () => {
+  assert.equal(resolveInsecureTls({}, {}), false);
+  assert.equal(resolveInsecureTls({ insecure_tls: false }, {}), false);
+  assert.equal(resolveInsecureTls({ insecure_tls: true }, {}), true);
+  assert.equal(
+    resolveInsecureTls({ insecure_tls: false }, { JAMA_INSECURE_TLS: '1' }),
+    true
+  );
+  assert.equal(
+    resolveInsecureTls({ insecure_tls: true }, { JAMA_INSECURE_TLS: '0' }),
+    false
   );
 });
 

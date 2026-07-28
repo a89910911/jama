@@ -42,10 +42,11 @@ function Invoke-Checked {
 function Invoke-DependencyAudit {
     param(
         [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$Component,
         [switch]$Strict
     )
 
-    Write-Host "Auditing backend production dependencies..."
+    Write-Host "Auditing $Component production dependencies..."
     Push-Location $WorkingDirectory
     try {
         $auditOutput = & npm audit `
@@ -112,6 +113,72 @@ function Invoke-DependencyAudit {
     }
 
     Write-Host "Dependency audit passed: $summary"
+}
+
+function Resolve-MediaTool {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackendDirectory,
+        [Parameter(Mandatory = $true)][string]$ToolName,
+        [Parameter(Mandatory = $true)][string]$EnvironmentVariable
+    )
+
+    $override = [Environment]::GetEnvironmentVariable($EnvironmentVariable)
+    if ($override -and (Test-Path -LiteralPath $override -PathType Leaf)) {
+        return (Resolve-Path -LiteralPath $override).Path
+    }
+
+    $isWindowsHost = $env:OS -eq "Windows_NT"
+    $executableName = if ($isWindowsHost) {
+        "$ToolName.exe"
+    } else {
+        $ToolName
+    }
+    $bundled = Join-Path $BackendDirectory "tools/ffmpeg/$executableName"
+    if (Test-Path -LiteralPath $bundled -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $bundled).Path
+    }
+
+    $command = Get-Command $ToolName -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    return $null
+}
+
+function Invoke-MediaToolPreflight {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackendDirectory,
+        [switch]$Strict
+    )
+
+    Write-Host "Checking FFmpeg media tools..."
+    $missing = @()
+    foreach ($tool in @(
+        @{ Name = "ffmpeg"; Environment = "FFMPEG_PATH" },
+        @{ Name = "ffprobe"; Environment = "FFPROBE_PATH" }
+    )) {
+        $resolved = Resolve-MediaTool `
+            -BackendDirectory $BackendDirectory `
+            -ToolName $tool.Name `
+            -EnvironmentVariable $tool.Environment
+        if (-not $resolved) {
+            $missing += $tool.Name
+            continue
+        }
+        & $resolved -version *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($tool.Name) exists but failed its version check: $resolved"
+        }
+        Write-Host "Media tool ready: $($tool.Name) ($resolved)"
+    }
+
+    if ($missing.Count -gt 0) {
+        $message = "Missing media tools: $($missing -join ', '). Video merge, subtitles, dubbing, or media inspection may be unavailable."
+        if ($Strict) {
+            throw $message
+        }
+        Write-Warning $message
+    }
 }
 
 function Test-FrontendBundleSize {
@@ -193,8 +260,11 @@ if (-not $SkipTests) {
 }
 
 if (-not $SkipAudit) {
-    Invoke-DependencyAudit $backend -Strict:$StrictAudit
+    Invoke-DependencyAudit $backend "backend" -Strict:$StrictAudit
+    Invoke-DependencyAudit $frontend "frontend" -Strict:$StrictAudit
 }
+
+Invoke-MediaToolPreflight $backend -Strict:$StrictAudit
 
 Write-Host "Building frontend..."
 Invoke-Checked $frontend "npm" @("run", "build")

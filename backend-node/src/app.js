@@ -38,7 +38,19 @@ function createApp() {
     runMigrationsAndEnsure(db, { log: logger })
   );
   const authService = require('./services/authService');
-  startupPhase(logger, 'auth.initialize', () => authService.ensureAuthSystem(db));
+  const adminBootstrap = startupPhase(
+    logger,
+    'auth.initialize',
+    () => authService.ensureAuthSystem(db)
+  );
+  if (adminBootstrap.created && adminBootstrap.generated) {
+    // This is intentionally emitted only on the first startup and is not sent
+    // through the persistent application logger.
+    console.warn(
+      `[security] 已生成一次性初始管理员密码：${adminBootstrap.password}\n`
+      + '[security] 登录后请立即修改；生产部署建议预先设置 JAMA_ADMIN_INITIAL_PASSWORD。'
+    );
+  }
   startupPhase(logger, 'ai_config.legacy_migration', () =>
     runStartupMaintenanceJob(
       db,
@@ -147,7 +159,10 @@ function createApp() {
       if (fs.existsSync(fav)) res.sendFile(fav);
       else res.status(404).end();
     });
-    app.get('*', (req, res, next) => {
+    // A pathless middleware is compatible with both Express 4 and 5. Express 5
+    // rejects the legacy `app.get('*')` pattern during startup.
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return next();
       if (req.path.startsWith('/api')) return next();
       const indexHtml = path.join(webDist, 'index.html');
       if (fs.existsSync(indexHtml)) res.sendFile(indexHtml);

@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { getFfmpegPath, getFfprobePath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
+const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
 const storageLayout = require('./storageLayout');
 
 function list(db, query) {
@@ -165,7 +165,6 @@ async function resolveVideoToLocalPath(videoUrl, baseUrl, storageRoot, tempDir, 
 /** 使用 ffmpeg concat 合并多个视频文件 */
 function runFfmpegConcat(localPaths, outputPath, log) {
   const ffmpegBin = getFfmpegPath();
-  const isWin = process.platform === 'win32';
   const listFile = path.join(path.dirname(outputPath), `concat_list_${Date.now()}.txt`);
   try {
     const lines = localPaths.map((p) => {
@@ -198,9 +197,9 @@ function runFfmpegConcat(localPaths, outputPath, log) {
 }
 
 /**
- * 异步处理视频合成：优先使用 ffmpeg 真正合并多段视频；失败或无 ffmpeg 时用首段作为 merged_url。
+ * 异步处理视频合成：单片段可直接复用；多片段必须由 ffmpeg 真正合并。
  */
-async function processVideoMerge(db, log, mergeId, baseUrl) {
+async function processVideoMerge(db, log, mergeId, baseUrl, options = {}) {
   const r = db.prepare('SELECT * FROM video_merges WHERE id = ? AND deleted_at IS NULL').get(mergeId);
   if (!r) return;
   const taskId = r.task_id;
@@ -227,6 +226,17 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
     return;
   }
 
+  let mergeOpts = {};
+  try {
+    mergeOpts = JSON.parse(r.merge_options || '{}');
+  } catch (_) {
+    mergeOpts = {};
+  }
+  const postNeed =
+    !!mergeOpts.burn_narration_subtitles
+    || !!mergeOpts.burn_dialogue_audio
+    || !!(mergeOpts.watermark_text && String(mergeOpts.watermark_text).trim());
+  const requiresFfmpeg = scenes.length > 1 || postNeed;
   const totalDuration = scenes.reduce((sum, s) => sum + (Number(s.duration) || 0), 0);
   const storageRoot = getStorageRoot();
   const tempDir = path.join(require('os').tmpdir(), 'drama-video-merge');
@@ -249,7 +259,7 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
     }
   }
 
-  const ffmpegAvailable = hasLocalFfmpeg();
+  const ffmpegAvailable = options.ffmpegAvailable ?? hasLocalFfmpeg();
   log.info('Video merge: ffmpeg check', {
     merge_id: mergeId,
     has_ffmpeg: ffmpegAvailable,
@@ -258,8 +268,36 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
     cwd: process.cwd(),
   });
 
+  const cleanupResolvedDownloads = () => {
+    for (const p of toCleanup) {
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
+    }
+  };
+  const failMerge = (message) => {
+    cleanupResolvedDownloads();
+    db.prepare(
+      'UPDATE video_merges SET status = ?, merged_url = NULL, error_msg = ? WHERE id = ?'
+    ).run('failed', message, mergeId);
+    if (taskId) taskService.updateTaskError(db, taskId, message);
+  };
+
+  if (requiresFfmpeg) {
+    if (localPaths.length !== scenes.length) {
+      failMerge(`视频合成失败：仅成功读取 ${localPaths.length}/${scenes.length} 个视频片段`);
+      return;
+    }
+    if (!ffmpegAvailable) {
+      failMerge('视频合成失败：未找到 ffmpeg。请安装 ffmpeg 或设置 FFMPEG_PATH 后重试');
+      return;
+    }
+    if (localPaths.length > 100) {
+      failMerge('视频合成失败：单次最多支持 100 个视频片段');
+      return;
+    }
+  }
+
   let mergedRelativePath = null;
-  if (localPaths.length > 0 && ffmpegAvailable && localPaths.length <= 100) {
+  if (requiresFfmpeg) {
     const projectSubdir = storageLayout.getProjectStorageSubdir(db, r.drama_id);
     const sub = projectSubdir && String(projectSubdir).trim();
     const mergedDir = sub
@@ -268,25 +306,20 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
     if (!fs.existsSync(mergedDir)) fs.mkdirSync(mergedDir, { recursive: true });
     const outputFileName = `merged_${Date.now()}.mp4`;
     const outputPath = path.join(mergedDir, outputFileName);
-    const ok = runFfmpegConcat(localPaths, outputPath, log);
+    const concat = options.runFfmpegConcat || runFfmpegConcat;
+    const ok = concat(localPaths, outputPath, log);
     if (ok && fs.existsSync(outputPath)) {
       mergedRelativePath = sub
         ? path.join(sub, 'videos', 'merged', outputFileName).replace(/\\/g, '/')
         : path.join('videos', 'merged', outputFileName).replace(/\\/g, '/');
       log.info('Video merge completed (ffmpeg)', { merge_id: mergeId, episode_id: episodeId, output: mergedRelativePath });
+    } else {
+      try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch (_) {}
+      failMerge('视频合成失败：ffmpeg 无法合并当前视频片段，请检查编码格式和服务日志');
+      return;
     }
   }
 
-  let mergeOpts = {};
-  try {
-    mergeOpts = JSON.parse(r.merge_options || '{}');
-  } catch (_) {
-    mergeOpts = {};
-  }
-  const postNeed =
-    !!mergeOpts.burn_narration_subtitles
-    || !!mergeOpts.burn_dialogue_audio
-    || !!(mergeOpts.watermark_text && String(mergeOpts.watermark_text).trim());
   if (mergedRelativePath && ffmpegAvailable && postNeed) {
     const mergedAbsPath = path.join(storageRoot, mergedRelativePath.replace(/\//g, path.sep));
     if (fs.existsSync(mergedAbsPath)) {
@@ -310,9 +343,7 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
     }
   }
 
-  for (const p of toCleanup) {
-    try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
-  }
+  cleanupResolvedDownloads();
 
   const finalMergedUrl = mergedRelativePath || mergedUrlFallback;
   db.prepare(
@@ -322,8 +353,8 @@ async function processVideoMerge(db, log, mergeId, baseUrl) {
   if (taskId) {
     taskService.updateTaskResult(db, taskId, { merge_id: mergeId, video_url: finalMergedUrl, duration: Math.round(totalDuration) });
   }
-  if (!mergedRelativePath) {
-    log.info('Video merge completed (first-clip fallback)', { merge_id: mergeId, episode_id: episodeId });
+  if (scenes.length === 1 && !postNeed) {
+    log.info('Video merge completed (single clip passthrough)', { merge_id: mergeId, episode_id: episodeId });
   }
 }
 

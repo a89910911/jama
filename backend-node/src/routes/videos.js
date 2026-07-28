@@ -5,6 +5,7 @@ const { normalizeAspectRatioForApi } = require('../services/videoClient');
 const { STORYBOARD_MIN_DURATION, STORYBOARD_MAX_DURATION } = require('../services/storyboardDurationPlanner');
 const characterLookService = require('../services/characterLookService');
 const visualContextResolver = require('../services/visualContextResolver');
+const { insertRow } = require('../db/portableSql');
 
 function routes(db, log) {
   return {
@@ -19,6 +20,7 @@ function routes(db, log) {
       }
     },
     create: (req, res) => {
+      let createdTaskId = null;
       try {
         const body = req.body || {};
         if (body.duration != null) {
@@ -176,25 +178,36 @@ function routes(db, log) {
           String(dramaId || ''),
           req.user.id
         );
-        const insertInfo = db.prepare(
-          `INSERT INTO video_generations (
-             drama_id, storyboard_id, provider, prompt, model, duration, aspect_ratio,
-             resolution, seed, camera_fixed, watermark, image_url, source_video_url,
-             first_frame_url, last_frame_url, reference_image_urls, status, task_id,
-             appearance_context_json, appearance_context_hash, generation_context_hash,
-             voice_character_id, requested_by_user_id, ai_config_id,
-             ai_config_revision_id, created_at, updated_at
-           )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing',
-                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          dramaId, storyboardId, provider, prompt, model, duration, aspectRatio,
-          resolution, seed, cameraFixed, watermark, imageUrl, sourceVideoUrl,
-          firstFrameUrl, lastFrameUrl, refImagesJson, task.id,
-          appearanceContextJson, appearanceContextHash, generationContextHash,
-          voiceCharacterId, req.user.id, selectedConfig.id,
-          selectedConfig.revision_id, now, now
-        );
+        createdTaskId = task.id;
+        const insertInfo = insertRow(db, 'video_generations', {
+          drama_id: dramaId,
+          storyboard_id: storyboardId,
+          provider,
+          prompt,
+          model,
+          duration,
+          aspect_ratio: aspectRatio,
+          resolution,
+          seed,
+          camera_fixed: cameraFixed,
+          watermark,
+          image_url: imageUrl,
+          source_video_url: sourceVideoUrl,
+          first_frame_url: firstFrameUrl,
+          last_frame_url: lastFrameUrl,
+          reference_image_urls: refImagesJson,
+          status: 'processing',
+          task_id: task.id,
+          appearance_context_json: appearanceContextJson,
+          appearance_context_hash: appearanceContextHash,
+          generation_context_hash: generationContextHash,
+          voice_character_id: voiceCharacterId,
+          requested_by_user_id: req.user.id,
+          ai_config_id: selectedConfig.id,
+          ai_config_revision_id: selectedConfig.revision_id,
+          created_at: now,
+          updated_at: now,
+        });
         const videoGenId = insertInfo.lastInsertRowid;
         if (storyboardId) {
           try {
@@ -209,6 +222,20 @@ function routes(db, log) {
         const item = videoService.getById(db, videoGenId, req.user.id);
         response.created(res, item || { id: videoGenId, task_id: task.id, status: 'processing' });
       } catch (err) {
+        if (createdTaskId) {
+          try {
+            taskService.updateTaskError(
+              db,
+              createdTaskId,
+              `视频生成记录创建失败：${err.message}`
+            );
+          } catch (taskErr) {
+            log.error('Failed to close video task after create error', {
+              task_id: createdTaskId,
+              error: taskErr.message,
+            });
+          }
+        }
         log.error('videos create', { error: err.message });
         response.internalError(res, err.message);
       }

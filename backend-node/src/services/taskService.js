@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { tableColumns, tableExists } = require('../db/portableSql');
 const { loadConfig } = require('../config');
 const { normalizeDataUrlsForPersistence } = require('./localMediaService');
@@ -39,7 +39,7 @@ function orphanStaleMs() {
 }
 
 function createTask(db, log, taskType, resourceId, userIdValue) {
-  const id = uuidv4();
+  const id = randomUUID();
   const now = new Date().toISOString();
   const userId = aiRequestLogService.currentUserId(userIdValue);
   if (hasTaskUserColumn(db)) {

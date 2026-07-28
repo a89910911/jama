@@ -1,7 +1,7 @@
 'use strict';
 
 const querystring = require('querystring');
-const { Signer } = require('@volcengine/openapi');
+const { VolcSigner } = require('../utils/volcSigner');
 
 const ALLOWED_ACTIONS = new Set([
   'CreateAssetGroup',
@@ -144,7 +144,7 @@ async function fetchSignedOpenApi({
     body: bodyStr,
   };
 
-  const signer = new Signer(request, (signService || 'ark').toString().trim() || 'ark');
+  const signer = new VolcSigner(request, (signService || 'ark').toString().trim() || 'ark');
   signer.addAuthorization({
     accessKeyId: accessKeyId.trim(),
     secretKey: secretKey.trim(),

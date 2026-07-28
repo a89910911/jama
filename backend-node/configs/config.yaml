@@ -1,7 +1,7 @@
 app:
   name: JamaAI API
   version: 1.0.0
-  debug: true
+  debug: false
 server:
   port: 5679
   host: 0.0.0.0
@@ -9,7 +9,8 @@ server:
     - http://localhost:3012
   read_timeout: 600
   write_timeout: 600
-  insecure_tls: true
+  # 生产环境必须保持 false。仅隔离测试环境可用 JAMA_INSECURE_TLS=1 显式覆盖。
+  insecure_tls: false
 database:
   type: mysql
   host: 127.0.0.1

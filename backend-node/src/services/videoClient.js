@@ -3802,8 +3802,56 @@ function resolveFalSeedanceEndpoint(modelOrEndpoint, mode) {
 }
 
 async function resolveFalVideoImage(raw, storageLocalPath, log, videoGenId) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (value.startsWith('data:')) return value;
+
+  // fal accepts Base64 data URIs for file inputs. Prefer the local source over
+  // the shared public image proxy: third-party hosts may reject fal's fetcher
+  // even when an upload itself succeeds.
+  if (storageLocalPath) {
+    let relativePath = '';
+    const staticMarker = value.toLowerCase().indexOf('/static/');
+    if (staticMarker >= 0) {
+      relativePath = value.slice(staticMarker + '/static/'.length).split(/[?#]/)[0];
+    } else if (!/^https?:\/\//i.test(value) && !path.isAbsolute(value)) {
+      relativePath = value.split(/[?#]/)[0].replace(/^[/\\]+/, '');
+    }
+    if (relativePath) {
+      try {
+        relativePath = decodeURIComponent(relativePath);
+      } catch (_) {
+        // Keep the original relative path when it is not URI encoded.
+      }
+      const storageRoot = path.resolve(storageLocalPath);
+      const localFile = path.resolve(storageRoot, relativePath);
+      const insideStorage =
+        localFile === storageRoot || localFile.startsWith(`${storageRoot}${path.sep}`);
+      if (insideStorage && fs.existsSync(localFile) && fs.statSync(localFile).isFile()) {
+        const buffer = fs.readFileSync(localFile);
+        if (buffer.length > 30 * 1024 * 1024) {
+          throw new Error('fal.ai reference image exceeds the 30 MB file limit');
+        }
+        const extension = path.extname(localFile).toLowerCase();
+        const mime = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+        }[extension] || 'image/jpeg';
+        log?.info?.('[fal.ai 视频] 本地参考图以内联 data URI 提交', {
+          video_gen_id: videoGenId,
+          local_path: relativePath.slice(0, 120),
+          bytes: buffer.length,
+        });
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+      }
+    }
+  }
+
+  if (/^https?:\/\//i.test(value)) return value;
   const resolved = await resolveVeo3ImageForApi(
-    String(raw || ''),
+    value,
     storageLocalPath,
     log,
     videoGenId
@@ -5434,6 +5482,7 @@ async function pollVideoTaskInternal(
             ].filter(Boolean))
           );
           let lastError = '';
+          let informativeError = '';
           for (const resultUrl of resultUrls) {
             try {
               const resultRes = await fetch(resultUrl, {
@@ -5446,7 +5495,12 @@ async function pollVideoTaskInternal(
                 resultData = JSON.parse(resultRaw);
               } catch (_) {}
               if (!resultRes.ok) {
-                lastError = `${resultRes.status}: ${getFalErrorMessage(resultData, resultRaw.slice(0, 300))}`;
+                const providerMessage = getFalErrorMessage(
+                  resultData,
+                  resultRaw.slice(0, 300)
+                );
+                lastError = `${resultRes.status}: ${providerMessage}`;
+                if (!informativeError && providerMessage) informativeError = lastError;
                 continue;
               }
               const videoUrl = pickProxyVideoUrl(resultData);
@@ -5464,7 +5518,9 @@ async function pollVideoTaskInternal(
             }
           }
           return {
-            error: `fal.ai 任务已完成但无法取得视频: ${lastError || '未知响应'}`,
+            error: `fal.ai 任务已完成但无法取得视频: ${
+              informativeError || lastError || '未知响应'
+            }`,
           };
         }
         continue;

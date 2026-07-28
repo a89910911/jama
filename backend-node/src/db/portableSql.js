@@ -20,6 +20,16 @@ function replaceIntoSql(database, insertSql) {
   return String(insertSql).replace(/\bINSERT\s+INTO\b/i, keyword);
 }
 
+function insertRow(database, table, row) {
+  const safeTable = assertIdentifier(table, 'table name');
+  const entries = Object.entries(row || {});
+  if (!entries.length) throw new Error('Insert row must contain at least one column');
+  const columns = entries.map(([column]) => assertIdentifier(column, 'column name'));
+  const placeholders = columns.map(() => '?').join(', ');
+  const sql = `INSERT INTO ${safeTable} (${columns.join(', ')}) VALUES (${placeholders})`;
+  return database.prepare(sql).run(...entries.map(([, value]) => value));
+}
+
 function upsertSql(database, insertSql, conflictColumns, updateColumns) {
   const conflicts = (conflictColumns || []).map((column) =>
     assertIdentifier(column, 'conflict column')
@@ -134,6 +144,7 @@ function readBatch(database, statements) {
 module.exports = {
   allTableColumns,
   insertIgnoreSql,
+  insertRow,
   isMysql,
   readBatch,
   replaceIntoSql,

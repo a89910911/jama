@@ -7,6 +7,7 @@ const SUPER_ADMIN_ROLE = 'super_admin';
 const PASSWORD_ITERATIONS = 210000;
 const TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const JWT_SECRET_KEY = 'auth.jwt_secret';
+const MIN_INITIAL_ADMIN_PASSWORD_LENGTH = 12;
 const SESSION_ACCOUNT_CACHE_TTL_MS = 30 * 1000;
 const authRuntimeByDb = new WeakMap();
 
@@ -84,7 +85,32 @@ function publicUser(row) {
   };
 }
 
-function ensureAuthSystem(db) {
+function resolveInitialAdminPassword(options = {}) {
+  const env = options.env || process.env;
+  const explicit = String(
+    options.initialAdminPassword
+      ?? env.JAMA_ADMIN_INITIAL_PASSWORD
+      ?? ''
+  );
+  if (explicit) {
+    if (
+      explicit.length < MIN_INITIAL_ADMIN_PASSWORD_LENGTH
+      || explicit.length > 128
+      || explicit.toLowerCase() === SUPER_ADMIN_USERNAME
+    ) {
+      throw new Error(
+        `JAMA_ADMIN_INITIAL_PASSWORD 必须为 ${MIN_INITIAL_ADMIN_PASSWORD_LENGTH}-128 位，且不能与管理员账号相同`
+      );
+    }
+    return { password: explicit, generated: false };
+  }
+  return {
+    password: crypto.randomBytes(24).toString('base64url'),
+    generated: true,
+  };
+}
+
+function ensureAuthSystem(db, options = {}) {
   if (db.dialect !== 'mysql') {
     db.exec(`
     CREATE TABLE IF NOT EXISTS user_accounts (
@@ -112,14 +138,16 @@ function ensureAuthSystem(db) {
     .prepare('SELECT id FROM user_accounts WHERE LOWER(username) = LOWER(?)')
     .get(SUPER_ADMIN_USERNAME);
   const now = nowIso();
+  let initialAdmin = null;
   if (!existingAdmin) {
+    initialAdmin = resolveInitialAdminPassword(options);
     db.prepare(`
       INSERT INTO user_accounts
         (username, password_hash, role, is_active, token_version, created_at, updated_at)
       VALUES (?, ?, ?, 1, 0, ?, ?)
     `).run(
       SUPER_ADMIN_USERNAME,
-      hashPassword(SUPER_ADMIN_USERNAME),
+      hashPassword(initialAdmin.password),
       SUPER_ADMIN_ROLE,
       now,
       now
@@ -156,6 +184,13 @@ function ensureAuthSystem(db) {
     const accounts = db.prepare('SELECT * FROM user_accounts').all();
     for (const account of accounts) cacheAccount(db, account);
   }
+  return initialAdmin
+    ? {
+        created: true,
+        generated: initialAdmin.generated,
+        password: initialAdmin.password,
+      }
+    : { created: false, generated: false, password: null };
 }
 
 function getJwtSecret(db) {
@@ -401,6 +436,7 @@ module.exports = {
   hashPassword,
   verifyPassword,
   publicUser,
+  resolveInitialAdminPassword,
   ensureAuthSystem,
   issueToken,
   findUserByUsername,

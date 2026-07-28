@@ -937,9 +937,13 @@ async function processStoryboardGeneration(
     universalOmni: !!universalOmni,
     durationMode: normalizeDurationMode(durationOptions.mode, durationOptions.mode === 'fixed'),
     fixedDuration: clampStoryboardDuration(durationOptions.fixedDuration, 5),
+    targetTotalDuration: Number(durationOptions.targetTotalDuration) > 0
+      ? Math.round(Number(durationOptions.targetTotalDuration))
+      : null,
     taskId,
     composeTemplates,
   };
+  const deferPersistenceForBudget = deriveOpts.targetTotalDuration != null;
   let streamThrottle = 0;
 
   try {
@@ -952,9 +956,12 @@ async function processStoryboardGeneration(
     });
     logDebugStoryboardPrompts(log, `task-${taskId}-initial`, userPrompt, systemPrompt);
 
-    // 提前删除旧分镜，为增量流式保存腾出位置
-    const deleteNow = new Date().toISOString();
-    db.prepare('UPDATE storyboards SET deleted_at = ? WHERE episode_id = ? AND deleted_at IS NULL').run(deleteNow, episodeIdNum);
+    // 有总时长硬约束时，必须先完成规划校验再替换旧分镜。这样目标不可行或 AI
+    // 输出损坏时，用户已有的可用分镜不会被流式临时数据覆盖。
+    if (!deferPersistenceForBudget) {
+      const deleteNow = new Date().toISOString();
+      db.prepare('UPDATE storyboards SET deleted_at = ? WHERE episode_id = ? AND deleted_at IS NULL').run(deleteNow, episodeIdNum);
+    }
 
     // 不使用 json_mode：response_format:json_object 要求返回 JSON 对象而非数组，会导致模型包装成
     // {"storyboards":[...]} 或产生乱码 key，改由 extractFirstArray 统一处理任意包装格式。
@@ -962,6 +969,7 @@ async function processStoryboardGeneration(
       model: model || undefined,
       // 每积累约 400 字符触发一次增量解析，尝试提前保存已完成的分镜
       streamCallback: (accumulated) => {
+        if (deferPersistenceForBudget) return;
         if (accumulated.length - streamThrottle < 400) return;
         streamThrottle = accumulated.length;
         tryIncrementalSave(db, log, episodeIdNum, accumulated, streamSavedNums, streamStyle, streamVideoRatio, deriveOpts);
@@ -1087,6 +1095,7 @@ async function processStoryboardGeneration(
         contText = await generateTextForStoryboard(db, log, contPrompt, systemPrompt, {
           model: model || undefined,
           streamCallback: (accumulated) => {
+            if (deferPersistenceForBudget) return;
             if (accumulated.length - streamThrottle < 400) return;
             streamThrottle = accumulated.length;
             tryIncrementalSave(db, log, episodeIdNum, accumulated, streamSavedNums, streamStyle, streamVideoRatio, deriveOpts);
@@ -1132,6 +1141,7 @@ async function processStoryboardGeneration(
     const durationPlan = planStoryboardDurations(storyboards, {
       mode: deriveOpts.durationMode,
       fixedDuration: deriveOpts.fixedDuration,
+      targetTotalDuration: deriveOpts.targetTotalDuration,
     });
     storyboards = durationPlan.storyboards;
     const totalDuration = durationPlan.totalDuration;
@@ -1143,6 +1153,9 @@ async function processStoryboardGeneration(
       split_count: durationPlan.splitCount,
       final_count: storyboards.length,
       total_duration_seconds: totalDuration,
+      target_total_duration_seconds: durationPlan.targetTotalDuration,
+      minimum_total_duration_seconds: durationPlan.minimumTotalDuration,
+      maximum_total_duration_seconds: durationPlan.maximumTotalDuration,
     });
     if (parseMeta.truncated) {
       log.warn('Storyboard still truncated after max continuations', {
@@ -1502,7 +1515,11 @@ function generateStoryboard(
       systemPrompt,
       wantNarration,
       wantUniversalOmni,
-      { mode: durationMode, fixedDuration: videoClipDuration },
+      {
+        mode: durationMode,
+        fixedDuration: videoClipDuration,
+        targetTotalDuration: videoDuration,
+      },
       composeTemplates
     );
   });

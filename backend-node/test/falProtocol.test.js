@@ -1,5 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   normalizeFalApiKey,
@@ -224,6 +227,49 @@ describe('fal.ai Seedance and TTS adapters', () => {
     }
   });
 
+  it('submits local fal reference images as supported data URIs without a public proxy', async () => {
+    const previousFetch = global.fetch;
+    const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jama-fal-ref-'));
+    const imageDir = path.join(storageRoot, 'projects', '0001', 'images');
+    fs.mkdirSync(imageDir, { recursive: true });
+    fs.writeFileSync(path.join(imageDir, 'frame.png'), Buffer.from([1, 2, 3, 4]));
+    let captured = null;
+    global.fetch = async (url, options) => {
+      captured = { url: String(url), options };
+      return new Response(JSON.stringify({ request_id: 'local-ref-request' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    try {
+      await callFalVideoApi(
+        {
+          provider: 'fal',
+          api_protocol: 'fal',
+          base_url: 'https://queue.fal.run',
+          api_key: 'fal-secret',
+        },
+        silentLog,
+        {
+          prompt: 'Use @Image1 as the character reference.',
+          model: 'bytedance/seedance-2.0',
+          reference_urls: [
+            'http://127.0.0.1:5679/static/projects/0001/images/frame.png',
+          ],
+          storage_local_path: storageRoot,
+          duration: 8,
+          video_gen_id: 3,
+        }
+      );
+      const body = JSON.parse(captured.options.body);
+      assert.match(captured.url, /reference-to-video$/);
+      assert.deepEqual(body.image_urls, ['data:image/png;base64,AQIDBA==']);
+    } finally {
+      global.fetch = previousFetch;
+      fs.rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   it('polls a completed fal queue task and reads video.url', async () => {
     const previousFetch = global.fetch;
     const progressEvents = [];
@@ -266,6 +312,53 @@ describe('fal.ai Seedance and TTS adapters', () => {
       assert.ok(progressEvents.length >= 1);
       assert.ok(progressEvents[0].progress >= 20);
       assert.equal(progressEvents[0].estimated, true);
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  it('preserves a provider result error instead of replacing it with a later 405', async () => {
+    const previousFetch = global.fetch;
+    const taskId = encodeFalQueueHandle({
+      request_id: 'failed-result-request',
+      endpoint: 'bytedance/seedance-2.0/reference-to-video',
+      status_url: 'https://queue.fal.run/status/failed-result-request',
+      response_url: 'https://queue.fal.run/result/failed-result-request',
+    });
+    global.fetch = async (url) => {
+      if (String(url).includes('/status/')) {
+        return new Response(JSON.stringify({ status: 'COMPLETED' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (String(url).includes('/result/')) {
+        return new Response(
+          JSON.stringify({
+            detail: [{ msg: 'Failed to download the reference image.' }],
+          }),
+          { status: 422, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response('', { status: 405 });
+    };
+    try {
+      const result = await pollVideoTask(
+        null,
+        silentLog,
+        1,
+        taskId,
+        {
+          provider: 'fal',
+          api_protocol: 'fal',
+          base_url: 'https://queue.fal.run',
+          api_key: 'fal-secret',
+        },
+        1,
+        0
+      );
+      assert.match(result.error, /422: Failed to download the reference image/);
+      assert.doesNotMatch(result.error, /405:\s*$/);
     } finally {
       global.fetch = previousFetch;
     }

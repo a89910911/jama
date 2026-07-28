@@ -1,3 +1,5 @@
+const { insertRow } = require('../db/portableSql');
+
 function list(db, query) {
   let sql = 'FROM image_generations WHERE deleted_at IS NULL';
   const params = [];
@@ -663,37 +665,42 @@ function create(db, log, req) {
       size: reqSize,
     })
     : null;
-  const info = db.prepare(
-    `INSERT INTO image_generations (
-       storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model,
-       frame_type, reference_images, use_first_frame_layout_lock, size, status, task_id,
-       appearance_context_json, appearance_context_hash, generation_context_hash,
-       requested_by_user_id, ai_config_id, ai_config_revision_id,
-       created_at, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    req.storyboard_id ?? null,
-    effectiveDramaId,
-    sceneId,
-    req.provider || 'openai',
-    mergedPrompt,
-    req.negative_prompt ?? null,
-    req.model ?? null,
-    frameType,
-    refImagesJson,
-    useFirstFrameLayoutLock,
-    reqSize,
-    taskId,
-    appearanceContextJson,
-    appearanceContextHash,
-    generationContextHash,
-    userId,
-    selectedConfig.id,
-    selectedConfig.revision_id,
-    now,
-    now
-  );
+  let info;
+  try {
+    info = insertRow(db, 'image_generations', {
+      storyboard_id: req.storyboard_id ?? null,
+      drama_id: effectiveDramaId,
+      scene_id: sceneId,
+      provider: req.provider || 'openai',
+      prompt: mergedPrompt,
+      negative_prompt: req.negative_prompt ?? null,
+      model: req.model ?? null,
+      frame_type: frameType,
+      reference_images: refImagesJson,
+      use_first_frame_layout_lock: useFirstFrameLayoutLock,
+      size: reqSize,
+      status: 'pending',
+      task_id: taskId,
+      appearance_context_json: appearanceContextJson,
+      appearance_context_hash: appearanceContextHash,
+      generation_context_hash: generationContextHash,
+      requested_by_user_id: userId,
+      ai_config_id: selectedConfig.id,
+      ai_config_revision_id: selectedConfig.revision_id,
+      created_at: now,
+      updated_at: now,
+    });
+  } catch (err) {
+    try {
+      taskService.updateTaskError(db, taskId, `图片生成记录创建失败：${err.message}`);
+    } catch (taskErr) {
+      log.error('Failed to close image task after insert error', {
+        task_id: taskId,
+        error: taskErr.message,
+      });
+    }
+    throw err;
+  }
   const imageGenId = info.lastInsertRowid;
   if (!imageGenId) throw new Error('insert failed');
   setImmediate(() => {

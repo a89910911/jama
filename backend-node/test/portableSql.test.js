@@ -5,6 +5,7 @@ const Database = require('better-sqlite3');
 const {
   allTableColumns,
   insertIgnoreSql,
+  insertRow,
   readBatch,
   replaceIntoSql,
   tableColumns,
@@ -63,6 +64,27 @@ test('portable schema helpers and conflict statements work with SQLite', () => {
       { sql: 'SELECT code FROM demo ORDER BY code' },
     ]),
     [{ value: 'updated' }, [{ code: 'one' }]]
+  );
+  db.close();
+});
+
+test('insertRow derives placeholders from the row shape', () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE generated_records (id INTEGER PRIMARY KEY, status TEXT, task_id TEXT)');
+
+  const result = insertRow(db, 'generated_records', {
+    id: 7,
+    status: 'processing',
+    task_id: 'task-7',
+  });
+  assert.equal(result.changes, 1);
+  assert.deepEqual(
+    db.prepare('SELECT * FROM generated_records WHERE id = 7').get(),
+    { id: 7, status: 'processing', task_id: 'task-7' }
+  );
+  assert.throws(
+    () => insertRow(db, 'unsafe table', { id: 1 }),
+    /Invalid table name/
   );
   db.close();
 });

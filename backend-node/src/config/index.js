@@ -17,6 +17,14 @@ function resolveDatabaseType(databaseConfig = {}, env = process.env) {
   ).trim().toLowerCase();
 }
 
+function resolveInsecureTls(serverConfig = {}, env = process.env) {
+  const value = env.JAMA_INSECURE_TLS ?? serverConfig.insecure_tls ?? false;
+  return value === true
+    || value === 1
+    || value === '1'
+    || String(value).trim().toLowerCase() === 'true';
+}
+
 function loadConfig() {
   let raw = null;
   for (const p of configPaths) {
@@ -42,6 +50,10 @@ function loadConfig() {
     database: process.env.JAMA_DB_NAME || parsed.database?.database,
     charset: process.env.JAMA_DB_CHARSET || parsed.database?.charset || 'utf8mb4',
   };
+  parsed.server = {
+    ...(parsed.server || {}),
+    insecure_tls: resolveInsecureTls(parsed.server),
+  };
   return parsed;
 }
 
@@ -49,4 +61,5 @@ module.exports = {
   DEFAULT_DATABASE_TYPE,
   loadConfig,
   resolveDatabaseType,
+  resolveInsecureTls,
 };

@@ -123,3 +123,49 @@ test('validates count and total-duration feasibility against 4–15 seconds', ()
   assert.deepEqual(validateDurationBudget(10, 151), { valid: false, minTotal: 40, maxTotal: 150 });
   assert.equal(validateDurationBudget(undefined, 100).valid, true);
 });
+
+test('rebalances a feasible requested total duration as a backend hard constraint', () => {
+  const result = planStoryboardDurations([
+    { shot_number: 1, scene_id: 1, duration: 10, action: '角色走进房间。' },
+    { shot_number: 2, scene_id: 1, duration: 10, action: '角色停在桌前。' },
+    { shot_number: 3, scene_id: 1, duration: 10, action: '角色拿起钥匙。' },
+    { shot_number: 4, scene_id: 1, duration: 10, action: '角色推门离开。' },
+  ], { mode: 'adaptive', targetTotalDuration: 25 });
+
+  assert.equal(result.totalDuration, 25);
+  assert.equal(result.targetTotalDuration, 25);
+  assert.ok(result.storyboards.every(
+    (row) => row.duration >= STORYBOARD_MIN_DURATION && row.duration <= STORYBOARD_MAX_DURATION
+  ));
+});
+
+test('rejects an impossible total duration instead of silently saving an overlong result', () => {
+  assert.throws(
+    () => planStoryboardDurations(
+      Array.from({ length: 10 }, (_, index) => ({
+        shot_number: index + 1,
+        scene_id: index + 1,
+        duration: 10,
+        action: `场景 ${index + 1}`,
+      })),
+      { mode: 'adaptive', targetTotalDuration: 25 }
+    ),
+    (err) => {
+      assert.equal(err.code, 'STORYBOARD_DURATION_BUDGET');
+      assert.equal(err.targetTotalDuration, 25);
+      assert.equal(err.minimumTotalDuration, 40);
+      assert.equal(err.maximumTotalDuration, 150);
+      return true;
+    }
+  );
+});
+
+test('does not compress dialogue below its estimated speaking time to hit a target', () => {
+  const dialogue = '这是一段无法在四秒钟内完整说完的对白，需要保留全部内容和自然停顿。';
+  assert.throws(
+    () => planStoryboardDurations([
+      { shot_number: 1, scene_id: 1, duration: 15, dialogue: `林夏：${dialogue}` },
+    ], { mode: 'adaptive', targetTotalDuration: 4 }),
+    (err) => err.code === 'STORYBOARD_DURATION_BUDGET'
+  );
+});
