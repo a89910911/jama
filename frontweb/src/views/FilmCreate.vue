@@ -5146,7 +5146,7 @@ async function getCachedFramePromptFromDb(sbId, slot) {
 }
 
 /**
- * 首尾帧模式：优先走 framePromptService（专用系统提示词 + 文本 AI），失败则回退字段拼接。
+ * 首尾帧模式：优先走 framePromptService（专用系统管线 + 文本 AI），失败则回退字段拼接。
  */
 async function ensureProfessionalFramePrompt(sb, slot, { forceRegenerate = false } = {}) {
   const frameType = slot === 'last' ? 'last' : 'first'

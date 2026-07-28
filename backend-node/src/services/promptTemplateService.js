@@ -220,7 +220,7 @@ function getSystemPrompt(db, promptKey) {
 function requireSystemPrompt(db, promptKey) {
   const row = getSystemPrompt(db, promptKey);
   if (!row) {
-    throw Object.assign(new Error(`系统提示词不存在: ${promptKey}`), {
+    throw Object.assign(new Error(`系统管线不存在: ${promptKey}`), {
       code: 'PROMPT_DEFINITION_NOT_FOUND',
     });
   }
@@ -269,7 +269,7 @@ function resolvePrompt(db, promptKey, opts = {}) {
   const dramaId = resolveDramaId(db, opts);
   const row = getEffectiveRows(db, [promptKey], dramaId)[0];
   if (!row) {
-    throw Object.assign(new Error(`系统提示词不存在: ${promptKey}`), {
+    throw Object.assign(new Error(`系统管线不存在: ${promptKey}`), {
       code: 'PROMPT_DEFINITION_NOT_FOUND',
     });
   }
@@ -305,7 +305,7 @@ function resolvePrompts(db, promptKeys, opts = {}) {
   for (const promptKey of [...new Set(promptKeys.map(String))]) {
     const row = byKey.get(promptKey);
     if (!row) {
-      throw Object.assign(new Error(`系统提示词不存在: ${promptKey}`), {
+      throw Object.assign(new Error(`系统管线不存在: ${promptKey}`), {
         code: 'PROMPT_DEFINITION_NOT_FOUND',
       });
     }

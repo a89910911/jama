@@ -1,4 +1,4 @@
-# 系统提示词名称与正文逐条变更清单
+# 系统管线名称与正文逐条变更清单
 
 > 日期：2026-07-19  
 > 范围：第一批简单合并后的 98 个系统级提示词模板；本文保留该阶段的逐条历史对比  
@@ -20,7 +20,7 @@
 
 | # | prompt_key | 原名称 | 新名称 | 原正文 | 新正文 | 正文修改点 |
 |---:|---|---|---|---|---|---|
-| 1 | `story.generation.system` | 故事生成系统提示词 | 根据故事梗概生成分集短剧剧本（系统规则） | — | — | 正文不变，仅明确输入来源和输出结果 |
+| 1 | `story.generation.system` | 故事生成系统管线 | 根据故事梗概生成分集短剧剧本（系统规则） | — | — | 正文不变，仅明确输入来源和输出结果 |
 | 2 | `story.generation.user` | 故事生成用户模板 | 故事梗概与剧本生成参数（输入模板） | — | — | 正文不变，仅明确该模板承载梗概与生成参数 |
 | 3 | `novel.import.user` | 小说章节短剧化改写 | 将小说章节改写为短剧剧本（输入模板） | — | — | 正文不变，仅明确转换方向和模板类型 |
 
@@ -74,7 +74,7 @@
 | 32 | `frame.first.system` | 首帧提示词生成规则 | 生成镜头首帧静态生图提示词（系统规则） | — | — | 正文不变 |
 | 33 | `frame.key.system` | 关键帧提示词生成规则 | 生成镜头动作高潮关键帧提示词（系统规则） | — | — | 正文不变 |
 | 34 | `frame.last.system` | 尾帧提示词生成规则 | 生成镜头动作结束尾帧提示词（系统规则） | — | — | 正文不变 |
-| 35 | `frame.input.user` | 首帧/关键帧/尾帧上下文输入模板（合并前 3 条） | 分镜帧镜头信息（输入模板） | <details><summary>展开原正文（红色为修改处，324 字符）</summary><pre><span style="color:#d93025;font-weight:600">【合并前模板 1：frame.first.user｜首帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成首帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：<br><br>【合并前模板 2：frame.key.user｜关键帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成关键帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：<br><br>【合并前模板 3：frame.last.user｜尾帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成尾帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：</span></pre></details> | <details><summary>展开新正文（红色为修改处，80 字符）</summary><pre><span style="color:#d93025;font-weight:600">镜头信息：<br>{{frame_context}}<br><br>请严格按照系统提示词要求生成对应帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：</span></pre></details> | 由首帧、关键帧、尾帧 3 个输入模板合并；将具体帧名称统一为“对应帧”；3 条旧模板记录已删除；合并项按记录整体替换，原、新正文整体标红 |
+| 35 | `frame.input.user` | 首帧/关键帧/尾帧上下文输入模板（合并前 3 条） | 分镜帧镜头信息（输入模板） | <details><summary>展开原正文（红色为修改处，324 字符）</summary><pre><span style="color:#d93025;font-weight:600">【合并前模板 1：frame.first.user｜首帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成首帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：<br><br>【合并前模板 2：frame.key.user｜关键帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成关键帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：<br><br>【合并前模板 3：frame.last.user｜尾帧上下文输入模板】<br>镜头信息：<br>{{frame_context}}<br><br>请直接生成尾帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：</span></pre></details> | <details><summary>展开新正文（红色为修改处，80 字符）</summary><pre><span style="color:#d93025;font-weight:600">镜头信息：<br>{{frame_context}}<br><br>请严格按照系统管线要求生成对应帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：</span></pre></details> | 由首帧、关键帧、尾帧 3 个输入模板合并；将具体帧名称统一为“对应帧”；3 条旧模板记录已删除；合并项按记录整体替换，原、新正文整体标红 |
 | 36 | `frame.output_contract` | 帧提示词 JSON 输出协议 | 分镜帧提示词 JSON 返回格式（输出格式） | — | — | 正文不变 |
 | 37 | `frame.context.compose` | 分镜帧上下文拼装模板 | 拼装分镜帧完整镜头上下文（输入模板） | — | — | 正文不变 |
 | 38 | `frame.context.style` | 分镜帧画风约束 | 分镜帧统一画风（附加约束） | — | — | 正文不变 |
@@ -103,7 +103,7 @@
 | 56 | `character.image_compose` | 角色四视图最终生图拼装模板 | 拼装角色四视图最终生图提示词（生图模板） | — | — | 正文不变 |
 | 57 | `scene.image.compose` | 场景四视图/单图最终生图拼装模板（合并前 2 条） | 拼装场景单图或四视图最终提示词（生图模板） | <details><summary>展开原正文（红色为修改处，533 字符）</summary><pre><span style="color:#d93025;font-weight:600">【合并前模板 1：scene.image_four_view.compose｜场景四视图最终生图拼装模板】<br>【画风·最高优先级】四格统一：{{style_zh}}<br>MANDATORY ART STYLE (all 4 panels): {{style_en}}.<br><br>{{layout_instruction}}<br><br>---<br><br>{{generated_description}}<br><br>---<br><br>Reiterate the same art style in every panel: {{style_en}} {{style_zh}}. No people, no text.<br><br>【合并前模板 2：scene.image_single.compose｜场景单图最终生图拼装模板】<br>【画风·最高优先级】{{style_zh}}<br>MANDATORY ART STYLE: {{style_en}}.<br><br>{{layout_instruction}}<br><br>---<br><br>{{generated_description}}<br><br>---<br><br>Reiterate the same art style: {{style_en}} {{style_zh}}. No people, no text.</span></pre></details> | <details><summary>展开新正文（红色为修改处，268 字符）</summary><pre><span style="color:#d93025;font-weight:600">【画风·最高优先级】{{style_zh}}<br>MANDATORY ART STYLE: {{style_en}}.<br><br>{{layout_instruction}}<br><br>---<br><br>{{generated_description}}<br><br>---<br><br>Reiterate the same art style throughout the entire image and in every panel when a grid is requested: {{style_en}} {{style_zh}}. No people, no text.</span></pre></details> | 由场景四视图、场景单图 2 个拼装模板合并；统一画风标题、英文画风约束和结尾重申语句；2 条旧模板记录已删除；合并项按记录整体替换，原、新正文整体标红 |
 | 58 | `character.image_polish.user` | 角色生图提示词输入模板 | 待润色的角色名称与描述（输入模板） | — | — | 正文不变 |
-| 59 | `scene.image.user` | 场景四视图/单图输入模板（合并前 2 条） | 待润色的场景地点、时段与描述（输入模板） | <details><summary>展开原正文（红色为修改处，264 字符）</summary><pre><span style="color:#d93025;font-weight:600">【合并前模板 1：scene.image_four_view.user｜场景四视图输入模板】<br>请根据以下场景信息生成四格场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}<br><br>【合并前模板 2：scene.image_single.user｜场景单图输入模板】<br>请根据以下场景信息生成单图场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}</span></pre></details> | <details><summary>展开新正文（红色为修改处，96 字符）</summary><pre><span style="color:#d93025;font-weight:600">请根据以下场景信息，严格按照系统提示词要求生成场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}</span></pre></details> | 由场景四视图、场景单图 2 个输入模板合并；任务说明统一为“严格按照系统提示词要求生成场景参考图提示词”；2 条旧模板记录已删除；合并项按记录整体替换，原、新正文整体标红 |
+| 59 | `scene.image.user` | 场景四视图/单图输入模板（合并前 2 条） | 待润色的场景地点、时段与描述（输入模板） | <details><summary>展开原正文（红色为修改处，264 字符）</summary><pre><span style="color:#d93025;font-weight:600">【合并前模板 1：scene.image_four_view.user｜场景四视图输入模板】<br>请根据以下场景信息生成四格场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}<br><br>【合并前模板 2：scene.image_single.user｜场景单图输入模板】<br>请根据以下场景信息生成单图场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}</span></pre></details> | <details><summary>展开新正文（红色为修改处，96 字符）</summary><pre><span style="color:#d93025;font-weight:600">请根据以下场景信息，严格按照系统管线要求生成场景参考图提示词：<br>地点：{{entity_name}}<br>时段：{{entity_time}}<br>描述：{{entity_description}}</span></pre></details> | 由场景四视图、场景单图 2 个输入模板合并；任务说明统一为“严格按照系统管线要求生成场景参考图提示词”；2 条旧模板记录已删除；合并项按记录整体替换，原、新正文整体标红 |
 | 60 | `prop.image_polish.user` | 道具生图提示词输入模板 | 待润色的道具名称、类型与描述（输入模板） | — | — | 正文不变 |
 | 61 | `scene.prompt.translate_zh.user` | 场景提示词翻译中文 | 将场景生图提示词翻译为中文（输入模板） | — | — | 正文不变 |
 

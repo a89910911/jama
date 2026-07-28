@@ -64,5 +64,5 @@ if (errors.length) {
   for (const error of errors) console.error(`- ${error}`);
   process.exitCode = 1;
 } else {
-  console.log(`提示词检查通过：${catalog.length} 个当前系统提示词，Key、内容、变量和调用方均有效。`);
+  console.log(`提示词检查通过：${catalog.length} 个当前系统管线，Key、内容、变量和调用方均有效。`);
 }

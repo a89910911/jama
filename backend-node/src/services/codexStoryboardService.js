@@ -275,7 +275,7 @@ function buildStoryboardGenerationPrompt(db, cfg, session, episode, body, taskId
     'scene_id、characters、props 只能使用项目提供的数字 ID；没有匹配场景时 scene_id 填 0。',
     'layout_description 必须说明主体在画面中的位置、前中后景关系、朝向和关键道具位置，可直接用于首帧构图。',
     '最终只按宿主应用提供的 JSON Schema 输出。',
-    `【项目分镜系统提示词】\n${systemPrompt}`,
+    `【项目分镜系统管线】\n${systemPrompt}`,
     `【项目分镜用户提示词】\n${userPrompt}`,
     `【用户本次要求】\n${clean(body.content)}`,
   ].join('\n\n');

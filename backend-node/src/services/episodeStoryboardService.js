@@ -1391,7 +1391,7 @@ function generateStoryboard(
   });
   systemPrompt += `\n\n${buildDurationPromptConstraint(durationMode, videoClipDuration)}`;
 
-  // 当用户指定了分镜数量时，在系统提示词后追加最高优先级覆盖指令，
+  // 当用户指定了分镜数量时，在系统管线后追加最高优先级覆盖指令，
   // 使"目标数量"优先于默认的"一动作一镜头、禁止合并"原则
   if (storyboardCount && Number(storyboardCount) > 0) {
     const targetCount = Number(storyboardCount);

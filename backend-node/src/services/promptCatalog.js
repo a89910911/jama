@@ -853,7 +853,7 @@ function buildCatalog() {
 
   add(definition({
     key: 'story.generation.system',
-    name: '故事生成系统提示词',
+    name: '故事生成系统管线',
     category: '故事与小说',
     role: 'system',
     sceneKey: 'story_generation',
@@ -1335,7 +1335,7 @@ This overrides default rules such as one action per shot and no merging.
     contents: universal(`镜头信息：
 {{frame_context}}
 
-请严格按照系统提示词要求生成对应帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：`),
+请严格按照系统管线要求生成对应帧的图像提示词（JSON 的 prompt 字段必须全文中文），不要任何解释：`),
     variables: ['frame_context'],
     required: ['frame_context'],
     source: 'framePromptService.generateSingleFrame',
@@ -1643,7 +1643,7 @@ Reiterate the same art style: {{style_en}} {{style_zh}}. No people, no text.`),
     ],
     [
       'scene.image.user', '场景生图通用输入模板', 'scene_image_polish',
-      '请根据以下场景信息，严格按照系统提示词要求生成场景参考图提示词：\n地点：{{entity_name}}\n时段：{{entity_time}}\n描述：{{entity_description}}',
+      '请根据以下场景信息，严格按照系统管线要求生成场景参考图提示词：\n地点：{{entity_name}}\n时段：{{entity_time}}\n描述：{{entity_description}}',
       ['entity_name', 'entity_time', 'entity_description'], ['entity_name'],
     ],
     [

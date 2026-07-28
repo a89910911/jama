@@ -787,7 +787,7 @@ JSON字段：
 - description：一句话中文描述（供人类参考）`;
 }
 
-/** 道具提取系统提示词（system prompt，剧本内容由 user prompt 单独传入） */
+/** 道具提取系统管线（system prompt，剧本内容由 user prompt 单独传入） */
 function getPropExtractionPrompt(cfg) {
   const base = styleTextForCfgLang(cfg);
   const propExtra = (cfg?.style?.default_prop_style || '').toString().trim();
@@ -890,7 +890,7 @@ Each element: location, time, prompt (English image generation prompt for pure b
 }
 
 /**
- * 故事扩展：根据梗概生成短片剧本正文（中英文系统提示词）
+ * 故事扩展：根据梗概生成短片剧本正文（中英文系统管线）
  */
 function getStoryExpansionSystemPrompt(cfg, episodeCount) {
   const n = Number(episodeCount) > 1 ? Number(episodeCount) : 1;

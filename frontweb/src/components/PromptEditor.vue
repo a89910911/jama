@@ -1,7 +1,7 @@
 <template>
   <div class="prompt-editor">
     <el-alert
-      :title="isProjectMode ? '项目管线优先于系统提示词；删除项目覆盖后会自动恢复使用系统提示词。' : '这里展示系统内全部提示词，包括图片、视频、负向提示词和技术模板。'"
+      :title="isProjectMode ? '项目管线优先于系统管线；删除项目覆盖后会自动恢复使用系统管线。' : '这里展示系统内全部提示词，包括图片、视频、负向提示词和技术模板。'"
       type="info"
       :closable="false"
       show-icon
@@ -121,7 +121,7 @@
                           type="info"
                           size="small"
                         >
-                          系统提示词
+                          系统管线
                         </el-tag>
                       </span>
                       <i v-if="dirtyRows[rowKey(item)]" class="dirty-dot" />
@@ -247,7 +247,7 @@
             :loading="saving"
             @click="savePrompt"
           >
-            {{ isProjectMode ? '保存项目覆盖' : '保存系统提示词' }}
+            {{ isProjectMode ? '保存项目覆盖' : '保存系统管线' }}
           </el-button>
         </div>
       </main>
@@ -509,7 +509,7 @@ async function savePrompt() {
         content: editContent.value,
       })
     }
-    ElMessage.success(isProjectMode.value ? '项目管线已保存' : '系统提示词已保存')
+    ElMessage.success(isProjectMode.value ? '项目管线已保存' : '系统管线已保存')
     await load()
   } finally {
     saving.value = false
@@ -519,7 +519,7 @@ async function savePrompt() {
 async function resetPrompt() {
   const item = currentPrompt.value
   if (!item || !isProjectMode.value) return
-  await ElMessageBox.confirm('确认删除项目覆盖并恢复继承系统提示词？', '恢复提示词', { type: 'warning' })
+  await ElMessageBox.confirm('确认删除项目覆盖并恢复继承系统管线？', '恢复提示词', { type: 'warning' })
   resetting.value = true
   try {
     await promptsAPI.deleteProject(props.dramaId, item.prompt_key)
