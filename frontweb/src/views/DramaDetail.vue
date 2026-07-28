@@ -21,9 +21,6 @@
           <el-button type="primary" @click="goCreate">
             <el-icon><VideoPlay /></el-icon>进入制作
           </el-button>
-          <el-button type="primary" plain @click="goCanvasMode">
-            <el-icon><Grid /></el-icon>画布模式
-          </el-button>
         </div>
       </div>
     </header>
@@ -587,7 +584,7 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, Grid, DataAnalysis } from '@element-plus/icons-vue'
+import { ArrowLeft, VideoPlay, Plus, Delete, Sunny, Moon, PictureFilled, DataAnalysis } from '@element-plus/icons-vue'
 import EpisodeBatchImportDialog from '@/components/EpisodeBatchImportDialog.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import GenerationProgressBar from '@/components/GenerationProgressBar.vue'
@@ -998,10 +995,6 @@ function saveInfo() {
 
 function goCreate() {
   router.push(`/film/${dramaId}`)
-}
-
-function goCanvasMode() {
-  router.push(`/film/${dramaId}/canvas`)
 }
 
 function goAiRecords() {

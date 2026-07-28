@@ -47,14 +47,6 @@
           <el-button type="primary" class="btn-new" @click="goNewProject">
             <el-icon><Plus /></el-icon>新建项目
           </el-button>
-          <el-button
-            v-if="!vendorLockEnabled"
-            class="btn-wechat header-wechat"
-            title="扫码联系作者"
-            @click="showWechat = true"
-          >
-            <el-icon><ChatDotSquare /></el-icon>微信我
-          </el-button>
         </div>
       </div>
     </header>
@@ -340,14 +332,6 @@
       </template>
     </el-dialog>
 
-    <!-- 微信二维码 -->
-    <el-dialog v-if="!vendorLockEnabled" v-model="showWechat" title="微信联系作者" width="min(420px, 92vw)" align-center>
-      <div style="text-align:center;padding:8px 0 4px">
-        <img src="/wx.jpg" alt="微信二维码" style="display:block;width:100%;height:auto;max-height:520px;object-fit:contain;border-radius:8px;" />
-        <p style="margin:12px 0 0;font-size:13px;color:var(--text-secondary,#a1a1aa);">扫码添加微信，欢迎交流</p>
-      </div>
-    </el-dialog>
-
     <!-- 图片放大预览 -->
     <Teleport to="body">
       <div v-if="previewImageUrl" class="image-preview-overlay" @click="previewImageUrl = null">
@@ -383,14 +367,13 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Delete, Setting, Plus, User, PictureFilled, Box, Sunny, Moon, ChatDotSquare, Download, Upload, QuestionFilled, FolderOpened, MagicStick, Files, VideoCamera } from '@element-plus/icons-vue'
+import { Edit, Delete, Setting, Plus, User, PictureFilled, Box, Sunny, Moon, Download, Upload, QuestionFilled, FolderOpened, MagicStick, Files, VideoCamera } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 import { dramaAPI } from '@/api/drama'
 import { characterLibraryAPI } from '@/api/characterLibrary'
 import { sceneLibraryAPI } from '@/api/sceneLibrary'
 import { propLibraryAPI } from '@/api/propLibrary'
 import { uploadAPI } from '@/api/upload'
-import { aiAPI } from '@/api/ai'
 import { imagesAPI } from '@/api/images'
 import { taskAPI } from '@/api/task'
 import AccountSession from '@/components/AccountSession.vue'
@@ -466,9 +449,6 @@ async function doGenerateLibImg(form, prompt, api, reloadFn) {
 const loading = ref(false)
 const dramas = ref([])
 const total = ref(0)
-
-const showWechat = ref(false)
-const vendorLockEnabled = ref(false)
 
 function openAiConfig() {
   router.push({ name: 'ai-config', query: { returnTo: '/' } })
@@ -860,13 +840,9 @@ async function onDelete(d) {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   loadList()
   loadExamples()
-  try {
-    const lock = await aiAPI.getVendorLock()
-    vendorLockEnabled.value = !!lock?.enabled
-  } catch (_) {}
 })
 </script>
 
@@ -981,28 +957,6 @@ html.light .btn-theme {
   --el-button-hover-bg-color: rgba(99, 102, 241, 0.15);
   --el-button-hover-border-color: rgba(99, 102, 241, 0.5);
   --el-button-hover-text-color: #4f46e5;
-}
-
-/* 微信我按钮 —— 绿调 */
-.btn-wechat {
-  --el-button-bg-color: rgba(34, 197, 94, 0.1);
-  --el-button-border-color: rgba(34, 197, 94, 0.3);
-  --el-button-text-color: #22c55e;
-  --el-button-hover-bg-color: rgba(34, 197, 94, 0.2);
-  --el-button-hover-border-color: rgba(34, 197, 94, 0.5);
-  --el-button-hover-text-color: #16a34a;
-  transition: all 0.2s;
-}
-html.light .btn-wechat {
-  --el-button-bg-color: rgba(21, 128, 61, 0.08);
-  --el-button-border-color: rgba(21, 128, 61, 0.3);
-  --el-button-text-color: #166534;
-  --el-button-hover-bg-color: rgba(21, 128, 61, 0.14);
-  --el-button-hover-border-color: rgba(21, 128, 61, 0.5);
-  --el-button-hover-text-color: #14532d;
-}
-.header-wechat {
-  margin: 0;
 }
 
 /* AI配置按钮 —— 琥珀调 */

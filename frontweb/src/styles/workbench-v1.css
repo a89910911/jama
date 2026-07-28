@@ -1,0 +1,1016 @@
+/*
+ * JamaAI Workbench V1
+ * A presentation-only warm workbench skin inspired by the local reference app.
+ * Business methods, route contracts and data flows remain owned by the views.
+ */
+
+:root,
+html.light {
+  color-scheme: light;
+  --bg-page: #ffffff;
+  --bg-card: #f6f6f3;
+  --bg-inner: #efefe9;
+  --bg-hover: #e9e8e2;
+  --bg-panel: #faf9f6;
+  --bg-raised: #ffffff;
+  --border-color: #e0e0d9;
+  --border-muted: #c8c8c1;
+  --text-primary: #211922;
+  --text-bright: #211922;
+  --text-muted: #62625b;
+  --text-subtle: #91918c;
+  --text-faint: #aaa9a3;
+  --brand: #e60023;
+  --brand-hover: #ad081b;
+  --module-accent: #c96a3a;
+  --focus-ring: #435ee5;
+  --success: #2c7a5c;
+  --warning: #c96a3a;
+  --danger: #9e0a0a;
+  --shadow: none;
+
+  --el-color-primary: #e60023;
+  --el-color-primary-light-3: #ef5269;
+  --el-color-primary-light-5: #f68b9a;
+  --el-color-primary-light-7: #fac2ca;
+  --el-color-primary-light-8: #fdd9de;
+  --el-color-primary-light-9: #fff0f2;
+  --el-color-primary-dark-2: #ad081b;
+  --el-color-success: #2c7a5c;
+  --el-color-warning: #c96a3a;
+  --el-color-danger: #9e0a0a;
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #ffffff;
+  --el-bg-color-overlay: #ffffff;
+  --el-fill-color: #efefe9;
+  --el-fill-color-light: #f6f6f3;
+  --el-fill-color-lighter: #faf9f6;
+  --el-fill-color-blank: #ffffff;
+  --el-text-color-primary: #211922;
+  --el-text-color-regular: #62625b;
+  --el-text-color-secondary: #91918c;
+  --el-text-color-placeholder: #aaa9a3;
+  --el-border-color: #c8c8c1;
+  --el-border-color-light: #e0e0d9;
+  --el-border-color-lighter: #ecece7;
+  --el-border-color-extra-light: #f3f3ef;
+  --el-mask-color: rgba(33, 25, 34, 0.48);
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-page: #1a1214;
+  --bg-card: #2a2025;
+  --bg-inner: #33272d;
+  --bg-hover: #3e2f36;
+  --bg-panel: #211922;
+  --bg-raised: #2a2025;
+  --border-color: #3a2d33;
+  --border-muted: #4e3b44;
+  --text-primary: #f5efe8;
+  --text-bright: #fffaf5;
+  --text-muted: #c9bdb4;
+  --text-subtle: #91918c;
+  --text-faint: #71676b;
+  --brand: #ff1f3d;
+  --brand-hover: #e60023;
+  --module-accent: #df8051;
+  --focus-ring: #7a8df0;
+  --success: #5fb88f;
+  --warning: #df8051;
+  --danger: #ff7b7b;
+  --shadow: none;
+
+  --el-color-primary: #ff1f3d;
+  --el-color-primary-light-3: #ff6176;
+  --el-color-primary-light-5: #ff8f9e;
+  --el-color-primary-light-7: #703743;
+  --el-color-primary-light-8: #512a32;
+  --el-color-primary-light-9: #351e23;
+  --el-color-primary-dark-2: #e60023;
+  --el-color-success: #5fb88f;
+  --el-color-warning: #df8051;
+  --el-color-danger: #ff7b7b;
+  --el-bg-color: #2a2025;
+  --el-bg-color-page: #1a1214;
+  --el-bg-color-overlay: #2a2025;
+  --el-fill-color: #33272d;
+  --el-fill-color-light: #33272d;
+  --el-fill-color-lighter: #2d2228;
+  --el-fill-color-blank: #2a2025;
+  --el-text-color-primary: #f5efe8;
+  --el-text-color-regular: #c9bdb4;
+  --el-text-color-secondary: #91918c;
+  --el-text-color-placeholder: #71676b;
+  --el-border-color: #4e3b44;
+  --el-border-color-light: #3a2d33;
+  --el-border-color-lighter: #33272d;
+  --el-border-color-extra-light: #2d2228;
+  --el-mask-color: rgba(8, 4, 6, 0.68);
+}
+
+html,
+body,
+#app,
+.app {
+  background: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+  font-family:
+    "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+}
+
+body {
+  min-width: 960px;
+  overflow-x: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: #fff;
+  background: color-mix(in srgb, var(--brand) 78%, transparent);
+}
+
+/* ── Global activity rail ───────────────────────────────────── */
+
+.app-content {
+  width: calc(100% - 64px);
+  min-height: 100vh;
+  margin-left: 64px;
+}
+
+.app-content--login {
+  width: 100%;
+  margin-left: 0;
+}
+
+.activity-rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 3200;
+  display: flex;
+  width: 64px;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-panel);
+}
+
+.activity-brand {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 18px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  background: var(--bg-raised);
+}
+
+.activity-brand img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 32%;
+}
+
+.activity-nav {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-spacer {
+  flex: 1;
+}
+
+.activity-item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 50px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 2px;
+  border: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 10px;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.activity-item .el-icon {
+  font-size: 19px;
+}
+
+.activity-item::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  content: "";
+}
+
+.activity-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.activity-item.is-active {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.activity-item.is-active::before {
+  background: var(--module-accent);
+}
+
+.activity-theme {
+  flex: 0 0 auto;
+}
+
+/* ── Page surfaces and headers ──────────────────────────────── */
+
+.film-list,
+.film-create,
+.drama-detail,
+.drama-canvas-page,
+.project-prompts,
+.ai-config,
+.ai-records-page,
+.accounts-page,
+.free-create-page,
+.media-library-page,
+.redraw-page,
+.action-migration-page {
+  min-height: 100vh;
+  color: var(--text-primary) !important;
+  background: var(--bg-page) !important;
+  background-image: none !important;
+}
+
+.app-content .header {
+  min-height: 40px;
+  padding: 4px 20px !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  background: color-mix(in srgb, var(--bg-page) 96%, transparent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(16px);
+}
+
+.app-content .header-inner {
+  width: 100%;
+  max-width: none !important;
+  min-height: 32px;
+  margin: 0 !important;
+  gap: 10px !important;
+}
+
+.app-content .header-actions {
+  gap: 6px !important;
+}
+
+.app-content .header .brand-logo__image {
+  width: 27px;
+  height: 27px;
+  flex-basis: 27px;
+  border-color: var(--border-color);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.app-content .header .brand-logo__name {
+  color: var(--text-primary) !important;
+  font-size: 13px;
+}
+
+.app-content .breadcrumb-sep {
+  color: var(--text-faint) !important;
+}
+
+.app-content .page-title {
+  color: var(--text-secondary) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+.app-content .main {
+  padding-top: 32px !important;
+}
+
+.page-header,
+.topbar,
+.accounts-header {
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-page) !important;
+  box-shadow: none !important;
+}
+
+.page-title,
+.topbar h1,
+.page-header h1,
+.page-header h2,
+.accounts-header h1 {
+  color: var(--text-primary) !important;
+  letter-spacing: -0.02em;
+}
+
+.page-desc,
+.subtitle,
+.muted {
+  color: var(--text-secondary) !important;
+}
+
+/* ── Cards, panels and empty states ─────────────────────────── */
+
+.card,
+.section.card,
+.el-card,
+.project-card,
+.episode-card,
+.summary-card,
+.table-card,
+.input-panel,
+.result-panel,
+.creator-panel,
+.detail-panel,
+.editor-panel,
+.preview-panel,
+.job-pane,
+.main-pane,
+.media-panel,
+.panel,
+.filter-bar,
+.stats-strip,
+.create-form,
+.diagnostics,
+.results,
+.resource-block,
+.pipeline-panel,
+.library-item {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 20px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-card) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.card:hover,
+.project-card:hover,
+.episode-card:hover,
+.library-item:hover,
+.media-card:hover {
+  border-color: var(--border-muted) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.section-title,
+.project-title,
+.episode-title,
+.resource-block-title,
+.panel-heading h2,
+.pane-title,
+.result-title,
+.form-label,
+.table-heading h2 {
+  color: var(--text-primary) !important;
+}
+
+.project-desc,
+.project-meta,
+.episode-preview,
+.library-item-desc,
+.empty-tip,
+.empty-state,
+.empty-result,
+.empty-media,
+.library-empty {
+  color: var(--text-secondary) !important;
+}
+
+.el-empty {
+  --el-empty-fill-color-0: var(--bg-card);
+  --el-empty-fill-color-1: var(--bg-inner);
+  --el-empty-fill-color-2: var(--border-color);
+  --el-empty-fill-color-3: var(--border-muted);
+  --el-empty-fill-color-4: var(--text-faint);
+  --el-empty-fill-color-5: var(--text-subtle);
+  --el-empty-fill-color-6: var(--text-muted);
+  --el-empty-fill-color-7: var(--text-secondary);
+  --el-empty-fill-color-8: var(--text-primary);
+  --el-empty-fill-color-9: var(--text-primary);
+}
+
+/* ── Element Plus ───────────────────────────────────────────── */
+
+.el-button {
+  min-height: 32px;
+  border-radius: 16px !important;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.el-button:not(.el-button--primary):not(.el-button--danger):not(.is-link):not(.is-text) {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  background: var(--bg-panel);
+}
+
+.el-button:not(.el-button--primary):not(.el-button--danger):not(.is-link):not(.is-text):hover {
+  border-color: var(--border-muted);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.el-button--primary:not(.is-link):not(.is-text) {
+  border-color: var(--brand) !important;
+  color: #fff !important;
+  background: var(--brand) !important;
+  background-image: none !important;
+}
+
+.el-button--primary:not(.is-link):not(.is-text):hover {
+  border-color: var(--brand-hover) !important;
+  background: var(--brand-hover) !important;
+}
+
+.el-button.is-plain {
+  box-shadow: none !important;
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner,
+.el-textarea__wrapper,
+.el-input-number .el-input__wrapper {
+  min-height: 40px;
+  border: 1px solid var(--border-muted) !important;
+  border-radius: 16px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: none !important;
+}
+
+.el-textarea__inner {
+  padding: 12px 14px;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover,
+.el-textarea__inner:hover,
+.el-textarea__wrapper:hover {
+  border-color: var(--text-subtle) !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  border-color: var(--focus-ring) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 14%, transparent) !important;
+}
+
+.el-input__inner,
+.el-select__selected-item,
+.el-textarea__inner {
+  color: var(--text-primary) !important;
+}
+
+.el-dialog,
+.el-drawer,
+.el-message-box,
+.el-popover.el-popper,
+.el-select__popper,
+.el-dropdown__popper {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 24px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: 0 24px 70px rgba(33, 25, 34, 0.18) !important;
+}
+
+.el-drawer {
+  border-radius: 24px 0 0 24px !important;
+}
+
+.el-dialog__header,
+.el-drawer__header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-color);
+  margin: 0;
+}
+
+.el-dialog__body,
+.el-drawer__body {
+  padding: 20px 24px;
+}
+
+.el-dialog__footer {
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--border-color);
+}
+
+.el-dialog__title,
+.el-drawer__title {
+  color: var(--text-primary) !important;
+  font-weight: 700;
+}
+
+.el-tabs__nav-wrap::after {
+  height: 1px;
+  background: var(--border-color) !important;
+}
+
+.el-tabs__item {
+  color: var(--text-secondary) !important;
+  font-weight: 600;
+}
+
+.el-tabs__item.is-active,
+.el-tabs__item:hover {
+  color: var(--text-primary) !important;
+}
+
+.el-tabs__active-bar {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand) !important;
+}
+
+.el-table,
+.el-table__inner-wrapper,
+.el-table tr,
+.el-table td.el-table__cell {
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+}
+
+.el-table {
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 16px !important;
+}
+
+.el-table::before,
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+.el-table th.el-table__cell {
+  border-bottom-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-panel) !important;
+  font-weight: 700;
+}
+
+.el-table td.el-table__cell {
+  border-bottom-color: var(--border-color) !important;
+}
+
+.el-table__body tr:hover > td.el-table__cell {
+  background: var(--bg-card) !important;
+}
+
+.el-tag {
+  border-radius: 999px !important;
+}
+
+.el-checkbox__inner,
+.el-radio__inner {
+  border-color: var(--border-muted);
+}
+
+.el-loading-mask {
+  background: color-mix(in srgb, var(--bg-page) 84%, transparent) !important;
+}
+
+/* ── Project list ───────────────────────────────────────────── */
+
+.film-list .main {
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 32px 40px 56px !important;
+}
+
+.film-list .project-grid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.film-list .project-card {
+  min-height: 230px;
+  padding: 24px !important;
+}
+
+.film-list .project-card::before,
+.drama-detail .episode-card::before {
+  display: none !important;
+}
+
+.film-list .action-card {
+  border-color: #f3c8cf !important;
+  background: #fff3f4 !important;
+}
+
+html.dark .film-list .action-card {
+  border-color: #64313c !important;
+  background: #351e23 !important;
+}
+
+.film-list .action-card-title {
+  color: var(--brand) !important;
+}
+
+.film-list .badge {
+  border-color: var(--border-color) !important;
+  border-radius: 999px !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-panel) !important;
+}
+
+/* ── Creation workbench ─────────────────────────────────────── */
+
+.film-create .quick-nav {
+  left: 64px !important;
+  width: 220px !important;
+  padding: 18px 8px 12px !important;
+  border-right: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-panel) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.film-create .quick-nav.collapsed {
+  width: 52px !important;
+}
+
+.film-create .header,
+.film-create .main {
+  margin-left: 220px !important;
+}
+
+.film-create.sidebar-collapsed .header,
+.film-create.sidebar-collapsed .main {
+  margin-left: 52px !important;
+}
+
+.film-create .main {
+  padding: 32px 40px 56px !important;
+}
+
+.film-create .nav-sidebar-header,
+.film-create .atp-panel,
+.film-create .nav-sub-toggle {
+  border-color: var(--border-color) !important;
+}
+
+.film-create .nav-sidebar-title,
+.film-create .step-label,
+.film-create .nav-sub-toggle,
+.film-create .nav-sub-item,
+.film-create .atp-item-label {
+  color: var(--text-secondary) !important;
+}
+
+.film-create .nav-step:hover,
+.film-create .nav-sub-item:hover,
+.film-create .atp-item:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-hover) !important;
+}
+
+.film-create .status-generating .step-label,
+.film-create .status-done .step-label {
+  color: var(--module-accent) !important;
+}
+
+.film-create .dot-generating,
+.film-create .dot-done {
+  border-color: var(--module-accent) !important;
+  color: var(--module-accent) !important;
+  background: color-mix(in srgb, var(--module-accent) 12%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.film-create .card {
+  padding: 24px !important;
+}
+
+.film-create .resource-block,
+.film-create .storyboard-row,
+.film-create .sb-card {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: none !important;
+}
+
+/* ── Detail, libraries and production tools ─────────────────── */
+
+.drama-detail .main {
+  width: auto !important;
+  max-width: 1240px !important;
+  padding: 32px 32px 56px !important;
+}
+
+.drama-detail .episode-grid {
+  gap: 14px !important;
+}
+
+.drama-detail .episode-card {
+  min-height: 142px;
+  padding: 18px !important;
+}
+
+.media-library-page,
+.free-create-page,
+.accounts-page,
+.ai-records-page,
+.redraw-page,
+.action-migration-page {
+  padding: 0 !important;
+}
+
+.media-library-page > .page-header,
+.free-create-page > .page-header,
+.accounts-page > .accounts-header,
+.ai-records-page > .page-header,
+.redraw-page > .topbar,
+.action-migration-page > .topbar {
+  padding: 18px 32px !important;
+}
+
+.media-library-page .filter-bar,
+.media-library-page .media-grid,
+.free-create-page .create-layout,
+.accounts-page .accounts-content,
+.ai-records-page .content,
+.redraw-page .workbench,
+.redraw-page .page-body,
+.action-migration-page .workbench,
+.action-migration-page .page-body {
+  margin-right: 32px !important;
+  margin-left: 32px !important;
+}
+
+.free-create-page .create-layout {
+  gap: 16px !important;
+  padding-top: 24px !important;
+}
+
+.free-create-page .input-panel,
+.free-create-page .result-panel {
+  padding: 24px !important;
+}
+
+.free-create-page .ref-image-zone,
+.action-migration-page .upload-box {
+  border: 1px dashed var(--border-muted) !important;
+  border-radius: 16px !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-inner) !important;
+}
+
+.media-library-page .media-card {
+  overflow: hidden;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+  background: var(--bg-card) !important;
+  box-shadow: none !important;
+}
+
+.redraw-page .job-item,
+.action-migration-page .job-item,
+.accounts-page .summary-card {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 14px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+}
+
+.redraw-page .job-item.active,
+.action-migration-page .job-item.active {
+  border-color: color-mix(in srgb, var(--module-accent) 58%, var(--border-color)) !important;
+  background: color-mix(in srgb, var(--module-accent) 9%, var(--bg-raised)) !important;
+}
+
+/* ── Settings-like pages ────────────────────────────────────── */
+
+.ai-config .main,
+.project-prompts .main {
+  max-width: 1240px !important;
+  padding: 32px !important;
+}
+
+.ai-config .config-tabs,
+.project-prompts .prompt-layout,
+.prompt-editor {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 20px !important;
+  background: var(--bg-card) !important;
+  box-shadow: none !important;
+}
+
+/* ── Canvas ─────────────────────────────────────────────────── */
+
+.drama-canvas-page .header {
+  background: var(--bg-page) !important;
+}
+
+.drama-canvas-page .workflow-bar,
+.drama-canvas-page .generate-bar {
+  border-color: var(--border-color) !important;
+  background: var(--bg-page) !important;
+}
+
+.drama-canvas-page .canvas-sidebar {
+  border-right-color: var(--border-color) !important;
+  background: var(--bg-panel) !important;
+}
+
+.drama-canvas-page .sidebar-title,
+.drama-canvas-page .sidebar-item {
+  color: var(--text-primary) !important;
+}
+
+.drama-canvas-page .sidebar-item:hover {
+  background: var(--bg-hover) !important;
+}
+
+.drama-canvas-page .sidebar-item.active {
+  color: var(--module-accent) !important;
+  background: color-mix(in srgb, var(--module-accent) 12%, transparent) !important;
+}
+
+.drama-canvas-page .vue-flow-canvas {
+  background-color: var(--bg-page) !important;
+  background-image:
+    radial-gradient(circle, var(--border-muted) 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+
+.drama-canvas-page .vue-flow__minimap,
+.drama-canvas-page .vue-flow__controls,
+.drama-canvas-page .vue-flow__controls button {
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: none !important;
+}
+
+/* ── Login ──────────────────────────────────────────────────── */
+
+.login-page {
+  padding: 32px !important;
+  color: var(--text-primary) !important;
+  background:
+    radial-gradient(circle at 14% 8%, rgba(201, 106, 58, 0.11), transparent 28%),
+    radial-gradient(circle at 88% 90%, rgba(90, 107, 184, 0.08), transparent 30%),
+    var(--bg-page) !important;
+}
+
+.login-page::before {
+  background-image: none !important;
+  content: "" !important;
+}
+
+.login-page .login-glow {
+  display: none !important;
+}
+
+.login-card {
+  width: min(440px, 100%) !important;
+  padding: 38px 40px 30px !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 28px !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-card) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.login-card .brand-mark {
+  width: 52px !important;
+  height: 52px !important;
+  margin-bottom: 20px !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+
+.login-card .eyebrow {
+  color: var(--module-accent) !important;
+}
+
+.login-card .login-heading h1 {
+  color: var(--text-primary) !important;
+}
+
+.login-card .login-heading > p:last-child,
+.login-card .security-note {
+  color: var(--text-secondary) !important;
+}
+
+.login-card .login-submit {
+  height: 46px !important;
+  border-color: var(--brand) !important;
+  border-radius: 16px !important;
+  color: #fff !important;
+  background: var(--brand) !important;
+  background-image: none !important;
+}
+
+.login-card .login-submit:hover {
+  color: #fff !important;
+  background: var(--brand-hover) !important;
+}
+
+/* ── Global progress and transient UI ───────────────────────── */
+
+.generation-dock.dock-left:not(.dragging) {
+  left: 76px !important;
+}
+
+.generation-toggle,
+.generation-center {
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: none !important;
+}
+
+.generation-toggle-count {
+  background: var(--brand) !important;
+}
+
+.el-message {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+  background: var(--bg-raised) !important;
+  box-shadow: 0 12px 36px rgba(33, 25, 34, 0.14) !important;
+}
+
+/* ── Responsive desktop safeguards ──────────────────────────── */
+
+@media (max-width: 1180px) {
+  body {
+    min-width: 820px;
+  }
+
+  .activity-rail {
+    width: 56px;
+  }
+
+  .app-content {
+    width: calc(100% - 56px);
+    margin-left: 56px;
+  }
+
+  .app-content--login {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .film-create .quick-nav {
+    left: 56px !important;
+    width: 200px !important;
+  }
+
+  .film-create .header,
+  .film-create .main {
+    margin-left: 200px !important;
+  }
+
+  .film-list .main,
+  .film-create .main {
+    padding-right: 24px !important;
+    padding-left: 24px !important;
+  }
+}

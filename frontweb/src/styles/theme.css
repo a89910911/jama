@@ -242,107 +242,106 @@ html.light span, html.light label, html.light p {
 }
 
 /* =====================================================
-   亮色模式增强 — 更现代的视觉效果
+   亮色模式增强 — 暖白工作台
    ===================================================== */
 
-/* 主色改为紫色系 */
+/* 主色与 workbench-v1 保持一致 */
 html.light {
-  --el-color-primary: #7c3aed;
-  --el-color-primary-light-3: #a78bfa;
-  --el-color-primary-light-5: #c4b5fd;
-  --el-color-primary-light-7: #ddd6fe;
-  --el-color-primary-light-8: #ede9fe;
-  --el-color-primary-light-9: #f5f3ff;
-  --el-color-primary-dark-2: #6d28d9;
+  --el-color-primary: #e60023;
+  --el-color-primary-light-3: #ef5269;
+  --el-color-primary-light-5: #f68b9a;
+  --el-color-primary-light-7: #fac2ca;
+  --el-color-primary-light-8: #fdd9de;
+  --el-color-primary-light-9: #fff0f2;
+  --el-color-primary-dark-2: #ad081b;
 }
 
-/* 卡片升级 */
+/* 卡片 */
 html.light .card,
 html.light .el-card {
-  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04) !important;
-  border-color: #e8e8ef !important;
-  border-radius: 14px !important;
+  box-shadow: none !important;
+  border-color: #e0e0d9 !important;
+  border-radius: 20px !important;
 }
 
-/* 页面标题区美化 */
+/* 页面标题区 */
 html.light .header {
-  background: linear-gradient(135deg, #ffffff 0%, #faf9ff 100%) !important;
-  border-bottom: 1px solid #e8e8ef !important;
-  box-shadow: 0 1px 8px rgba(0,0,0,.05) !important;
-}
-
-/* Logo 加紫色渐变 */
-html.light .logo {
-  background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  background-clip: text !important;
-}
-
-/* 项目卡片美化 */
-html.light .project-card {
   background: #ffffff !important;
-  border: 1px solid #e8e8ef !important;
-  border-radius: 14px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05), 0 6px 20px rgba(0,0,0,.04) !important;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+  border-bottom: 1px solid #e0e0d9 !important;
+  box-shadow: none !important;
+}
+
+/* Logo */
+html.light .logo {
+  color: #211922 !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* 项目卡片 */
+html.light .project-card {
+  background: #f6f6f3 !important;
+  border: 1px solid #e0e0d9 !important;
+  border-radius: 20px !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, background 0.2s ease !important;
 }
 html.light .project-card:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 0 4px 12px rgba(124,58,237,.12), 0 12px 32px rgba(124,58,237,.06) !important;
-  border-color: #a78bfa !important;
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: #c8c8c1 !important;
 }
 
-/* 操作卡片（快速开始）美化 */
+/* 操作卡片（快速开始） */
 html.light .action-card {
-  background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%) !important;
-  border: 2px dashed #c4b5fd !important;
+  background: #fff3f4 !important;
+  border: 1px solid #f3c8cf !important;
 }
 html.light .action-card:hover {
-  border-color: #a78bfa !important;
-  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%) !important;
+  border-color: #e7aeb8 !important;
+  background: #fff0f2 !important;
 }
 html.light .action-card-title {
-  color: #7c3aed !important;
+  color: #e60023 !important;
 }
 
-/* Section card 美化 */
+/* Section card */
 html.light .section.card {
-  border-radius: 14px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05), 0 6px 20px rgba(0,0,0,.03) !important;
+  border-radius: 20px !important;
+  box-shadow: none !important;
 }
 
-/* 资源库 library-item 美化 */
+/* 资源库 library-item */
 html.light .library-item {
-  background: #fafafa !important;
-  border: 1px solid #ebebf0 !important;
-  border-radius: 10px !important;
-  transition: box-shadow 0.15s, border-color 0.15s !important;
+  background: #ffffff !important;
+  border: 1px solid #e0e0d9 !important;
+  border-radius: 16px !important;
+  transition: border-color 0.15s !important;
 }
 html.light .library-item:hover {
-  box-shadow: 0 2px 8px rgba(124,58,237,.1) !important;
-  border-color: #c4b5fd !important;
+  box-shadow: none !important;
+  border-color: #c8c8c1 !important;
 }
 
 /* Storyboard 卡片 */
 html.light .sb-card,
 html.light .storyboard-row {
-  border-radius: 12px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05) !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
 }
 
-/* 表格美化 */
+/* 表格 */
 html.light .el-table {
-  border-radius: 10px !important;
+  border-radius: 16px !important;
   overflow: hidden !important;
 }
 html.light .el-table th.el-table__cell {
-  background: #f8f7ff !important;
-  color: #4c1d95 !important;
+  background: #faf9f6 !important;
+  color: #62625b !important;
   font-weight: 600 !important;
 }
 html.light .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: #fdfcff !important;
+  background: #faf9f6 !important;
 }
 
 /* 表格内 link 按钮颜色恢复（防被 tr color !important 覆盖） */
@@ -355,19 +354,20 @@ html.light .el-table tr .el-button.is-link.el-button--danger span {
   color: var(--el-color-danger) !important;
 }
 
-/* 按钮通用圆角 */
+/* 按钮 */
 html.light .el-button {
-  border-radius: 8px !important;
+  border-radius: 16px !important;
 }
 /* 勿作用于 is-plain：否则背景被强制为实色渐变而字色仍为 plain 主色，对比度丢失 */
 html.light .el-button--primary:not(.is-link):not(.is-plain) {
-  background: linear-gradient(135deg, #7c3aed, #6d28d9) !important;
-  border-color: transparent !important;
-  box-shadow: 0 2px 8px rgba(124,58,237,.25) !important;
+  background: #e60023 !important;
+  border-color: #e60023 !important;
+  box-shadow: none !important;
 }
 html.light .el-button--primary:not(.is-link):not(.is-plain):hover {
-  background: linear-gradient(135deg, #6d28d9, #5b21b6) !important;
-  box-shadow: 0 4px 12px rgba(124,58,237,.35) !important;
+  background: #ad081b !important;
+  border-color: #ad081b !important;
+  box-shadow: none !important;
 }
 html.light .el-button.is-link {
   background: transparent !important;
@@ -377,48 +377,48 @@ html.light .el-button.is-link {
 
 /* 输入框 */
 html.light .el-input__wrapper {
-  border-radius: 8px !important;
-  box-shadow: 0 0 0 1px #ddd6fe !important;
-  transition: box-shadow 0.2s !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
 }
 html.light .el-input__wrapper:hover {
-  box-shadow: 0 0 0 1px #a78bfa !important;
+  box-shadow: none !important;
 }
 html.light .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 2px #7c3aed !important;
+  box-shadow: 0 0 0 2px rgba(67, 94, 229, 0.14) !important;
 }
 html.light .el-textarea__wrapper {
-  border-radius: 8px !important;
-  box-shadow: 0 0 0 1px #ddd6fe !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
 }
 html.light .el-textarea__wrapper:hover {
-  box-shadow: 0 0 0 1px #a78bfa !important;
+  box-shadow: none !important;
 }
 
 /* 对话框 */
 html.light .el-dialog {
-  border-radius: 16px !important;
-  box-shadow: 0 8px 40px rgba(0,0,0,.12) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 24px 70px rgba(33,25,34,.18) !important;
 }
 
 /* 分集卡片 */
 html.light .episode-card {
-  border-radius: 12px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06) !important;
-  transition: transform 0.15s, box-shadow 0.15s !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s !important;
 }
 html.light .episode-card:hover {
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 16px rgba(124,58,237,.1) !important;
-  border-color: #a78bfa !important;
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: #c8c8c1 !important;
 }
 
-/* page bg 更细腻 */
+/* page bg */
 html.light {
-  --bg-page: #f4f2fa;
+  --bg-page: #ffffff;
 }
 html.light html, html.light body, html.light #app, html.light .app {
-  background: #f4f2fa !important;
+  background: #ffffff !important;
 }
 
 /* 资产管理 header banner */
@@ -433,15 +433,15 @@ html.light .el-tabs__item {
   font-weight: 500 !important;
 }
 html.light .el-tabs__item.is-active {
-  color: #7c3aed !important;
+  color: #211922 !important;
   font-weight: 600 !important;
 }
 html.light .el-tabs__active-bar {
-  background: #7c3aed !important;
+  background: #e60023 !important;
   border-radius: 2px !important;
 }
 html.light .el-tabs__nav-wrap::after {
-  background: #ebebf0 !important;
+  background: #e0e0d9 !important;
 }
 
 /* 导航 tab（按钮型）美化 */

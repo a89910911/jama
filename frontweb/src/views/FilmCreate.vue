@@ -29,10 +29,6 @@
           <el-icon><ArrowLeft /></el-icon>
           返回剧集
         </el-button>
-        <el-button v-if="dramaId" type="primary" plain class="btn-canvas-mode" @click="goCanvasMode">
-          <el-icon><Grid /></el-icon>
-          画布模式
-        </el-button>
         <CodexChatPanel
           v-if="dramaId"
           compact
@@ -3235,7 +3231,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, reactive, nextTick } 
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Setting, Plus, Minus, Sunny, Moon, MagicStick, Upload, Download, Delete, Check, Loading, WarningFilled, User, Box, Picture, Film, VideoCamera, Document, DataAnalysis, InfoFilled, Refresh, ZoomIn, QuestionFilled, DocumentAdd, Expand, Fold, VideoPlay, Grid, Close } from '@element-plus/icons-vue'
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Setting, Plus, Minus, Sunny, Moon, MagicStick, Upload, Download, Delete, Check, Loading, WarningFilled, User, Box, Picture, Film, VideoCamera, Document, DataAnalysis, InfoFilled, Refresh, ZoomIn, QuestionFilled, DocumentAdd, Expand, Fold, VideoPlay, Close } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 import { useFilmStore } from '@/stores/film'
 import { useGenerationTaskStore, GEN_RESOURCE } from '@/stores/generationTaskStore'
@@ -3407,12 +3403,6 @@ const { navCollapsed, storyboardMenuExpanded, toggleNav, scrollToTop, scrollToAn
 
 function goList() {
   router.push('/')
-}
-
-function goCanvasMode() {
-  if (!dramaId.value) return
-  const query = selectedEpisodeId.value ? { episode: String(selectedEpisodeId.value) } : {}
-  router.push({ path: `/film/${dramaId.value}/canvas`, query })
 }
 
 async function updateStoryboardLookTransitionNote(storyboardId, characterId, note) {
