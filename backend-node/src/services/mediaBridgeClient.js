@@ -10,6 +10,7 @@ const LEGACY_MARKETING_HOSTS = new Set([
   `www.${LEGACY_PROVIDER_ID}.ai`,
   `generate.${LEGACY_PROVIDER_ID}.ai`,
 ]);
+const NEUTRAL_PROVIDER_HOST = 'mediabridge.ai';
 const MEDIABRIDGE_API_BASE = `https://${LEGACY_API_HOST}`;
 
 function normalizeMediaBridgeApiKey(apiKey) {
@@ -60,6 +61,8 @@ function isMediaBridgeConfig(config) {
     provider === `${LEGACY_PROVIDER_ID}.ai` ||
     protocol === 'mediabridge' ||
     protocol === LEGACY_PROVIDER_ID ||
+    hostname === NEUTRAL_PROVIDER_HOST ||
+    hostname.endsWith(`.${NEUTRAL_PROVIDER_HOST}`) ||
     hostname === LEGACY_API_HOST ||
     hostname === `generate.${LEGACY_PROVIDER_ID}.ai`
   );
@@ -73,7 +76,11 @@ function mediaBridgeApiBase(baseUrl) {
     url.search = '';
     url.hash = '';
     const hostname = url.hostname.toLowerCase();
-    if (LEGACY_MARKETING_HOSTS.has(hostname)) {
+    if (
+      LEGACY_MARKETING_HOSTS.has(hostname) ||
+      hostname === NEUTRAL_PROVIDER_HOST ||
+      hostname.endsWith(`.${NEUTRAL_PROVIDER_HOST}`)
+    ) {
       url.protocol = 'https:';
       url.hostname = LEGACY_API_HOST;
       url.port = '';
