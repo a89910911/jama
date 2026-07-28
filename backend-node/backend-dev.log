@@ -191,7 +191,7 @@ webDist C:\Users\Administrator\Documents\GitHub\jama\frontweb\dist
 2026-07-25T14:13:06.536Z [INFO] GET /api/v1/auth/me
 2026-07-25T14:13:13.370Z [INFO] GET /api/v1/auth/me
 2026-07-25T14:13:21.622Z [INFO] POST /api/v1/auth/login
-2026-07-25T14:13:21.686Z [INFO] Account logged in {"username":"zhangzexing"}
+2026-07-25T14:13:21.686Z [INFO] Account logged in {"username":"admin"}
 2026-07-25T14:13:21.801Z [INFO] GET /api/v1/dramas
 2026-07-25T14:13:21.804Z [INFO] GET /api/v1/dramas/examples
 2026-07-25T14:13:21.805Z [INFO] GET /api/v1/ai-configs/vendor-lock

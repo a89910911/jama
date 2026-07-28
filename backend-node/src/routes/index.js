@@ -107,7 +107,7 @@ function setupRouter(cfg, db, log) {
   r.get('/auth/me', auth.me);
   r.put('/auth/password', auth.changePassword);
 
-  // ---------- account management (zhangzexing only) ----------
+  // ---------- account management (admin only) ----------
   r.get('/accounts', authService.requireSuperAdmin, auth.listAccounts);
   r.post('/accounts', authService.requireSuperAdmin, auth.createAccount);
   r.put('/accounts/:id', authService.requireSuperAdmin, auth.updateAccount);

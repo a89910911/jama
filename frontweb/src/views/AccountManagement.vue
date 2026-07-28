@@ -24,7 +24,7 @@
         </div>
         <div class="summary-card admin-card">
           <span>最高权限</span>
-          <strong>zhangzexing</strong>
+          <strong>admin</strong>
         </div>
       </section>
 

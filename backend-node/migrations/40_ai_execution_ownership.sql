@@ -22,27 +22,27 @@ ALTER TABLE ai_request_logs ADD COLUMN username_snapshot VARCHAR(255);
 -- 既有数据产生于“仅有公共配置”的版本，升级时统一归属给唯一的最高权限账号。
 -- 新安装在此时尚无账号或业务数据，标量子查询返回 NULL，不影响后续初始化。
 UPDATE async_tasks
-SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE user_id IS NULL;
 
 UPDATE image_generations
-SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE requested_by_user_id IS NULL;
 
 UPDATE video_generations
-SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE requested_by_user_id IS NULL;
 
 UPDATE video_merges
-SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET requested_by_user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE requested_by_user_id IS NULL;
 
 UPDATE redraw_jobs
-SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE user_id IS NULL;
 
 UPDATE action_migration_jobs
-SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'zhangzexing' LIMIT 1)
+SET user_id = (SELECT id FROM user_accounts WHERE LOWER(username) = 'admin' LIMIT 1)
 WHERE user_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_async_tasks_user_status

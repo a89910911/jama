@@ -9,13 +9,13 @@ test('auth system seeds the only super admin and verifies its password', () => {
     initialAdminPassword: 'AdminBootstrap-123!',
   });
 
-  const admin = auth.findUserByUsername(db, 'ZHANGZEXING');
+  const admin = auth.findUserByUsername(db, 'admin');
   assert.equal(bootstrap.created, true);
   assert.equal(bootstrap.generated, false);
-  assert.equal(admin.username, 'zhangzexing');
+  assert.equal(admin.username, 'admin');
   assert.equal(admin.role, auth.SUPER_ADMIN_ROLE);
   assert.equal(auth.verifyPassword('AdminBootstrap-123!', admin.password_hash), true);
-  assert.equal(auth.verifyPassword('zhangzexing', admin.password_hash), false);
+  assert.equal(auth.verifyPassword('admin', admin.password_hash), false);
   assert.equal(auth.verifyPassword('wrong-password', admin.password_hash), false);
   db.close();
 });
@@ -23,13 +23,13 @@ test('auth system seeds the only super admin and verifies its password', () => {
 test('auth system generates an unpredictable password instead of a known default', () => {
   const db = new Database(':memory:');
   const bootstrap = auth.ensureAuthSystem(db, { env: {} });
-  const admin = auth.findUserByUsername(db, 'zhangzexing');
+  const admin = auth.findUserByUsername(db, 'admin');
 
   assert.equal(bootstrap.created, true);
   assert.equal(bootstrap.generated, true);
   assert.ok(bootstrap.password.length >= 24);
   assert.equal(auth.verifyPassword(bootstrap.password, admin.password_hash), true);
-  assert.equal(auth.verifyPassword('zhangzexing', admin.password_hash), false);
+  assert.equal(auth.verifyPassword('admin', admin.password_hash), false);
   db.close();
 });
 
@@ -39,7 +39,7 @@ test('configured initial admin passwords must be production strength', () => {
     /12-128/
   );
   assert.throws(
-    () => auth.resolveInitialAdminPassword({ initialAdminPassword: 'zhangzexing' }),
+    () => auth.resolveInitialAdminPassword({ initialAdminPassword: 'admin' }),
     /不能与管理员账号相同/
   );
 });
@@ -64,7 +64,7 @@ test('standard accounts can be created, disabled and have their password reset',
 test('the highest-privilege account cannot be managed by account operations', () => {
   const db = new Database(':memory:');
   auth.ensureAuthSystem(db);
-  const admin = auth.findUserByUsername(db, 'zhangzexing');
+  const admin = auth.findUserByUsername(db, 'admin');
 
   assert.throws(() => auth.setAccountActive(db, admin.id, false), /最高权限账号/);
   assert.throws(() => auth.deleteAccount(db, admin.id), /最高权限账号/);

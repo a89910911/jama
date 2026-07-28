@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { upsertSql } = require('../db/portableSql');
 
-const SUPER_ADMIN_USERNAME = 'zhangzexing';
+const SUPER_ADMIN_USERNAME = 'admin';
 const SUPER_ADMIN_ROLE = 'super_admin';
 const PASSWORD_ITERATIONS = 210000;
 const TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -160,7 +160,7 @@ function ensureAuthSystem(db, options = {}) {
     `).run(SUPER_ADMIN_ROLE, now, existingAdmin.id);
   }
 
-  // 数据层也只允许 zhangzexing 保有最高权限。
+  // 数据层也只允许 admin 保有最高权限。
   db.prepare(`
     UPDATE user_accounts
     SET role = 'user', updated_at = ?
