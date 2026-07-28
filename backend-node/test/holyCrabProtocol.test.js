@@ -1,5 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   normalizeHolyCrabApiKey,
@@ -117,8 +120,16 @@ describe('HolyCrab BytePlus Seedance adapter', () => {
     assert.equal(calls.length, 3);
     assert.equal(calls[0].options.headers['X-User-Token'], 'crab-secret');
     assert.match(
-      calls[1].options.body,
-      /^url=https%3A%2F%2Fcdn\.example\.com%2Fcharacter\.png&name=jama-/
+      calls[1].options.headers['Content-Type'],
+      /^multipart\/form-data; boundary=/
+    );
+    assert.match(
+      calls[1].options.body.toString('utf8'),
+      /name="url"\r\n\r\nhttps:\/\/cdn\.example\.com\/character\.png/
+    );
+    assert.match(
+      calls[1].options.body.toString('utf8'),
+      /name="name"\r\n\r\njama-/
     );
     assert.deepEqual(calls[2].options.body, {
       prompt: '@Image1 奔跑',
@@ -212,6 +223,27 @@ describe('HolyCrab BytePlus Seedance adapter', () => {
     assert.deepEqual(generationCall.options.body.imageAssetIds, ['assetlocal123']);
     assert.equal(generationCall.options.body.generate_audio, true);
     assert.equal(decodeHolyCrabVideoHandle(result.task_id).uniq_id, 'task-local');
+  });
+
+  it('resolves /static paths inside storage on Windows instead of the drive root', () => {
+    const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jama-holycrab-'));
+    const relativePath = path.join('projects', 'demo', 'images', 'frame.png');
+    const absolutePath = path.join(storageRoot, relativePath);
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, Buffer.from('image-bytes'));
+
+    try {
+      const source = resolveHolyCrabLocalImageSource(
+        '/static/projects/demo/images/frame.png',
+        storageRoot
+      );
+      assert.ok(source);
+      assert.equal(source.localPath, absolutePath);
+      assert.equal(source.mimeType, 'image/png');
+      assert.equal(source.buffer.toString('utf8'), 'image-bytes');
+    } finally {
+      fs.rmSync(storageRoot, { recursive: true, force: true });
+    }
   });
 
   it('polls the task endpoint and returns the completed video URL', async () => {

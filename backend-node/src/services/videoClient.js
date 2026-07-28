@@ -639,9 +639,21 @@ function resolveHolyCrabLocalImageSource(rawUrl, storageLocalPath) {
       return null;
     }
   } else {
-    candidate = path.isAbsolute(raw)
-      ? path.resolve(raw)
-      : path.resolve(storageRoot, raw.replace(/^[/\\]+/, '').split(/[?#]/)[0]);
+    let localRef = raw.split(/[?#]/)[0];
+    try {
+      localRef = decodeURIComponent(localRef);
+    } catch (_) {}
+    // `/static/...` 是 Web 静态资源路径。在 Windows 上 path.isAbsolute()
+    // 会把它误判为当前盘符根目录下的绝对路径（如 C:\static\...）。
+    // 必须先去掉 static 前缀，再相对于 storageRoot 解析。
+    if (/^[/\\]*static[/\\]/i.test(localRef)) {
+      const relative = localRef.replace(/^[/\\]*static[/\\]+/i, '');
+      candidate = path.resolve(storageRoot, relative);
+    } else {
+      candidate = path.isAbsolute(localRef)
+        ? path.resolve(localRef)
+        : path.resolve(storageRoot, localRef.replace(/^[/\\]+/, ''));
+    }
   }
 
   const rootLower = storageRoot.toLowerCase();
@@ -4375,17 +4387,18 @@ async function registerHolyCrabAssetFromUrl(config, publicUrl, requestImpl, opts
     return waitForHolyCrabAsset(config, existing, requestImpl, opts);
   }
 
-  const form = new URLSearchParams();
-  form.set('url', String(publicUrl));
-  form.set('name', name);
+  const multipart = buildHolyCrabMultipart({
+    url: String(publicUrl),
+    name,
+  });
   const createResponse = await requestImpl(
     joinHolyCrabUrl(config.base_url, '/api/user-assets/create-asset-from-url'),
     {
       method: 'POST',
       headers: holyCrabHeaders(config.api_key, {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': `multipart/form-data; boundary=${multipart.boundary}`,
       }),
-      body: form.toString(),
+      body: multipart.body,
       timeoutMs: 60000,
     }
   );

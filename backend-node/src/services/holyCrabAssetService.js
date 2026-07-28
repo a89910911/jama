@@ -87,16 +87,17 @@ async function createAssetFromUrl(config, input = {}, requestImpl = holyCrabRequ
     throw new Error('素材 URL 仅支持 http 或 https');
   }
 
-  const body = new URLSearchParams({ url: parsed.toString() });
+  const fields = { url: parsed.toString() };
   const name = String(input.name || '').trim();
-  if (name) body.set('name', name.slice(0, 200));
+  if (name) fields.name = name.slice(0, 200);
+  const multipart = buildMultipart(fields);
   return requestAsset(
     config,
     '/api/user-assets/create-asset-from-url',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
-      body: body.toString(),
+      headers: { 'Content-Type': `multipart/form-data; boundary=${multipart.boundary}` },
+      body: multipart.body,
     },
     'HolyCrab URL 素材创建失败',
     requestImpl

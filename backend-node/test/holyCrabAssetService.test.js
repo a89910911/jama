@@ -48,7 +48,7 @@ describe('HolyCrab asset management adapter', () => {
     assert.equal(result.records[0].uniqId, 'asset001');
   });
 
-  it('validates asset ids and sends URL imports as form data', async () => {
+  it('validates asset ids and sends URL imports as multipart form data', async () => {
     assert.throws(() => normalizeAssetId('bad-id'), /uniqId/);
     let captured;
     const created = await createAssetFromUrl(
@@ -60,10 +60,14 @@ describe('HolyCrab asset management adapter', () => {
       }
     );
     assert.equal(captured.url, 'https://abgzfc.holycrab.ai/api/user-assets/create-asset-from-url');
-    assert.match(captured.options.headers['Content-Type'], /^application\/x-www-form-urlencoded/);
-    assert.equal(
-      captured.options.body,
-      'url=https%3A%2F%2Fcdn.example.com%2Fa.png%3Fx%3D1&name=%E8%A7%92%E8%89%B2%E5%9B%BE'
+    assert.match(captured.options.headers['Content-Type'], /^multipart\/form-data; boundary=/);
+    assert.match(
+      captured.options.body.toString('utf8'),
+      /name="url"\r\n\r\nhttps:\/\/cdn\.example\.com\/a\.png\?x=1/
+    );
+    assert.match(
+      captured.options.body.toString('utf8'),
+      /name="name"\r\n\r\n角色图/
     );
     assert.equal(created.uniqId, 'asset002');
   });
