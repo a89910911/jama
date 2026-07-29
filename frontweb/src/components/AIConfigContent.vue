@@ -1209,6 +1209,14 @@ input_reference = (图片文件，可选)</pre>
           :closable="false"
         />
         <el-alert
+          v-else-if="testServiceType === 'tts'"
+          type="success"
+          title="连接成功"
+          description="语音合成接口已正常响应。"
+          show-icon
+          :closable="false"
+        />
+        <el-alert
           v-else
           type="success"
           title="连接成功"

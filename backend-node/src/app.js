@@ -130,6 +130,8 @@ function createApp() {
   try {
     if (!fs.existsSync(storageRoot)) fs.mkdirSync(storageRoot, { recursive: true });
     app.use('/static', express.static(storageRoot));
+    // 静态文件不存在时必须返回 404，不能落入 SPA 的 index.html fallback。
+    app.use('/static', (_req, res) => res.status(404).send('Not Found'));
   } catch (e) {
     console.warn('Static storage mount skipped:', e.message);
   }

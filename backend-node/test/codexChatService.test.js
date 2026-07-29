@@ -738,6 +738,7 @@ describe('persistCodexImage', () => {
         image_url TEXT,
         local_path TEXT,
         first_frame_image_id INTEGER,
+        error_msg TEXT,
         updated_at TEXT,
         deleted_at TEXT
       );

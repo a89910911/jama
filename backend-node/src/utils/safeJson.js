@@ -162,6 +162,62 @@ function escapeNewlinesInStrings(str) {
  * 场景：AI 输出 "key": 中文文字"  →  应为 "key": "中文文字"
  * 仅处理值的第一个字符不是合法 JSON 值起始字符（" { [ 数字 - t f n）的情况。
  */
+/**
+ * Escape raw double quotes that an AI placed inside a JSON string value.
+ *
+ * Some models omit the backslashes around quoted dialogue. A quote can close a
+ * JSON string only when the next non-whitespace character is a structural
+ * delimiter (: for an object key, or , } ] for a value). Other raw quotes are
+ * treated as literal string content and escaped.
+ */
+function escapeUnescapedQuotesInStrings(str) {
+  let result = '';
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    if (!inString) {
+      if (c === '"') inString = true;
+      result += c;
+      continue;
+    }
+    if (escape) {
+      escape = false;
+      result += c;
+      continue;
+    }
+    if (c === '\\') {
+      escape = true;
+      result += c;
+      continue;
+    }
+    if (c !== '"') {
+      result += c;
+      continue;
+    }
+
+    let nextIndex = i + 1;
+    while (nextIndex < str.length && /\s/.test(str[nextIndex])) nextIndex++;
+    const next = str[nextIndex];
+    const closesString =
+      nextIndex >= str.length ||
+      next === ':' ||
+      next === ',' ||
+      next === '}' ||
+      next === ']';
+
+    if (closesString) {
+      inString = false;
+      result += c;
+    } else {
+      result += '\\"';
+    }
+  }
+
+  return result;
+}
+
 function fixUnquotedStringValues(str) {
   // 匹配模式：冒号-空格 + 非JSON合法值起始字符 + 任意内容(不含引号/换行/括号) + 结尾引号
   // 结尾引号后必须紧跟 , } ] 或换行，确保这确实是个值边界
@@ -200,6 +256,9 @@ function safeParseAIJSON(aiResponse, v, log, outMeta) {
     .trim();
   // 预处理：转义字符串值内部的原始换行/制表符（中文模型常见，会导致 "Unterminated string"）
   cleaned = escapeNewlinesInStrings(cleaned);
+  // One unescaped quote in a dialogue field must not discard the remaining
+  // storyboards in an otherwise complete model response.
+  cleaned = escapeUnescapedQuotesInStrings(cleaned);
   const jsonStr = extractJsonCandidate(cleaned);
   if (!jsonStr) {
     throw new Error('响应中未找到有效的JSON对象或数组');
@@ -438,4 +497,14 @@ function extractFirstArray(parsed) {
   return null;
 }
 
-module.exports = { safeParseAIJSON, extractJsonCandidate, repairTruncatedJsonArray, repairByLastBrace, extractFirstArray, escapeNewlinesInStrings, extractWrappedArrayStr, _jsonrepair };
+module.exports = {
+  safeParseAIJSON,
+  extractJsonCandidate,
+  repairTruncatedJsonArray,
+  repairByLastBrace,
+  extractFirstArray,
+  escapeNewlinesInStrings,
+  escapeUnescapedQuotesInStrings,
+  extractWrappedArrayStr,
+  _jsonrepair,
+};

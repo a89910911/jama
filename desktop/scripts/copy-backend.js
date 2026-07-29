@@ -23,17 +23,26 @@ for (const dir of dirsToCopy) {
   }
 }
 
-// 合并 desktop 自带的初始迁移（保证 01_init、02_add_default_model 等存在）
+// 合并 desktop 自带的初始迁移（仅补缺失的版本）。
+// 同一迁移版本只能有一个文件；否则 migrate.js 会在首次启动时重复记录
+// schema_migrations.version，导致全新安装也无法启动。
 const migrationsDest = path.join(dest, 'migrations');
 const initialMigrations = path.join(__dirname, 'initial-migrations');
 if (!fs.existsSync(migrationsDest)) fs.mkdirSync(migrationsDest, { recursive: true });
 if (fs.existsSync(initialMigrations)) {
+  const existingVersions = new Set(
+    fs.readdirSync(migrationsDest)
+      .map((name) => name.match(/^(\d+)_.*\.sql$/))
+      .filter(Boolean)
+      .map((match) => Number(match[1]))
+  );
   for (const f of fs.readdirSync(initialMigrations)) {
-    if (f.endsWith('.sql')) {
-      fs.copyFileSync(path.join(initialMigrations, f), path.join(migrationsDest, f));
-    }
+    const match = f.match(/^(\d+)_.*\.sql$/);
+    if (!match || existingVersions.has(Number(match[1]))) continue;
+    fs.copyFileSync(path.join(initialMigrations, f), path.join(migrationsDest, f));
+    existingVersions.add(Number(match[1]));
   }
-  console.log('Merged initial-migrations -> desktop/backend-app/migrations');
+  console.log('Merged missing initial-migrations -> desktop/backend-app/migrations');
 }
 
 console.log('Copied backend-node (src, configs, scripts, migrations) -> desktop/backend-app');

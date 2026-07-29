@@ -162,7 +162,7 @@ async function onUpload(e) {
   uploadProgress.value = { current: 0, total: files.length }
   for (const file of files) {
     try {
-      await uploadAPI.uploadImage(file)
+      await uploadAPI.uploadMediaAsset(file)
       uploadProgress.value.current++
     } catch (err) {
       ElMessage.warning(`${file.name} 上传失败: ${err.message}`)
@@ -205,6 +205,7 @@ function normalizeItem(item) {
     ...item,
     type: isVideo ? 'video' : 'image',
     name: item.name || item.filename || (url.split('/').pop()),
+    size: item.size ?? item.file_size ?? null,
   }
 }
 

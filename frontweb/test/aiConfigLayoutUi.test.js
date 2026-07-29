@@ -67,3 +67,8 @@ test('unused SD2 asset management and certification UI stay removed', () => {
   assert.doesNotMatch(configSource, /SD2 资产管理|Sd2AssetManagement/)
   assert.doesNotMatch(filmCreateSource, /seedance2_asset|seedance2_voice_asset|SD2 认证详情/)
 })
+
+test('TTS connection success is described as speech synthesis', () => {
+  assert.match(configSource, /testServiceType === 'tts'/)
+  assert.match(configSource, /语音合成接口已正常响应/)
+})

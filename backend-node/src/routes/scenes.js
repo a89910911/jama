@@ -100,7 +100,14 @@ function routes(db, log, cfg) {
         const body = req.body || {};
         const sceneId = body.scene_id != null ? Number(body.scene_id) : null;
         if (sceneId == null) return response.badRequest(res, '缺少 scene_id');
-        const out = await sceneService.generateSceneFourViewImage(
+        const useQuadGrid =
+          body.use_quad_grid === true ||
+          body.use_quad_grid === 1 ||
+          String(body.use_quad_grid || '').trim().toLowerCase() === 'true';
+        const generateSceneImage = useQuadGrid
+          ? sceneService.generateSceneFourViewImage
+          : sceneService.generateSceneSingleImage;
+        const out = await generateSceneImage(
           db, log, cfg, sceneId, body.model || undefined, body.style || undefined
         );
         if (!out.ok) {
@@ -109,7 +116,7 @@ function routes(db, log, cfg) {
           return response.badRequest(res, out.error);
         }
         response.success(res, {
-          message: '场景四视图生成任务已提交',
+          message: useQuadGrid ? '场景四视图生成任务已提交' : '场景单图生成任务已提交',
           image_generation: out.image_generation,
         });
       } catch (err) {

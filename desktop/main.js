@@ -8,7 +8,9 @@ const LEGACY_PRODUCT_NAME = Buffer.from(
 ).toString('utf8');
 
 // 显式固定 userData 目录，使开发模式与打包 exe 路径完全一致，防止 productName 变更导致路径漂移
-const USERDATA_DIR = path.join(app.getPath('appData'), 'jamaai-desktop');
+const USERDATA_DIR = process.env.JAMAAI_USER_DATA_DIR
+  ? path.resolve(process.env.JAMAAI_USER_DATA_DIR)
+  : path.join(app.getPath('appData'), 'jamaai-desktop');
 app.setPath('userData', USERDATA_DIR);
 
 const MAIN_STARTUP_LOG = path.join(USERDATA_DIR, 'main-startup.log');

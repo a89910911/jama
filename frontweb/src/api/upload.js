@@ -18,6 +18,22 @@ export const uploadAPI = {
     })
   },
   /**
+   * 上传图片或视频并直接登记到媒体素材库。
+   * @param {File} file
+   * @param {{ dramaId?: number|string|null, category?: string }} [opts]
+   */
+  uploadMediaAsset(file, opts = {}) {
+    const form = new FormData()
+    form.append('file', file)
+    if (opts.dramaId != null && opts.dramaId !== '' && Number(opts.dramaId) > 0) {
+      form.append('drama_id', String(opts.dramaId))
+    }
+    if (opts.category) form.append('category', opts.category)
+    return request.post('/assets/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  /**
    * 从图片（base64 data URL 或 http URL）提取实体特征描述，不依赖已有实体 ID。
    * entityType: 'character' | 'scene' | 'prop'
    * imageUrl: data:image/xxx;base64,... 或 http URL

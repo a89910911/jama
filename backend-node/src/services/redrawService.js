@@ -299,9 +299,13 @@ function createCardsFromEpisode(db, jobId) {
   const job = getJobRow(db, jobId);
   if (!job?.episode_id) return [];
   const rows = db.prepare(
-    `SELECT s.*, sc.location AS scene_location, sc.prompt AS scene_prompt, sc.image_url AS scene_image_url, sc.local_path AS scene_local_path
+    `SELECT s.*, sc.location AS scene_location, sc.prompt AS scene_prompt, sc.image_url AS scene_image_url, sc.local_path AS scene_local_path,
+            vg.local_path AS current_video_local_path, vg.video_url AS current_video_url
        FROM storyboards s
        LEFT JOIN scenes sc ON sc.id = s.scene_id
+       LEFT JOIN video_generations vg
+         ON vg.id = s.current_video_generation_id
+        AND vg.deleted_at IS NULL
       WHERE s.episode_id = ? AND s.deleted_at IS NULL
       ORDER BY s.storyboard_number ASC, s.id ASC`
   ).all(Number(job.episode_id));
@@ -331,7 +335,7 @@ function createCardsFromEpisode(db, jobId) {
       card_key: `sb_${sb.id}`,
       title: sb.title || `镜头 ${sb.storyboard_number || index + 1}`,
       sort_order: index,
-      source_video_path: sb.local_path || sb.video_url || '',
+      source_video_path: resolveStoryboardSourceVideoPath(sb),
       prompt: sb.video_prompt || sb.description || sb.action || '',
       duration: sb.duration || null,
       scene_ref: sceneRef,
@@ -346,6 +350,15 @@ function createCardsFromEpisode(db, jobId) {
   });
   updateJobStatus(db, jobId);
   return created;
+}
+
+function resolveStoryboardSourceVideoPath(storyboard = {}) {
+  const candidates = [
+    storyboard.current_video_local_path,
+    storyboard.current_video_url,
+    storyboard.video_url,
+  ];
+  return candidates.find((value) => String(value || '').trim()) || '';
 }
 
 function addCard(db, jobId, body = {}) {
@@ -727,6 +740,7 @@ module.exports = {
   addCard,
   updateCard,
   createCardsFromEpisode,
+  resolveStoryboardSourceVideoPath,
   preflightCard,
   generateStructure,
   submitCard,

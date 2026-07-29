@@ -264,11 +264,22 @@ function configCapability(config) {
   };
 }
 
+function buildStructureFilter(mode) {
+  const preset = (MODE_PRESETS[mode] || MODE_PRESETS.balanced).structure;
+  return [
+    `scale=${preset.width}:-2`,
+    // 低分辨率结构图的色度平面很小；显式限制 chroma radius，
+    // 避免 balanced/identity 的 luma blur 在 FFmpeg 中越界失败。
+    `boxblur=${preset.blur}:1:2:1`,
+    `eq=contrast=${preset.contrast}`,
+    `drawbox=x=0:y=ih*(1-${preset.maskBottom}):w=iw:h=ih*${preset.maskBottom}:color=black:t=fill`,
+  ].join(',');
+}
+
 function makeStructureVideo(cfg, db, log, jobId, dramaId, sourceAbs, sourceRel, mode, trim) {
   if (!hasLocalFfmpeg()) {
     return { local_path: sourceRel, url: publicUrlFromLocalPath(sourceRel), warning: '未找到 ffmpeg，已直接使用原始驱动视频' };
   }
-  const preset = (MODE_PRESETS[mode] || MODE_PRESETS.balanced).structure;
   const storageRoot = storageRootFromConfig(cfg);
   const projectSubdir = storageLayout.getProjectStorageSubdir(db, dramaId);
   const relDir = `${projectSubdir}/action-migration/${jobId}`.replace(/\\/g, '/');
@@ -277,12 +288,7 @@ function makeStructureVideo(cfg, db, log, jobId, dramaId, sourceAbs, sourceRel, 
   const outName = `structure_${mode || 'balanced'}.mp4`;
   const absOut = path.join(absDir, outName);
   const relOut = `${relDir}/${outName}`.replace(/\\/g, '/');
-  const filter = [
-    `scale=${preset.width}:-2`,
-    `boxblur=${preset.blur}:1`,
-    `eq=contrast=${preset.contrast}`,
-    `drawbox=x=0:y=ih*(1-${preset.maskBottom}):w=iw:h=ih*${preset.maskBottom}:color=black:t=fill`,
-  ].join(',');
+  const filter = buildStructureFilter(mode);
   const args = ['-y'];
   if (trim?.start != null && Number(trim.start) > 0) args.push('-ss', String(Math.max(0, Number(trim.start))));
   args.push('-i', sourceAbs);
@@ -475,6 +481,16 @@ function updatePreflight(db, cfg, jobId) {
   return report;
 }
 
+const ACTION_MIGRATION_INSERT_SQL = `
+  INSERT INTO action_migration_jobs
+    (id, drama_id, title, mode, driving_video_path, driving_video_url, structure_video_path,
+     reference_image_path, reference_image_url, prompt, negative_prompt, duration, aspect_ratio,
+     resolution, status, settings, character_id, character_look_id,
+     appearance_context_json, appearance_context_hash, context_stale,
+     user_id, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, 0, ?, ?, ?)
+`;
+
 function createJob(db, cfg, log, body, files) {
   const userId = require('./aiRequestLogService').currentUserId(body.user_id);
   if (!userId) throw new Error('缺少有效的用户身份');
@@ -530,15 +546,7 @@ function createJob(db, cfg, log, body, files) {
   const prompt = buildPrompt(mode, body.prompt);
   const negative = buildNegativePrompt(body.negative_prompt);
   const now = nowIso();
-  db.prepare(
-    `INSERT INTO action_migration_jobs
-      (id, drama_id, title, mode, driving_video_path, driving_video_url, structure_video_path,
-       reference_image_path, reference_image_url, prompt, negative_prompt, duration, aspect_ratio,
-       resolution, status, settings, character_id, character_look_id,
-       appearance_context_json, appearance_context_hash, context_stale,
-       user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
-  ).run(
+  db.prepare(ACTION_MIGRATION_INSERT_SQL).run(
     jobId,
     dramaId,
     String(body.title || '动作迁移任务').trim() || '动作迁移任务',
@@ -605,7 +613,7 @@ function syncVideoGenerationResult(db, cfg, videoGenId) {
       event(db, row.id, 'superseded', '角色造型变化，旧结果未设为当前版本', {
         video_generation_id: video.id,
       });
-      return getJob(db, cfg, row.id);
+      return getJobRow(db, row.id);
     }
     db.prepare(
       `UPDATE action_migration_results
@@ -634,7 +642,7 @@ function syncVideoGenerationResult(db, cfg, videoGenId) {
     ).run(code, video.error_msg || '视频生成失败', now, row.id);
     event(db, row.id, 'failed', '动作迁移生成失败', { video_generation_id: video.id, error: video.error_msg });
   }
-  return getJob(db, cfg, row.id);
+  return getJobRow(db, row.id);
 }
 
 function inspectVideoResult(cfg, video) {
@@ -693,6 +701,16 @@ function listJobs(db, cfg, query = {}) {
   return rows.map((row) => getJob(db, cfg, row.id)).filter(Boolean);
 }
 
+const ACTION_MIGRATION_VIDEO_INSERT_SQL = `
+  INSERT INTO video_generations
+    (drama_id, provider, prompt, model, duration, aspect_ratio, resolution, watermark,
+     image_url, reference_image_urls, source_video_url, status, task_id,
+     action_migration_job_id, appearance_context_json, appearance_context_hash,
+     generation_context_hash, requested_by_user_id, ai_config_id,
+     ai_config_revision_id, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
 function submitJob(db, cfg, log, jobId, options = {}) {
   let row = getJobRow(db, jobId);
   if (!row) return null;
@@ -729,15 +747,7 @@ function submitJob(db, cfg, log, jobId, options = {}) {
       reference_urls: refs,
     })
     : null;
-  const insertInfo = db.prepare(
-    `INSERT INTO video_generations
-      (drama_id, provider, prompt, model, duration, aspect_ratio, resolution, watermark,
-       image_url, reference_image_urls, source_video_url, status, task_id,
-       action_migration_job_id, appearance_context_json, appearance_context_hash,
-       generation_context_hash, requested_by_user_id, ai_config_id,
-       ai_config_revision_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
+  const insertInfo = db.prepare(ACTION_MIGRATION_VIDEO_INSERT_SQL).run(
     row.drama_id || null,
     provider,
     finalPrompt,
@@ -837,4 +847,7 @@ module.exports = {
   buildPrompt,
   buildNegativePrompt,
   configCapability,
+  buildStructureFilter,
+  ACTION_MIGRATION_INSERT_SQL,
+  ACTION_MIGRATION_VIDEO_INSERT_SQL,
 };
