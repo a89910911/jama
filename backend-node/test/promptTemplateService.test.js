@@ -130,13 +130,13 @@ describe('unified prompt storage and resolution', () => {
       db.prepare('PRAGMA table_info(prompt_definitions)').all().map((column) => column.name)
     );
 
-    assert.equal(catalog.length, 98);
+    assert.equal(catalog.length, 104);
     assert.equal(second.inserted, 0);
     assert.equal(
       db.prepare('SELECT COUNT(*) AS count FROM prompt_definitions WHERE drama_id = 0').get().count,
-      98
+      104
     );
-    assert.equal(promptTemplates.listPrompts(db).length, 98);
+    assert.equal(promptTemplates.listPrompts(db).length, 104);
     for (const removed of [
       'seed_content',
       'seed_version',
@@ -398,7 +398,7 @@ describe('prompt APIs and business-scene coverage', () => {
     const listRes = mockResponse();
     handlers.listProject({ params: { drama_id: '1' }, query: {} }, listRes);
     assert.equal(listRes.statusCode, 200);
-    assert.equal(listRes.payload.data.prompts.length, 98);
+    assert.equal(listRes.payload.data.prompts.length, 104);
 
     const key = 'character.identity_anchors.user';
     const updateRes = mockResponse();
@@ -438,7 +438,7 @@ describe('prompt APIs and business-scene coverage', () => {
     assert.equal(overview.length, 24);
     assert.equal(
       overview.reduce((count, scene) => count + scene.prompt_count, 0),
-      98
+      104
     );
     for (const key of [
       'role_extraction',

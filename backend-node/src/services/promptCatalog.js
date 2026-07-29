@@ -68,6 +68,12 @@ const PROMPT_DISPLAY_NAMES = {
   'character.identity_anchors.system': '从角色描述提炼视觉锚点（系统规则）',
   'character.identity_anchors.user': '待提炼的角色外貌描述（输入模板）',
   'storyboard.generation.system': '将剧本拆解为分镜方案（系统规则）',
+  'storyboard.pipeline.beat_analysis': '分镜生成前分析剧本节拍（附加约束）',
+  'storyboard.pipeline.visual_translation': '分镜生成前将抽象剧本视觉化（附加约束）',
+  'storyboard.pipeline.panel_breakdown': '分镜生成时执行拆格职责（附加约束）',
+  'storyboard.pipeline.shot_design': '分镜生成时执行镜头设计职责（附加约束）',
+  'storyboard.pipeline.consistency_lock': '分镜生成时锁定场景与角色一致性（附加约束）',
+  'storyboard.pipeline.prompt_writer': '分镜生成时输出生图与视频提示词字段（附加约束）',
   'storyboard.generation.user': '分镜生成所需剧本与素材（输入模板）',
   'storyboard.generation.continuation': '分镜生成中断后的续写指令（输入模板）',
   'storyboard.generation.continuation_narration': '分镜续写必须包含旁白（附加约束）',
@@ -254,6 +260,12 @@ const PROMPT_CLASSIFICATION_TREE = [
         subcategory: '方案生成',
         keys: [
           'storyboard.generation.system',
+          'storyboard.pipeline.beat_analysis',
+          'storyboard.pipeline.visual_translation',
+          'storyboard.pipeline.panel_breakdown',
+          'storyboard.pipeline.shot_design',
+          'storyboard.pipeline.consistency_lock',
+          'storyboard.pipeline.prompt_writer',
           'storyboard.generation.narration',
           'storyboard.generation.universal_mode',
           'storyboard.generation.count_constraint',
@@ -422,6 +434,30 @@ const BUSINESS_SLOT_OVERRIDES = {
     key: 'continuation',
     label: '中断续写',
   },
+  'storyboard.pipeline.beat_analysis': {
+    key: 'skill_1',
+    label: 'Skill 1 · 节拍',
+  },
+  'storyboard.pipeline.visual_translation': {
+    key: 'skill_2',
+    label: 'Skill 2 · 视觉化',
+  },
+  'storyboard.pipeline.panel_breakdown': {
+    key: 'skill_3',
+    label: 'Skill 3 · 拆格',
+  },
+  'storyboard.pipeline.shot_design': {
+    key: 'skill_4',
+    label: 'Skill 4 · 镜头',
+  },
+  'storyboard.pipeline.consistency_lock': {
+    key: 'skill_5',
+    label: 'Skill 5 · 一致性',
+  },
+  'storyboard.pipeline.prompt_writer': {
+    key: 'skill_6',
+    label: 'Skill 6 · 提示词',
+  },
 };
 
 function businessSlotForDefinition(definition) {
@@ -478,6 +514,30 @@ const PROMPT_PRESENTATION = {
   'storyboard.generation.count_constraint': {
     parent_prompt_key: 'storyboard.generation.system',
     injection_channel: 'System 消息（指定分镜数量时追加）',
+  },
+  'storyboard.pipeline.beat_analysis': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
+  },
+  'storyboard.pipeline.visual_translation': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
+  },
+  'storyboard.pipeline.panel_breakdown': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
+  },
+  'storyboard.pipeline.shot_design': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
+  },
+  'storyboard.pipeline.consistency_lock': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
+  },
+  'storyboard.pipeline.prompt_writer': {
+    parent_prompt_key: 'storyboard.generation.system',
+    injection_channel: 'System 消息（分镜生成前按 Skill 顺序追加）',
   },
   'storyboard.generation.duration_constraint': {
     parent_prompt_key: 'storyboard.generation.user',
@@ -1058,6 +1118,80 @@ function buildCatalog() {
     source:
       'promptI18n.getStoryboardSystemPrompt + getStoryboardUserPromptSuffix + output contract',
   }));
+  const storyboardPipelineSkillDefs = [
+    [
+      'storyboard.pipeline.beat_analysis',
+      `【Script-to-Prompt Skill 1：节拍分析师】
+在正式输出 storyboards 前，先在内部完成剧本节拍分析，不要把分析草稿作为额外字段输出。
+- 识别本集核心事件、人物关系变化、主视角角色、叙事阶段和主导情绪。
+- 按剧情顺序划分 narrative beat，并为每个 beat 估算 impact_level（1=平静，5=极强冲击）。
+- impact_level 4-5 的关键时刻必须独立可见，不得被一句概述吞掉。
+- storyboards 的 segment_title、emotion、atmosphere、duration 与镜头密度必须体现这条节拍曲线。`,
+      'creater_agent_assistant/prompts/beat_analyst.txt',
+    ],
+    [
+      'storyboard.pipeline.visual_translation',
+      `【Script-to-Prompt Skill 2：视觉转译师】
+在写 action、result、layout_description、image_prompt 或 universal_segment_text 前，先把抽象文本翻译成可见画面。
+- 内心、心理、感官、象征、时间流逝等内容必须转成表情、肢体、光线、环境变化、道具状态或空间关系。
+- 保留剧本中的人物关系、因果和对白原意，不得新增剧本没有发生的事件。
+- 对话保持角色台词；只有角色无法说出口的时间、环境或背景信息才允许写入 narration。
+- 每个分镜都要让图片/视频模型能直接看见要生成什么，避免“他很害怕”“气氛尴尬”等不可见抽象词孤立出现。`,
+      'creater_agent_assistant/prompts/visual_translator.txt',
+    ],
+    [
+      'storyboard.pipeline.panel_breakdown',
+      `【Script-to-Prompt Skill 3：拆格主导者】
+你负责决定剧本应拆成多少个分镜，以及每个分镜的叙事焦点。
+- 每个分镜必须对应一个明确 narrative beat，具备 title、action、result 和可验证的画面状态。
+- 允许在一个 5-15 秒视频片段内用“镜头1…切镜到镜头2…”合并连续小动作，但必须仍然服务同一叙事节拍。
+- 场景切换、强反应、真相揭示、关系转折、重要道具展示和高 impact_level 节拍应优先独立成镜。
+- 输入剧本中的角色台词必须逐句覆盖到 dialogue 或 narration，严禁删掉、改成泛泛说明或用旁白代替角色能亲口说出的内容。`,
+      'creater_agent_assistant/prompts/storyboard.txt',
+    ],
+    [
+      'storyboard.pipeline.shot_design',
+      `【Script-to-Prompt Skill 4：镜头设计师】
+在每个分镜中补足镜头语言，让生成结果具备可拍摄性。
+- 根据 impact_level 选择景别：1-2 用远景/中景建立空间，3 用中景/近景推进关系，4-5 用近景/特写/俯仰角强化冲突。
+- movement 必须服务 action 和 duration；固定镜头只用于有明确叙事理由的静态压迫或情绪停顿。
+- layout_description 必须写清主体站位、前中后景、视线方向、主要道具位置和可供首尾帧演化的运镜空间。
+- 高潮镜头前后如需要“蓄力/余震”，可拆出独立分镜，或在同一分镜 action 中写清内部切镜节奏。`,
+      'creater_agent_assistant/prompts/shot_designer.txt',
+    ],
+    [
+      'storyboard.pipeline.consistency_lock',
+      `【Script-to-Prompt Skill 5：一致性锁定】
+生成每个分镜时必须同时维护场景、角色、道具和上下镜连贯性。
+- scene_id、characters、props 只能使用 User 消息中提供的 ID；没有合适项时按既有规则填 null 或空数组。
+- 同一场景内光源方向、时间段、天气、主色调、角色服饰状态、伤势和关键道具位置必须前后稳定。
+- layout_description 是首帧/尾帧和视频生成的空间合同，必须避免左右互换、道具尺度漂移、时代错乱和突然换景。
+- 对承载反转或情绪变化的道具，要在 action/result/image_prompt/video_prompt 中保持同一物件身份。`,
+      'creater_agent_assistant/prompts/consistency_lock.txt',
+    ],
+    [
+      'storyboard.pipeline.prompt_writer',
+      `【Script-to-Prompt Skill 6：提示词工程师】
+每个 storyboards 对象必须已经足够接近可生成素材的提示词，而不是只给导演意图。
+- action 写可见动作链，result 写本镜结束时的可见状态，atmosphere 写光线、色调、现场声和情绪压力。
+- image_prompt 应能直接拼出静态首帧画面；video_prompt 应包含场景、动作、结果、景别、角度、movement、声音和 duration。
+- 如果启用全能模式，universal_segment_text 必须按多子分镜视频段落格式写成可直接提交的视频提示词，不得退化成单句梗概。
+- dialogue、narration、sound_effect 中的台词与声音规则必须和剧本一致；无 BGM 时明确禁 BGM，禁止额外编曲或字幕要求。`,
+      'creater_agent_assistant/prompts/prompt_writer.txt',
+    ],
+  ];
+  for (const [key, content, source] of storyboardPipelineSkillDefs) {
+    add(definition({
+      key,
+      name: key,
+      category: '分镜生成',
+      role: 'suffix',
+      sceneKey: 'storyboard_extraction',
+      contents: universal(content),
+      risk: 'high',
+      source,
+    }));
+  }
   add(definition({
     key: 'storyboard.generation.user',
     name: '分镜生成用户模板',

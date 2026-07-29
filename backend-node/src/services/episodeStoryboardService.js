@@ -375,6 +375,28 @@ function renderCapturedPrompt(content, variables) {
     .replace(/^[，,\s]+|[，,\s]+$/g, '');
 }
 
+const STORYBOARD_PIPELINE_SKILL_KEYS = Object.freeze([
+  'storyboard.pipeline.beat_analysis',
+  'storyboard.pipeline.visual_translation',
+  'storyboard.pipeline.panel_breakdown',
+  'storyboard.pipeline.shot_design',
+  'storyboard.pipeline.consistency_lock',
+  'storyboard.pipeline.prompt_writer',
+]);
+
+function buildStoryboardPipelineSkillBundle(db, cfg, episodeId) {
+  const resolved = promptTemplates.resolvePrompts(db, STORYBOARD_PIPELINE_SKILL_KEYS, {
+    cfg,
+    episodeId,
+  });
+  const parts = STORYBOARD_PIPELINE_SKILL_KEYS
+    .map((key) => resolved.get(key)?.content)
+    .map((content) => String(content || '').trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+  return `【可自定义 Script-to-Prompt Skill 组合】\n${parts.join('\n\n')}`;
+}
+
 function composeStoryboardVideoPrompt(db, sb, style, videoRatio) {
   return promptTemplates.resolvePromptContent(db, 'storyboard.video_prompt.compose', {
     storyboardId: sb?.id,
@@ -1389,6 +1411,8 @@ function generateStoryboard(
     episodeId,
     variables: { shot_duration: effectiveShotDuration || '' },
   });
+  const pipelineSkillBundle = buildStoryboardPipelineSkillBundle(db, cfg, episodeId);
+  if (pipelineSkillBundle) systemPrompt += `\n\n${pipelineSkillBundle}`;
   systemPrompt += `\n\n${buildDurationPromptConstraint(durationMode, videoClipDuration)}`;
 
   // 当用户指定了分镜数量时，在系统管线后追加最高优先级覆盖指令，

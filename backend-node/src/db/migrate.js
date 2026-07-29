@@ -14,6 +14,7 @@ const {
 // A completed version is persisted in startup_maintenance and skipped on later boots.
 const STARTUP_MAINTENANCE_JOBS = Object.freeze({
   schemaColumns: { key: 'schema_columns', version: 1 },
+  promptCatalog: { key: 'prompt_catalog', version: 1 },
   characterWardrobe: { key: 'character_wardrobe', version: 1 },
   legacyAiConfigs: { key: 'legacy_ai_configs', version: 1 },
 });
@@ -1097,6 +1098,16 @@ function runMigrationsAndEnsure(database, options = {}) {
       ensureAllColumns(database, columnsByTable);
       const widened = ensureCharacterLookMysqlTextCapacity(database, columnsByTable);
       return { widened_character_look_columns: widened };
+    }
+  );
+  maintenance.promptCatalog = runStartupMaintenanceJob(
+    database,
+    versions,
+    STARTUP_MAINTENANCE_JOBS.promptCatalog,
+    log,
+    () => {
+      const promptTemplates = require('../services/promptTemplateService');
+      return promptTemplates.installPromptCatalog(database);
     }
   );
   maintenance.characterWardrobe = runStartupMaintenanceJob(

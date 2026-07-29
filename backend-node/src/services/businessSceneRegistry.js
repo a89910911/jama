@@ -182,6 +182,12 @@ const SCENES = [
     description: '将剧本拆分为结构化分镜并支持中断续写',
     prompt_keys: [
       'storyboard.generation.system',
+      'storyboard.pipeline.beat_analysis',
+      'storyboard.pipeline.visual_translation',
+      'storyboard.pipeline.panel_breakdown',
+      'storyboard.pipeline.shot_design',
+      'storyboard.pipeline.consistency_lock',
+      'storyboard.pipeline.prompt_writer',
       'storyboard.generation.narration',
       'storyboard.generation.universal_mode',
       'storyboard.generation.count_constraint',
