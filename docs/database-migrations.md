@@ -1,17 +1,18 @@
 # 数据库建表与版本迁移方案
 
-本文档说明后端启动时如何自动检查并更新 SQLite/MySQL 表结构。SQL 源文件统一放在 `backend-node/migrations/`，按文件名前缀数字作为版本号执行。
+本文档说明如何通过版本化 SQL 更新 SQLite/MySQL 表结构。SQL 源文件统一放在 `backend-node/migrations/`，按文件名前缀数字作为版本号执行。
 
 ## 启动流程
 
 1. 后端启动后根据配置连接数据库：`sqlite` 使用 `better-sqlite3`，`mysql` 使用 `MysqlDatabase` 方言适配层。
-2. 执行 `runMigrationsAndEnsure(db)`：
+2. 执行 `runMigrations(db)`：
    - 自动创建 `schema_migrations` 版本表；
    - 扫描 `backend-node/migrations/*.sql`；
    - 只执行 `schema_migrations` 中不存在的版本；
    - 每个版本执行成功后写入版本号、文件名、SQL 校验值、执行时间；
    - 对历史库中已经存在的字段/索引/表，兼容跳过并补记版本。
-3. 执行 `ensureAllColumns(db)` 做兜底结构检查，避免旧库漏字段导致运行时报 `no such column`。
+
+服务启动不再执行全表结构兜底校验。新增或调整表结构时必须提交新的迁移 SQL，并在初始化或升级数据库时运行迁移。
 
 ## 版本表
 
@@ -74,10 +75,18 @@ MySQL 启动时同样走这套流程。SQLite 语法会通过 `src/db/sqlDialect
 | 34 | `34_storyboard_per_shot_first_last_frame.sql` | 单分镜首尾帧开关 |
 | 35 | `35_redraw_workbench.sql` | 视频重绘工作台表、结果表、事件表及字段 |
 | 36 | `36_action_migration.sql` | 动作迁移任务/结果/事件表及字段 |
+| 37 | `37_character_wardrobe.sql` | 角色衣橱、场景块、连戏上下文字段 |
+| 38 | `38_unified_prompts.sql` | 统一提示词目录 |
+| 39 | `39_user_ai_configs.sql` | 用户级 AI 配置表 |
+| 40 | `40_ai_execution_ownership.sql` | AI 执行归属字段 |
+| 41 | `41_user_ai_preferences.sql` | 用户 AI 偏好配置 |
+| 42 | `42_startup_maintenance.sql` | 一次性启动维护记录表 |
+| 43 | `43_scene_single_image_prompt.sql` | 场景单图提示词字段 |
+| 44 | `44_complete_schema_columns.sql` | 迁移缺口补齐，替代旧启动补列清单 |
 
 ## 新增迁移规范
 
 1. 新增表、字段、索引或数据修复时，只新增一个递增 SQL 文件，例如 `37_add_xxx.sql`。
-2. SQL 尽量写成可重复执行的形式：`CREATE TABLE IF NOT EXISTS`、`CREATE INDEX IF NOT EXISTS`；字段新增由启动器兼容重复字段错误。
+2. SQL 尽量写成可重复执行的形式：`CREATE TABLE IF NOT EXISTS`、`CREATE INDEX IF NOT EXISTS`；字段新增的重复字段错误由迁移执行器兼容跳过。
 3. 已发布的迁移文件不要修改内容。启动器会记录校验值，如果已执行版本的 SQL 被改动，会输出警告。
-4. 不再要求部署人员手动执行 ALTER。启动服务即可自动补齐表结构。
+4. 不再添加启动补列兜底清单。所有结构变化必须进入迁移文件。

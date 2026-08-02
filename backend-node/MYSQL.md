@@ -1,6 +1,6 @@
 # MySQL 启动与迁移
 
-运行环境要求 Node.js 20.6 或更高版本。连接密码只保存在未纳入 Git 的环境文件中。
+运行环境要求 Node.js 20.6 或更高版本。MySQL 连接信息通过环境文件或系统环境变量注入。
 
 ## 两种启动方式
 
@@ -12,11 +12,11 @@ cp .env.mysql.test.example .env.mysql.test
 npm run dev:mysql:test
 ```
 
-服务器连接本机生产库：
+服务器连接同一个测试库的本机地址：
 
 ```bash
 cp .env.mysql.prod.example .env.mysql.prod
-# 填写生产库密码并限制文件权限
+# 填写测试库密码并限制文件权限
 chmod 600 .env.mysql.prod
 npm run start:mysql:prod
 ```
@@ -38,14 +38,14 @@ JAMA_DB_NAME=...
 
 ```bash
 npm run db:migrate:mysql:test -- --replace
-npm run db:migrate:mysql:prod -- --replace
+npm run db:migrate:mysql:prod -- --replace  # 服务器 localhost，同样写入 jama-test
 ```
 
 只验证、不写入：
 
 ```bash
 npm run db:verify:mysql:test
-npm run db:verify:mysql:prod
+npm run db:verify:mysql:prod  # 服务器 localhost，同样验证 jama-test
 ```
 
-`--replace` 会重建目标库中的 Jama 业务表。运行前应先备份已有 MySQL 数据，并在迁移生产库时停止后端写入。
+`--replace` 会重建目标库中的 Jama 业务表。运行前应先备份已有 MySQL 数据，并在服务器执行时停止后端写入。

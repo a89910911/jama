@@ -39,7 +39,7 @@ cd frontweb && npm run build
 - Backend uses `node --watch` for hot reloading in dev mode (`npm run dev`).
 - Backend and source development default to MySQL. Configure it with `JAMA_DB_*`.
 - Packaged Electron builds set `JAMA_DESKTOP_PACKAGED=1` and use the embedded SQLite database in `backend-node/data/`.
-- Migrations run automatically on backend startup (`ensureColumns()`); explicit `npm run migrate` only needed for first-time setup or after adding new migration SQL files.
+- Backend startup runs versioned SQL migrations only; schema fallback checks are not run on every startup. Use `npm run migrate` after adding new migration SQL files or initializing a database.
 - Config file at `backend-node/configs/config.yaml` already exists in the repo — no need to copy from example.
 - AI content generation requires external API keys (configured via the app's "AI 配置" page), but the app fully functions without them for development/testing purposes.
 - The backend also serves the built frontend from `frontweb/dist/` at port 5679 when the dist folder exists; during development, use the Vite dev server at port 3013 instead.

@@ -8,9 +8,6 @@ const {
   resolveDatabaseType,
   resolveInsecureTls,
 } = require('../src/config');
-const {
-  ensureCharacterLookMysqlTextCapacity,
-} = require('../src/db/migrate');
 
 test('server and source development default to MySQL', () => {
   assert.equal(DEFAULT_DATABASE_TYPE, 'mysql');
@@ -62,36 +59,30 @@ test('default backend commands load the local MySQL environment file', () => {
   }
 });
 
-test('MySQL wardrobe image fields are widened without running SQLite-only DDL', () => {
-  const execs = [];
-  const mysql = {
-    dialect: 'mysql',
-    prepare() {
-      return {
-        all() {
-          return [
-            { name: 'image_url', type: 'text' },
-            { name: 'appearance', type: 'longtext' },
-          ];
-        },
-      };
-    },
-    exec(sql) {
-      execs.push(sql);
-    },
-  };
-  assert.deepEqual(ensureCharacterLookMysqlTextCapacity(mysql), ['image_url']);
-  assert.deepEqual(execs, [
-    'ALTER TABLE `character_looks` MODIFY COLUMN `image_url` LONGTEXT NULL',
-  ]);
+function readEnvFile(name) {
+  const source = fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
+  return Object.fromEntries(
+    source
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => {
+        const index = line.indexOf('=');
+        return [line.slice(0, index), line.slice(index + 1)];
+      })
+  );
+}
 
-  const sqlite = {
-    dialect: 'sqlite',
-    prepare() {
-      throw new Error('SQLite metadata should not be queried');
-    },
-  };
-  assert.deepEqual(ensureCharacterLookMysqlTextCapacity(sqlite), []);
+test('MySQL environments use jama-test with only host differing for server deploys', () => {
+  const local = readEnvFile('.env.mysql.test');
+  const server = readEnvFile('.env.mysql.prod');
+
+  assert.equal(local.JAMA_DB_NAME, 'jama-test');
+  assert.equal(server.JAMA_DB_NAME, 'jama-test');
+  assert.equal(local.JAMA_DB_USER, 'jama-test');
+  assert.equal(server.JAMA_DB_USER, 'jama-test');
+  assert.equal(local.JAMA_DB_HOST, '101.35.214.179');
+  assert.equal(server.JAMA_DB_HOST, '127.0.0.1');
 });
 
 test('business SQL does not contain SQLite-only query syntax', () => {

@@ -18,7 +18,7 @@
 | 后端监听地址 | `127.0.0.1:5679` |
 | 运行用户 | `jama:jama` |
 | Node.js | `v20.20.2` |
-| MySQL | `127.0.0.1:3306`，数据库 `jama-prod` |
+| MySQL | `127.0.0.1:3306`，数据库 `jama-test` |
 | Nginx 配置 | `/www/server/panel/vhost/nginx/jama.artisoul.top.conf` |
 | SSL 证书目录 | `/www/server/panel/vhost/cert/jama.artisoul.top/` |
 
@@ -464,7 +464,7 @@ tr '\0' '\n' < "/proc/$pid/environ" |
 JAMA_DB_TYPE=mysql
 JAMA_DB_HOST=127.0.0.1
 JAMA_DB_PORT=3306
-JAMA_DB_NAME=jama-prod
+JAMA_DB_NAME=jama-test
 ```
 
 检查资源目录没有被替换：
@@ -485,10 +485,10 @@ readlink -f /www/wwwroot/jama.artisoul.top/backend-node/data
 
 | 内容 | 服务器位置 |
 | --- | --- |
-| MySQL 生产环境文件 | `backend-node/.env.mysql.prod` |
+| MySQL 服务器环境文件 | `backend-node/.env.mysql.prod` |
 | 后端运行配置 | `backend-node/configs/` |
 | 图片、音频和视频 | `.deploy/shared/data/storage/` |
-| MySQL 业务数据 | 本机 MySQL 的 `jama-prod` 数据库 |
+| MySQL 业务数据 | 本机 MySQL 的 `jama-test` 数据库 |
 | 宝塔 Nginx 配置 | `/www/server/panel/vhost/nginx/jama.artisoul.top.conf` |
 | 宝塔 SSL 证书 | `/www/server/panel/vhost/cert/jama.artisoul.top/` |
 
@@ -549,15 +549,15 @@ systemd 通过以下文件加载它：
 /etc/systemd/system/jama.service.d/mysql.conf
 ```
 
-生产环境变量结构：
+服务器环境变量结构：
 
 ```dotenv
 JAMA_DB_TYPE=mysql
 JAMA_DB_HOST=127.0.0.1
 JAMA_DB_PORT=3306
-JAMA_DB_USER=jama-prod
-JAMA_DB_PASSWORD=请填写生产密码
-JAMA_DB_NAME=jama-prod
+JAMA_DB_USER=jama-test
+JAMA_DB_PASSWORD=请填写测试库密码
+JAMA_DB_NAME=jama-test
 JAMA_DB_CHARSET=utf8mb4
 ```
 
@@ -588,7 +588,7 @@ systemctl restart jama.service
 
 ```bash
 /www/server/mysql/bin/mysqladmin \
-  -h 127.0.0.1 -P 3306 -u jama-prod -p ping
+  -h 127.0.0.1 -P 3306 -u jama-test -p ping
 ```
 
 不要随意执行带有 `--replace` 的迁移命令，它可能重建生产业务表。
@@ -785,6 +785,6 @@ systemctl status jama.service --no-pager
 - [ ] 域名 `/health` 返回 `200`；
 - [ ] 首页可以正常加载；
 - [ ] 生产环境变量仍为 `JAMA_DB_TYPE=mysql`；
-- [ ] MySQL 使用 `127.0.0.1:3306/jama-prod`；
+- [ ] MySQL 使用 `127.0.0.1:3306/jama-test`；
 - [ ] 资源目录链接仍指向 `.deploy/shared/data`；
 - [ ] 日志没有持续出现新的错误。

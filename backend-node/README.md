@@ -95,7 +95,7 @@ backend-node/
 │   │   └── index.js            # YAML 配置加载
 │   ├── db/
 │   │   ├── index.js            # MySQL / SQLite 连接
-│   │   └── migrate.js          # 启动时自动补列（ensureColumns）
+│   │   └── migrate.js          # 版本化 SQL 迁移
 │   ├── routes/
 │   │   ├── index.js            # 路由总入口
 │   │   ├── drama.js            # 剧本 / 导出 / 导入
@@ -320,7 +320,7 @@ style:
 
 **数据库迁移：**
 - `npm run migrate` — 运行 `migrations/` 目录下的 SQL 文件
-- 每次服务启动时自动执行 `ensureColumns()`，确保所有列存在（支持旧数据库升级）
+- 服务启动不再执行全表结构兜底校验；新增表或字段时应提交 SQL 迁移，并在需要初始化或升级数据库时运行 `npm run migrate`
 
 ---
 
@@ -398,7 +398,7 @@ style:
 
 ### 添加新的数据库字段
 
-1. 在 `migrate.js` 的 `ensureColumns()` 中添加新字段定义（类型 + 默认值）
+1. 在 `migrations/` 中新增递增编号的 SQL 迁移文件
 2. 更新对应的 Service 文件中的 INSERT/SELECT 语句
 
 ### 日志级别

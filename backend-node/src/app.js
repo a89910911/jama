@@ -30,12 +30,14 @@ function createApp() {
   const config = startupPhase(logger, 'config.load', () => loadConfig());
   const db = startupPhase(logger, 'database.connect', () => getDb(config.database));
   const {
-    runMigrationsAndEnsure,
+    runMigrations,
+    getStartupMaintenanceVersions,
     runStartupMaintenanceJob,
     STARTUP_MAINTENANCE_JOBS,
   } = require('./db/migrate.js');
-  const databaseSetup = startupPhase(logger, 'database.migrations_and_maintenance', () =>
-    runMigrationsAndEnsure(db, { log: logger })
+  startupPhase(logger, 'database.migrations', () => runMigrations(db, { log: logger }));
+  const startupMaintenanceVersions = startupPhase(logger, 'startup_maintenance.load', () =>
+    getStartupMaintenanceVersions(db)
   );
   const authService = require('./services/authService');
   const adminBootstrap = startupPhase(
@@ -54,7 +56,7 @@ function createApp() {
   startupPhase(logger, 'ai_config.legacy_migration', () =>
     runStartupMaintenanceJob(
       db,
-      databaseSetup.versions,
+      startupMaintenanceVersions,
       STARTUP_MAINTENANCE_JOBS.legacyAiConfigs,
       logger,
       () => {
@@ -72,11 +74,6 @@ function createApp() {
         return migrated;
       }
     )
-  );
-  // Schema availability is stable after migrations; resolve it during startup so
-  // the first wardrobe request does not pay for information_schema round trips.
-  startupPhase(logger, 'wardrobe.schema_cache', () =>
-    require('./services/characterLookService').hasWardrobeTables(db)
   );
 
   // vendor_lock 仅保留为前端模板策略，不再创建或覆盖任何公共运行时配置。

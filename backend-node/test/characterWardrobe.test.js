@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 
-const { runMigrationsAndEnsure } = require('../src/db/migrate');
+const { runMigrations } = require('../src/db/migrate');
 const characterLookService = require('../src/services/characterLookService');
 const bindingService = require('../src/services/characterLookBindingService');
 const visualContextResolver = require('../src/services/visualContextResolver');
@@ -13,7 +13,7 @@ const log = { info() {}, warn() {}, error() {} };
 
 function createDatabase() {
   const db = new Database(':memory:');
-  runMigrationsAndEnsure(db);
+  runMigrations(db);
   return db;
 }
 
