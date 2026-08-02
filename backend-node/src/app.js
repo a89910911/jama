@@ -99,6 +99,11 @@ function createApp() {
   startupPhase(logger, 'tasks.resume_video_generations', () =>
     resumeProcessingVideoGenerations(db, log)
   );
+  const mediaLocalizationService = require('./services/mediaLocalizationService');
+  startupPhase(logger, 'tasks.resume_media_localization', () =>
+    mediaLocalizationService.resumePendingLocalizations(db, log)
+  );
+  mediaLocalizationService.startMediaLocalizationWorker(db, log);
 
   const app = express();
   // A 16 MB binary upload expands to roughly 21.4 MB when represented as Base64.

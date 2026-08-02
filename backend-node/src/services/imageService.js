@@ -53,12 +53,17 @@ function rowToItem(r) {
     character_id: r.character_id,
     character_look_id: r.character_look_id ?? undefined,
     character_look_revision: r.character_look_revision ?? undefined,
+    prop_id: r.prop_id ?? undefined,
     parent_generation_id: r.parent_generation_id ?? undefined,
     provider: r.provider,
     prompt: r.prompt,
     model: r.model,
+    provider_url: r.provider_url ?? undefined,
     image_url: r.image_url,
     local_path: r.local_path,
+    localize_status: r.localize_status ?? undefined,
+    localize_error: r.localize_error ?? undefined,
+    localized_at: r.localized_at ?? undefined,
     status: r.status,
     task_id: r.task_id,
     error_msg: r.error_msg,
@@ -94,6 +99,7 @@ const aiClient = require('./aiClient');
 const promptTemplates = require('./promptTemplateService');
 const characterLookService = require('./characterLookService');
 const visualContextResolver = require('./visualContextResolver');
+const mediaLocalizationService = require('./mediaLocalizationService');
 
 const LAST_FRAME_TYPES = new Set(['last', 'storyboard_last', 'tail', 'last_frame']);
 const FIRST_FRAME_TYPES = new Set(['first', 'storyboard_first', 'first_frame']);
@@ -1666,52 +1672,35 @@ async function processImageGeneration(db, log, imageGenId) {
       return;
     }
 
-    // ── Step 5: 保存图片到本地 ───────────────────────────────────────
+    // ── Step 5: 先记录 AI 返回地址，本地化交给后台任务 ────────────────
     if (row.task_id) {
-      taskService.updateTaskStatus(db, row.task_id, 'processing', 85, '图片已生成，正在保存到本地…');
+      taskService.updateTaskStatus(db, row.task_id, 'processing', 85, '图片已生成，正在写入记录…');
     }
-    log.info('[图生] Step5 保存到本地 →', { id: imageGenId, elapsed: elapsed() });
-    const tSave = Date.now();
-    let localPath = null;
-    try {
+    log.info('[图生] Step5 记录 AI 返回地址', { id: imageGenId, elapsed: elapsed() });
+    let localPath = result.local_path || null;
+    let persistedImageUrl = result.image_url;
+    const providerUrl = result.provider_url || result.image_url;
+    const shouldLocalize = !localPath && mediaLocalizationService.isRemoteDownloadUrl(result.image_url);
+    const localizeStatus = localPath ? 'completed' : shouldLocalize ? 'pending' : 'none';
+    const localizedAt = localPath ? now2 : null;
+    if (localPath && imageSize) {
       const storagePath = path.isAbsolute(cfg.storage?.local_path)
         ? cfg.storage.local_path
         : path.join(process.cwd(), cfg.storage?.local_path || './data/storage');
-      const category =
-        row.scene_id != null ? 'scenes' : row.character_id != null ? 'characters' : 'images';
-      const projectSubdir = storageLayout.getProjectStorageSubdir(db, row.drama_id);
-      localPath = await uploadService.downloadImageToLocal(
-        storagePath,
-        result.image_url,
-        category,
-        log,
-        'ig',
-        projectSubdir
-      );
-      if (localPath && imageSize) {
-        const absImg = path.join(storagePath, localPath);
+      try {
+        const absImg = path.join(storagePath, ...String(localPath).split('/'));
         await normalizeLocalImageToTargetSize(absImg, imageSize, log, { id: imageGenId });
+        if (row.frame_type !== 'quad_grid' && row.frame_type !== 'nine_grid') {
+          await normalizeSavedImageToTargetPixels(absImg, imageSize, log, { id: imageGenId, size: imageSize });
+        }
+        persistedImageUrl = '/static/' + String(localPath).replace(/^\//, '');
+      } catch (saveErr) {
+        log.warn('[图生] Step5 本地图片尺寸对齐失败（保留原图）', {
+          id: imageGenId,
+          err: saveErr.message,
+          elapsed: elapsed(),
+        });
       }
-      log.info('[图生] Step5 保存完成', { id: imageGenId, local_path: localPath, save_ms: Date.now() - tSave, elapsed: elapsed() });
-
-      // Step5.1：单帧/场景图等若 API 返回像素与 Step3 目标不一致，则 letterbox 到目标画布（Gemini 常见）
-      if (
-        localPath &&
-        imageSize &&
-        row.frame_type !== 'quad_grid' &&
-        row.frame_type !== 'nine_grid'
-      ) {
-        const absNorm = path.join(storagePath, localPath);
-        await normalizeSavedImageToTargetPixels(absNorm, imageSize, log, { id: imageGenId, size: imageSize });
-      }
-    } catch (saveErr) {
-      log.warn('[图生] Step5 保存失败（不影响结果）', { id: imageGenId, err: saveErr.message, elapsed: elapsed() });
-    }
-
-    // 入库的 image_url：优先指向本地静态路径，避免前端仍用 Gemini 返回的 data URL
-    let persistedImageUrl = result.image_url;
-    if (localPath) {
-      persistedImageUrl = '/static/' + String(localPath).replace(/^\//, '');
     }
 
     // ── Step 6: 写库 & 任务完成 ──────────────────────────────────────
@@ -1746,15 +1735,36 @@ async function processImageGeneration(db, log, imageGenId) {
       }
     }
     db.prepare(
-      'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, superseded = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
-    ).run('completed', persistedImageUrl, localPath, superseded ? 1 : 0, now2, now2, imageGenId);
+      `UPDATE image_generations
+          SET status = ?, provider_url = ?, image_url = ?, local_path = ?,
+              localize_status = ?, localized_at = ?, superseded = ?, error_msg = NULL,
+              completed_at = ?, updated_at = ?
+        WHERE id = ?`
+    ).run(
+      'completed',
+      providerUrl,
+      persistedImageUrl,
+      localPath,
+      localizeStatus,
+      localizedAt,
+      superseded ? 1 : 0,
+      now2,
+      now2,
+      imageGenId
+    );
     if (row.task_id) {
       taskService.updateTaskResult(db, row.task_id, {
         image_generation_id: imageGenId,
         image_url: persistedImageUrl,
+        local_path: localPath,
+        provider_url: providerUrl,
+        localize_status: localizeStatus,
         status: 'completed',
         superseded,
       });
+    }
+    if (shouldLocalize) {
+      mediaLocalizationService.enqueueImageLocalization(db, log, imageGenId, result.image_url);
     }
     
     if (row.scene_id != null && row.storyboard_id == null) {
@@ -2042,4 +2052,8 @@ module.exports = {
   processImageGeneration,
   aspectRatioToSize,
   syncStoryboardCharacters,
+  normalizeLocalImageToTargetSize,
+  normalizeSavedImageToTargetPixels,
+  splitQuadGridToImages,
+  splitNineGridToImages,
 };

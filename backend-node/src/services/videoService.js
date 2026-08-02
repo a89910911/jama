@@ -91,8 +91,12 @@ function rowToItem(r) {
     image_gen_id: r.image_gen_id,
     image_url: r.image_url,
     source_video_url: r.source_video_url,
+    provider_url: r.provider_url ?? undefined,
     video_url: r.video_url,
     local_path: r.local_path,
+    localize_status: r.localize_status ?? undefined,
+    localize_error: r.localize_error ?? undefined,
+    localized_at: r.localized_at ?? undefined,
     status: r.status,
     task_id: r.task_id,
     error_msg: r.error_msg,
@@ -128,6 +132,7 @@ const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
 const { clampStoryboardDuration } = require('./storyboardDurationPlanner');
 const characterLookService = require('./characterLookService');
 const visualContextResolver = require('./visualContextResolver');
+const mediaLocalizationService = require('./mediaLocalizationService');
 const {
   existingLocalMedia,
   isDataUrl,
@@ -329,26 +334,48 @@ async function finalizeSuccessfulVideo(
 ) {
   const now = new Date().toISOString();
   if (row.task_id) {
-    taskService.updateTaskStatus(db, row.task_id, 'processing', 95, '视频已生成，正在保存到本地…');
+    taskService.updateTaskStatus(db, row.task_id, 'processing', 95, '视频已生成，正在写入记录…');
   }
   let localPath = null;
-  try {
+  let persistedVideoUrl = videoUrl;
+  const providerUrl = videoUrl;
+  if (Buffer.isBuffer(videoBuffer)) {
     const cfg = require('../config').loadConfig();
     const storagePath = resolveStoragePath(cfg);
     const projectSubdir = storageLayout.getProjectStorageSubdir(db, row.drama_id);
-    localPath = Buffer.isBuffer(videoBuffer)
-      ? saveVideoBufferToLocal(
-          storagePath,
-          videoBuffer,
-          videoGenId,
-          log,
-          projectSubdir,
-          contentType
-        )
-      : await downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir);
+    localPath = saveVideoBufferToLocal(
+      storagePath,
+      videoBuffer,
+      videoGenId,
+      log,
+      projectSubdir,
+      contentType
+    );
     maybeNormalizeVideoAfterDownload(storagePath, localPath, rowForAspect, videoGenId, log);
-  } catch (_) {}
-  const persistedVideoUrl = localPath ? localUrl(localPath) : videoUrl;
+    if (localPath) persistedVideoUrl = localUrl(localPath);
+    else throw new Error('视频模型返回了二进制内容，但保存到本地失败');
+  } else if (isDataUrl(videoUrl)) {
+    const cfg = require('../config').loadConfig();
+    const storagePath = resolveStoragePath(cfg);
+    const projectSubdir = storageLayout.getProjectStorageSubdir(db, row.drama_id);
+    localPath = await downloadVideoToLocal(storagePath, videoUrl, videoGenId, log, projectSubdir);
+    maybeNormalizeVideoAfterDownload(storagePath, localPath, rowForAspect, videoGenId, log);
+    if (localPath) persistedVideoUrl = localUrl(localPath);
+    else throw new Error('视频模型返回了 Base64 视频，但保存到本地失败');
+  } else {
+    try {
+      const cfg = require('../config').loadConfig();
+      const storagePath = resolveStoragePath(cfg);
+      const existing = existingLocalMedia(storagePath, videoUrl, cfg.storage?.base_url);
+      if (existing?.local_path) {
+        localPath = existing.local_path;
+        persistedVideoUrl = localUrl(localPath);
+      }
+    } catch (_) {}
+  }
+  const shouldLocalize = !localPath && mediaLocalizationService.isRemoteDownloadUrl(videoUrl);
+  const localizeStatus = localPath ? 'completed' : shouldLocalize ? 'pending' : 'none';
+  const localizedAt = localPath ? now : null;
   let superseded = false;
   if (row.appearance_context_json && row.appearance_context_hash
     && characterLookService.hasWardrobeTables(db)) {
@@ -379,10 +406,28 @@ async function finalizeSuccessfulVideo(
   }
   try {
     db.prepare(
-      'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, superseded = ?, completed_at = ?, updated_at = ? WHERE id = ?'
-    ).run('completed', persistedVideoUrl, localPath, superseded ? 1 : 0, now, now, videoGenId);
+      `UPDATE video_generations
+          SET status = ?, provider_url = ?, video_url = ?, local_path = ?,
+              localize_status = ?, localized_at = ?, superseded = ?,
+              completed_at = ?, updated_at = ?
+        WHERE id = ?`
+    ).run(
+      'completed',
+      providerUrl,
+      persistedVideoUrl,
+      localPath,
+      localizeStatus,
+      localizedAt,
+      superseded ? 1 : 0,
+      now,
+      now,
+      videoGenId
+    );
   } catch (e) {
-    if ((e.message || '').includes('completed_at')) {
+    if ((e.message || '').includes('completed_at')
+      || (e.message || '').includes('provider_url')
+      || (e.message || '').includes('localize_status')
+      || (e.message || '').includes('localized_at')) {
       db.prepare(
         'UPDATE video_generations SET status = ?, video_url = ?, local_path = ?, superseded = ?, updated_at = ? WHERE id = ?'
       ).run('completed', persistedVideoUrl, localPath, superseded ? 1 : 0, now, videoGenId);
@@ -407,9 +452,15 @@ async function finalizeSuccessfulVideo(
     taskService.updateTaskResult(db, row.task_id, {
       video_generation_id: videoGenId,
       video_url: persistedVideoUrl,
+      local_path: localPath,
+      provider_url: providerUrl,
+      localize_status: localizeStatus,
       status: 'completed',
       superseded,
     });
+  }
+  if (shouldLocalize) {
+    mediaLocalizationService.enqueueVideoLocalization(db, log, videoGenId, videoUrl);
   }
   log.info('Video generation completed' + (logLabel ? ` (${logLabel})` : ''), {
     id: videoGenId,
@@ -811,5 +862,6 @@ module.exports = {
   processVideoGeneration,
   resumeProcessingVideoGenerations,
   downloadVideoToLocal,
+  maybeNormalizeVideoAfterDownload,
   resolveRemoteVideoUrl,
 };

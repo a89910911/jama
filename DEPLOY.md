@@ -1,5 +1,37 @@
 # 一键更新服务器
 
+## macOS / Linux
+
+在项目根目录打开终端，运行：
+
+```bash
+./deploy.sh
+```
+
+使用 SSH 私钥：
+
+```bash
+./deploy.sh --identity-file ~/.ssh/id_ed25519
+```
+
+如果终端无法弹出密码输入，也可以临时通过环境变量传入：
+
+```bash
+JAMA_DEPLOY_SSH_PASSWORD='你的SSH密码' ./deploy.sh
+```
+
+常用选项：
+
+```bash
+./deploy.sh --skip-tests
+./deploy.sh --preflight-only
+./deploy.sh --keep-backups 10
+```
+
+脚本会在本机完成依赖安装、测试、依赖审计、前端构建和包体积检查，然后复用 `tools/deploy_jama.py` 上传发布包并在服务器上原子切换版本。
+
+## Windows PowerShell
+
 在项目根目录打开 PowerShell，运行：
 
 ```powershell

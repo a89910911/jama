@@ -12,6 +12,7 @@ const { loadConfig } = require('../config');
 const { postJSONWithTimeout } = require('./aiClient');
 const { replaceIntoSql } = require('../db/portableSql');
 const characterLookService = require('./characterLookService');
+const mediaLocalizationService = require('./mediaLocalizationService');
 const { isDataUrl, localUrl, resolveStorageRoot } = require('./localMediaService');
 const {
   isFalConfig,
@@ -2299,6 +2300,7 @@ function createAndGenerateImage(db, log, opts) {
     drama_id,
     character_id,
     character_look_id,
+    prop_id,
     scene_id,
     image_type,
     prompt,
@@ -2314,6 +2316,7 @@ function createAndGenerateImage(db, log, opts) {
   const charIdNum = character_id != null ? Number(character_id) : null;
   const lookIdNum = character_look_id != null ? Number(character_look_id) : null;
   const sceneIdNum = scene_id != null ? Number(scene_id) : null;
+  const propIdNum = prop_id != null ? Number(prop_id) : null;
   const lookRowAtSubmit = lookIdNum != null
     ? characterLookService.getLookRow(db, lookIdNum)
     : null;
@@ -2335,6 +2338,7 @@ function createAndGenerateImage(db, log, opts) {
   if (lookIdNum != null) resourceId = `character_look_${lookIdNum}`;
   else if (charIdNum != null) resourceId = `character_${charIdNum}`;
   else if (sceneIdNum != null) resourceId = `scene_${sceneIdNum}`;
+  else if (propIdNum != null) resourceId = `prop_${propIdNum}`;
   else resourceId = String(dramaIdNum);
   const task = taskService.createTask(
     db,
@@ -2350,17 +2354,18 @@ function createAndGenerateImage(db, log, opts) {
     const info = db.prepare(
       `INSERT INTO image_generations
         (drama_id, character_id, character_look_id, character_look_revision,
-         scene_id, provider, prompt, negative_prompt, model, size, quality,
+         scene_id, prop_id, provider, prompt, negative_prompt, model, size, quality,
          appearance_context_json, appearance_context_hash, generation_context_hash,
          requested_by_user_id, ai_config_id, ai_config_revision_id,
          status, task_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
     ).run(
       dramaIdNum,
       charIdNum,
       lookIdNum,
       lookRevision,
       sceneIdNum,
+      propIdNum,
       provider || 'openai',
       prompt || '',
       negRow,
@@ -2383,6 +2388,7 @@ function createAndGenerateImage(db, log, opts) {
       (e.message || '').includes('scene_id')
       || (e.message || '').includes('character_id')
       || (e.message || '').includes('character_look_id')
+      || (e.message || '').includes('prop_id')
       || (e.message || '').includes('appearance_context')
     ) {
       const info = db.prepare(
@@ -2458,35 +2464,32 @@ function createAndGenerateImage(db, log, opts) {
         log.error('Image generation failed', { image_gen_id: imageGenId, error: result.error });
         return;
       }
-      taskService.updateTaskStatus(db, taskId, 'processing', 85, '图片已生成，正在保存到本地…');
-      let localPath = null;
-      try {
-        const loadConfig = require('../config').loadConfig;
-        const cfg = loadConfig();
-        const storagePath = path.isAbsolute(cfg.storage?.local_path)
-          ? cfg.storage.local_path
-          : path.join(process.cwd(), cfg.storage?.local_path || './data/storage');
-        const category = sceneIdNum != null ? 'scenes' : (charIdNum != null ? 'characters' : 'images');
-        const projectSubdir = storageLayout.getProjectStorageSubdir(db, dramaIdNum);
-        localPath = await uploadService.downloadImageToLocal(
-          storagePath,
-          result.image_url,
-          category,
-          log,
-          'ig',
-          projectSubdir
-        );
-      } catch (_) {}
+      taskService.updateTaskStatus(db, taskId, 'processing', 85, '图片已生成，正在写入记录…');
+      let localPath = result.local_path || null;
+      const providerUrl = result.provider_url || result.image_url;
+      const shouldLocalize = !localPath && mediaLocalizationService.isRemoteDownloadUrl(result.image_url);
+      const localizeStatus = localPath ? 'completed' : shouldLocalize ? 'pending' : 'none';
+      const localizedAt = localPath ? now2 : null;
+      const persistedImageUrl = localPath
+        ? '/static/' + String(localPath).replace(/^\//, '')
+        : result.image_url;
       // 兼容旧库无 completed_at：先试完整 UPDATE，失败则只更新必有列
       try {
         db.prepare(
-          'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, completed_at = ?, updated_at = ? WHERE id = ?'
-        ).run('completed', result.image_url, localPath, now2, now2, imageGenId);
+          `UPDATE image_generations
+              SET status = ?, provider_url = ?, image_url = ?, local_path = ?,
+                  localize_status = ?, localized_at = ?, error_msg = NULL,
+                  completed_at = ?, updated_at = ?
+            WHERE id = ?`
+        ).run('completed', providerUrl, persistedImageUrl, localPath, localizeStatus, localizedAt, now2, now2, imageGenId);
       } catch (e) {
-        if ((e.message || '').includes('completed_at')) {
+        if ((e.message || '').includes('completed_at')
+          || (e.message || '').includes('provider_url')
+          || (e.message || '').includes('localize_status')
+          || (e.message || '').includes('localized_at')) {
           db.prepare(
             'UPDATE image_generations SET status = ?, image_url = ?, local_path = ?, error_msg = NULL, updated_at = ? WHERE id = ?'
-          ).run('completed', result.image_url, localPath, now2, imageGenId);
+          ).run('completed', persistedImageUrl, localPath, now2, imageGenId);
         } else {
           throw e;
         }
@@ -2527,7 +2530,7 @@ function createAndGenerateImage(db, log, opts) {
                     visual_revision = visual_revision + 1, updated_at = ?
               WHERE id = ?`
           ).run(
-            result.image_url,
+            persistedImageUrl,
             localPath,
             extras.length ? JSON.stringify(extras) : null,
             now2,
@@ -2554,7 +2557,7 @@ function createAndGenerateImage(db, log, opts) {
           if (oldPath && !extras.includes(oldPath)) extras.push(oldPath);
           const extraJson = extras.length ? JSON.stringify(extras) : null;
           db.prepare('UPDATE characters SET image_url = ?, local_path = ?, extra_images = ?, updated_at = ? WHERE id = ?').run(
-            result.image_url,
+            persistedImageUrl,
             localPath,
             extraJson,
             now2,
@@ -2562,27 +2565,30 @@ function createAndGenerateImage(db, log, opts) {
           );
         } catch (e) {
           if ((e.message || '').includes('local_path') || (e.message || '').includes('extra_images')) {
-            db.prepare('UPDATE characters SET image_url = ?, updated_at = ? WHERE id = ?').run(result.image_url, now2, charIdNum);
+            db.prepare('UPDATE characters SET image_url = ?, updated_at = ? WHERE id = ?').run(persistedImageUrl, now2, charIdNum);
           } else {
             throw e;
           }
         }
         log.info('Character image updated', {
           character_id: charIdNum,
-          image_source: String(result.image_url || '').startsWith('data:')
-            ? `inline-data(${String(result.image_url).length} chars)`
-            : result.image_url,
+          image_source: providerUrl,
           local_path: localPath,
         });
       }
       taskService.updateTaskResult(db, taskId, {
         image_generation_id: imageGenId,
-        image_url: result.image_url,
+        image_url: persistedImageUrl,
         local_path: localPath,
+        provider_url: providerUrl,
+        localize_status: localizeStatus,
         character_look_id: lookIdNum,
         superseded,
         status: 'completed',
       });
+      if (shouldLocalize) {
+        mediaLocalizationService.enqueueImageLocalization(db, log, imageGenId, result.image_url);
+      }
       if (sceneIdNum != null) {
         try {
           // 旧图追加到 extra_images，与上传逻辑保持一致
@@ -2594,7 +2600,7 @@ function createAndGenerateImage(db, log, opts) {
           if (oldPath && !extras.includes(oldPath)) extras.push(oldPath);
           const extraJson = extras.length ? JSON.stringify(extras) : null;
           db.prepare('UPDATE scenes SET image_url = ?, local_path = ?, extra_images = ?, updated_at = ? WHERE id = ?').run(
-            result.image_url,
+            persistedImageUrl,
             localPath,
             extraJson,
             now2,
@@ -2602,18 +2608,39 @@ function createAndGenerateImage(db, log, opts) {
           );
         } catch (e) {
           if ((e.message || '').includes('local_path') || (e.message || '').includes('extra_images')) {
-            db.prepare('UPDATE scenes SET image_url = ?, updated_at = ? WHERE id = ?').run(result.image_url, now2, sceneIdNum);
+            db.prepare('UPDATE scenes SET image_url = ?, updated_at = ? WHERE id = ?').run(persistedImageUrl, now2, sceneIdNum);
           } else {
             throw e;
           }
         }
         log.info('Scene image updated', {
           scene_id: sceneIdNum,
-          image_source: String(result.image_url || '').startsWith('data:')
-            ? `inline-data(${String(result.image_url).length} chars)`
-            : result.image_url,
+          image_source: providerUrl,
           local_path: localPath,
         });
+      } else if (propIdNum != null) {
+        try {
+          const oldProp = db.prepare('SELECT local_path, image_url, extra_images FROM props WHERE id = ?').get(propIdNum);
+          const oldPath = oldProp?.local_path || oldProp?.image_url || '';
+          let extras = [];
+          try { extras = oldProp?.extra_images ? JSON.parse(oldProp.extra_images) : []; } catch (_) {}
+          if (!Array.isArray(extras)) extras = [];
+          if (oldPath && !extras.includes(oldPath)) extras.push(oldPath);
+          const extraJson = extras.length ? JSON.stringify(extras) : null;
+          db.prepare('UPDATE props SET image_url = ?, local_path = ?, extra_images = ?, updated_at = ? WHERE id = ?').run(
+            persistedImageUrl,
+            localPath,
+            extraJson,
+            now2,
+            propIdNum
+          );
+        } catch (e) {
+          if ((e.message || '').includes('local_path') || (e.message || '').includes('extra_images')) {
+            db.prepare('UPDATE props SET image_url = ?, updated_at = ? WHERE id = ?').run(persistedImageUrl, now2, propIdNum);
+          } else {
+            throw e;
+          }
+        }
       }
       log.info('Image generation completed', { image_gen_id: imageGenId, local_path: localPath });
     } catch (err) {

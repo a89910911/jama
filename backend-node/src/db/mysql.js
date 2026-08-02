@@ -27,6 +27,7 @@ const REQUIRED_TABLES = [
   'global_settings',
   'image_generations',
   'image_proxy_cache',
+  'media_localization_jobs',
   'prompt_definitions',
   'prop_libraries',
   'props',
